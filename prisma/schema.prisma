@@ -728,7 +728,7 @@ model Customer {
   paymentReceipts PaymentReceipt[]
   // debtReconciliations DebtReconciliation[]
   debtPeriods     DebtPeriod[]
-  customerAccount CustomerAccount[]
+  customerAccount CustomerAccount?
 
   @@index([customerCode])
   @@index([phone])
