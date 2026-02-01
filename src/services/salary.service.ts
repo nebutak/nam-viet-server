@@ -238,6 +238,34 @@ class SalaryService {
     return totalRevenue;
   }
 
+  // Get overtime hours from Overtime Sessions
+  private async getOvertimeSessionHours(userId: number, month: string): Promise<number> {
+    const year = parseInt(month.substring(0, 4));
+    const monthNum = parseInt(month.substring(4, 6));
+    const startDate = new Date(year, monthNum - 1, 1);
+    const endDate = new Date(year, monthNum, 0, 23, 59, 59);
+
+    const result = await prisma.overtimeEntry.aggregate({
+      _sum: {
+        actualHours: true,
+      },
+      where: {
+        userId,
+        // Filter by session start time or entry start time? 
+        // Using session time for consistency with "Session Management"
+        session: {
+          startTime: {
+            gte: startDate,
+            lte: endDate,
+          },
+          status: 'closed', // Only count closed sessions to be safe? Or all? Plan said "Close session to calc hours", so definitely closed.
+        }
+      }
+    });
+
+    return Number(result._sum.actualHours || 0);
+  }
+
   // Get salary by ID
   async getById(id: number) {
     const salary = await prisma.salary.findUnique({
@@ -316,7 +344,8 @@ class SalaryService {
 
   // Calculate salary for a user in a month
   async calculate(data: CalculateSalaryInput, creatorId: number) {
-    const { userId, month, basicSalary, allowance = 0, bonus = 0, advance = 0, notes } = data;
+    const { userId, month, basicSalary, allowance = 0, bonus = 0, advance = 0 } = data;
+    let { notes } = data;
 
     // Check if salary already exists
     const existing = await prisma.salary.findUnique({
@@ -344,12 +373,19 @@ class SalaryService {
 
     const actualBasicSalary = basicSalary ?? 10000000; // Default 10M if not provided
 
-    // 1. Calculate overtime pay from attendance
+    // 1. Calculate overtime pay from attendance AND Overtime Sessions
     const attendanceReport = await attendanceService.getMonthlyReport(month, userId);
     const userAttendance = attendanceReport.users.find((u: any) => u.user.id === userId);
-    const overtimeHours = userAttendance?.summary.totalOvertimeHours ?? 0;
+    const attendanceOvertime = userAttendance?.summary.totalOvertimeHours ?? 0;
+    
+    // NEW: Get hours from Overtime Sessions
+    const sessionOvertime = await this.getOvertimeSessionHours(userId, month);
+    console.log(`Overtime for user ${userId}: Attendance=${attendanceOvertime}, Session=${sessionOvertime}`);
+    
+    const totalOvertimeHours = Number(attendanceOvertime) + Number(sessionOvertime);
+
     const overtimePay =
-      (actualBasicSalary / STANDARD_WORK_HOURS_PER_MONTH) * overtimeHours * OVERTIME_RATE;
+      (actualBasicSalary / STANDARD_WORK_HOURS_PER_MONTH) * totalOvertimeHours * OVERTIME_RATE;
 
     // 2. Calculate commission from sales revenue
     const salesRevenue = await this.getUserSalesRevenue(userId, month);
@@ -358,17 +394,32 @@ class SalaryService {
     // 3. Calculate gross income
     const grossIncome = actualBasicSalary + allowance + overtimePay + bonus + commission;
 
-    // 4. Calculate deductions (Insurance + Tax)
+    // 4. Calculate deductions (Insurance + Tax + Excess Leave)
     const insuranceDeduction = actualBasicSalary * TOTAL_INSURANCE_RATE;
+
+    // Calculate Leave Deduction (1 Free Day Policy)
+    const totalLeaveDays = userAttendance?.summary.leaveDays ?? 0;
+    let leaveDeduction = 0;
+    
+    // Policy: 1 day per month is free. Excess is deducted.
+    // Assuming standard 26 working days.
+    if (totalLeaveDays > 1) {
+      const excessDays = totalLeaveDays - 1;
+      const dailySalary = actualBasicSalary / STANDARD_WORK_HOURS_PER_MONTH * 8; // or actualBasicSalary / 26
+      leaveDeduction = dailySalary * excessDays;
+      
+      const leaveNote = `\n[System] Deducted ${excessDays} excess leave days (${leaveDeduction.toLocaleString()} VND)`;
+      notes = notes ? notes + leaveNote : leaveNote;
+    }
 
     // Tax = (Gross - Insurance - 11M personal deduction - 4.4M dependents) * progressive rate
     const PERSONAL_DEDUCTION = 11000000; // 11M VND
     const DEPENDENT_DEDUCTION = 4400000; // 4.4M VND per dependent (assume 0 for now)
     const taxableIncome =
-      grossIncome - insuranceDeduction - PERSONAL_DEDUCTION - DEPENDENT_DEDUCTION;
+      grossIncome - insuranceDeduction - leaveDeduction - PERSONAL_DEDUCTION - DEPENDENT_DEDUCTION;
     const tax = this.calculatePersonalIncomeTax(taxableIncome);
 
-    const totalDeduction = insuranceDeduction + tax;
+    const totalDeduction = insuranceDeduction + tax + leaveDeduction;
 
     // 5. Calculate net salary
     const netSalary = grossIncome - totalDeduction - advance;
@@ -441,9 +492,13 @@ class SalaryService {
     // 1. Recalculate overtime pay
     const attendanceReport = await attendanceService.getMonthlyReport(month, userId);
     const userAttendance = attendanceReport.users.find((u: any) => u.user.id === userId);
-    const overtimeHours = userAttendance?.summary.totalOvertimeHours ?? 0;
+    const attendanceOvertime = userAttendance?.summary.totalOvertimeHours ?? 0;
+
+    const sessionOvertime = await this.getOvertimeSessionHours(userId, month);
+    const totalOvertimeHours = Number(attendanceOvertime) + Number(sessionOvertime);
+
     const overtimePay =
-      (Number(basicSalary) / STANDARD_WORK_HOURS_PER_MONTH) * overtimeHours * OVERTIME_RATE;
+      (Number(basicSalary) / STANDARD_WORK_HOURS_PER_MONTH) * totalOvertimeHours * OVERTIME_RATE;
 
     // 2. Recalculate commission
     const salesRevenue = await this.getUserSalesRevenue(userId, month);
@@ -453,12 +508,23 @@ class SalaryService {
     const grossIncome =
       Number(basicSalary) + Number(allowance) + overtimePay + Number(bonus) + commission;
     const insuranceDeduction = Number(basicSalary) * TOTAL_INSURANCE_RATE;
+    
+    // Calculate Leave Deduction (1 Free Day Policy)
+    const totalLeaveDays = userAttendance?.summary.leaveDays ?? 0;
+    let leaveDeduction = 0;
+    
+    if (totalLeaveDays > 1) {
+      const excessDays = totalLeaveDays - 1;
+      const dailySalary = Number(basicSalary) / STANDARD_WORK_HOURS_PER_MONTH * 8;
+      leaveDeduction = dailySalary * excessDays;
+    }
+
     const PERSONAL_DEDUCTION = 11000000;
     const DEPENDENT_DEDUCTION = 4400000;
     const taxableIncome =
-      grossIncome - insuranceDeduction - PERSONAL_DEDUCTION - DEPENDENT_DEDUCTION;
+      grossIncome - insuranceDeduction - leaveDeduction - PERSONAL_DEDUCTION - DEPENDENT_DEDUCTION;
     const tax = this.calculatePersonalIncomeTax(taxableIncome);
-    const totalDeduction = insuranceDeduction + tax;
+    const totalDeduction = insuranceDeduction + tax + leaveDeduction;
 
     const netSalary = grossIncome - totalDeduction - Number(advance);
 

@@ -378,6 +378,7 @@ class AttendanceService {
         date: leaveDate,
         status: 'leave',
         leaveType: data.leaveType,
+        shift: data.shift || 'all_day',
         notes: data.reason,
       },
       include: {
@@ -518,7 +519,12 @@ class AttendanceService {
           summary.absentDays++;
           break;
         case 'leave':
-          summary.leaveDays++;
+          // If shift is morning or afternoon, count as 0.5
+          if (['morning', 'afternoon'].includes(record.shift as string)) {
+             summary.leaveDays += 0.5;
+          } else {
+             summary.leaveDays += 1;
+          }
           break;
         case 'work_from_home':
           summary.wfhDays++;

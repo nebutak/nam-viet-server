@@ -297,6 +297,8 @@ class CustomerService {
         issuedBy: data.issuedBy || null,
         creditLimit: data.creditLimit || 0,
         currentDebt: 0,
+        rewardPoints: data.rewardPoints || 0,
+        rewardCode: data.rewardCode || null,
         notes: data.notes,
         status: 'active',
         createdBy: userId,
@@ -389,6 +391,8 @@ class CustomerService {
         ...(data.issuedBy !== undefined && { issuedBy: data.issuedBy || null }),
         ...(data.creditLimit !== undefined && { creditLimit: data.creditLimit }),
         ...(data.notes !== undefined && { notes: data.notes }),
+        ...(data.rewardPoints !== undefined && { rewardPoints: data.rewardPoints }),
+        ...(data.rewardCode !== undefined && { rewardCode: data.rewardCode || null }),
         updatedBy: userId,
       },
       include: {

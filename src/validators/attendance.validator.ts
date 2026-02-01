@@ -58,6 +58,7 @@ export const requestLeaveSchema = z.object({
     message: 'Invalid date',
   }),
   leaveType: z.enum(['annual', 'sick', 'unpaid', 'other']),
+  shift: z.enum(['morning', 'afternoon', 'all_day']).default('all_day'),
   reason: z.string().min(1, 'Reason is required').max(500),
 });
 

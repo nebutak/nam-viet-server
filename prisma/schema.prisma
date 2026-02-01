@@ -164,6 +164,8 @@ model User {
   salariesCreated         Salary[]           @relation("SalaryCreator")
   salariesApproved        Salary[]           @relation("SalaryApprover")
   salariesPaid            Salary[]           @relation("SalaryPayer")
+  overtimeSessionsCreated OvertimeSession[]  @relation("OvertimeCreator")
+  overtimeEntries         OvertimeEntry[]
   notifications           Notification[]
   notificationsSent       Notification[]     @relation("NotificationSender")
   inventoryUpdates        Inventory[]
@@ -178,6 +180,10 @@ model User {
   qrScanLogs              AttendanceQRLog[]
   userPermissions         UserPermission[]   @relation("PermissionAssignedBy")
   userPermissionsAssigned UserPermission[]
+  assignedTickets         Ticket[]           @relation("TicketAssignee")
+  createdTickets          Ticket[]           @relation("TicketCreator")
+  assignedTasks           CrmTask[]          @relation("TaskAssignee")
+  createdTasks            CrmTask[]          @relation("TaskCreator")
 
   @@index([roleId, status])
   @@map("users")
@@ -710,6 +716,8 @@ model Customer {
   issuedAt        DateTime?              @map("issued_at") @db.Date
   issuedBy        String?                @map("issued_by") @db.VarChar(100)
   status          CustomerStatus         @default(active)
+  rewardPoints    Int                    @default(0) @map("reward_points")
+  rewardCode      String?                @map("reward_code") @db.VarChar(50)
   notes           String?                @db.VarChar(255)
   phoneVerifiedAt DateTime?              @map("phone_verified_at")
   createdBy       Int?                   @map("created_by")
@@ -729,6 +737,8 @@ model Customer {
   // debtReconciliations DebtReconciliation[]
   debtPeriods     DebtPeriod[]
   customerAccount CustomerAccount?
+  tickets         Ticket[]
+  crmTasks        CrmTask[]
 
   @@index([customerCode])
   @@index([phone])
@@ -1102,6 +1112,7 @@ model Attendance {
   overtimeHours    Decimal          @default(0) @map("overtime_hours") @db.Decimal(5, 2)
   status           AttendanceStatus @default(present)
   leaveType        LeaveType        @default(none) @map("leave_type")
+  shift            ShiftType        @default(all_day) // morning, afternoon, all_day
   checkInLocation  String?          @map("check_in_location") @db.VarChar(255)
   checkOutLocation String?          @map("check_out_location") @db.VarChar(255)
   approvedBy       Int?             @map("approved_by")
@@ -1133,6 +1144,50 @@ model AttendanceMonth {
   @@unique([month])
   @@index([month])
   @@map("attendance_months")
+}
+
+// ✅ NEW: Overtime Management
+
+enum OvertimeSessionStatus {
+  open
+  closed
+  cancelled
+}
+
+model OvertimeSession {
+  id          Int                   @id @default(autoincrement())
+  sessionName String                @map("session_name") @db.VarChar(200)
+  startTime   DateTime              @map("start_time")
+  endTime     DateTime?             @map("end_time")
+  status      OvertimeSessionStatus @default(open)
+  notes       String?               @db.VarChar(500)
+  createdBy   Int                   @map("created_by")
+  createdAt   DateTime              @default(now()) @map("created_at")
+  updatedAt   DateTime              @updatedAt @map("updated_at")
+
+  creator User            @relation("OvertimeCreator", fields: [createdBy], references: [id])
+  entries OvertimeEntry[]
+
+  @@index([status])
+  @@index([startTime])
+  @@map("overtime_sessions")
+}
+
+model OvertimeEntry {
+  id                Int       @id @default(autoincrement())
+  overtimeSessionId Int       @map("overtime_session_id")
+  userId            Int       @map("user_id")
+  startTime         DateTime? @map("start_time") // Nếu khác session
+  endTime           DateTime? @map("end_time") // Nếu khác session
+  actualHours       Decimal   @default(0) @map("actual_hours") @db.Decimal(5, 2)
+  notes             String?   @db.VarChar(255)
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  session OvertimeSession @relation(fields: [overtimeSessionId], references: [id], onDelete: Cascade)
+  user    User            @relation(fields: [userId], references: [id])
+
+  @@unique([overtimeSessionId, userId])
+  @@map("overtime_entries")
 }
 
 // QR Code for Attendance Check-in
@@ -1756,4 +1811,95 @@ model UserPermission {
 enum GrantType {
   grant // Thêm quyền
   revoke // Bỏ quyền (dùng để override quyền từ role)
+}
+
+// =====================================================
+// 13. CRM SYSTEM (Tickets & Tasks)
+// =====================================================
+
+model Ticket {
+  id           Int            @id @default(autoincrement())
+  ticketCode   String         @unique @map("ticket_code") @db.VarChar(50)
+  title        String         @db.VarChar(200)
+  description  String?        @db.Text
+  status       TicketStatus   @default(open)
+  priority     TicketPriority @default(medium)
+  customerId   Int            @map("customer_id")
+  assignedToId Int?           @map("assigned_to_id")
+  createdBy    Int            @map("created_by")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  deletedAt    DateTime?      @map("deleted_at")
+
+  customer   Customer  @relation(fields: [customerId], references: [id])
+  assignedTo User?     @relation("TicketAssignee", fields: [assignedToId], references: [id])
+  creator    User      @relation("TicketCreator", fields: [createdBy], references: [id])
+  tasks      CrmTask[]
+
+  @@index([status])
+  @@index([priority])
+  @@index([customerId])
+  @@index([assignedToId])
+  @@map("tickets")
+}
+
+model CrmTask {
+  id              Int          @id @default(autoincrement())
+  title           String       @db.VarChar(200)
+  description     String?      @db.Text
+  dueDate         DateTime?    @map("due_date")
+  status          TaskStatus   @default(pending)
+  priority        TaskPriority @default(medium)
+  type            TaskType     @default(call)
+  customerId      Int          @map("customer_id")
+  assignedToId    Int?         @map("assigned_to_id")
+  relatedTicketId Int?         @map("related_ticket_id")
+  createdBy       Int          @map("created_by")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  deletedAt       DateTime?    @map("deleted_at")
+
+  customer      Customer @relation(fields: [customerId], references: [id])
+  assignedTo    User?    @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  relatedTicket Ticket?  @relation(fields: [relatedTicketId], references: [id])
+  creator       User     @relation("TaskCreator", fields: [createdBy], references: [id])
+
+  @@index([status])
+  @@index([customerId])
+  @@index([assignedToId])
+  @@map("crm_tasks")
+}
+
+enum TicketStatus {
+  open
+  in_progress
+  resolved
+  closed
+}
+
+enum TicketPriority {
+  low
+  medium
+  high
+  urgent
+}
+
+enum TaskStatus {
+  pending
+  in_progress
+  completed
+  cancelled
+}
+
+enum TaskPriority {
+  low
+  medium
+  high
+}
+
+enum TaskType {
+  call
+  email
+  meeting
+  other
 }

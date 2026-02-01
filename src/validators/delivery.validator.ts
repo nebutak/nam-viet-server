@@ -49,6 +49,7 @@ export const failDeliverySchema = z.object({
   body: z.object({
     failureReason: z.string().min(10, 'Failure reason must be at least 10 characters').max(255),
     notes: z.string().max(255).optional(),
+    cancelOrder: z.boolean().optional(),
   }),
 });
 

@@ -34,6 +34,8 @@ export const createCustomerSchema = z.object({
   issuedAt: z.string().optional(),
   issuedBy: z.string().max(100, 'Nơi cấp không được quá 100 ký tự').optional().or(z.literal('')),
   creditLimit: z.number().min(0, 'Hạn mức tín dụng phải lớn hơn hoặc bằng 0').optional(),
+  rewardPoints: z.number().int().min(0, 'Điểm thưởng phải lớn hơn hoặc bằng 0').optional(),
+  rewardCode: z.string().max(50, 'Mã thưởng tối đa 50 ký tự').optional(),
   notes: z.string().max(255, 'Ghi chú tối đa 255 ký tự').optional(),
 });
 
@@ -71,6 +73,8 @@ export const updateCustomerSchema = z.object({
   issuedAt: z.string().optional(),
   issuedBy: z.string().max(100, 'Nơi cấp không được quá 100 ký tự').optional().or(z.literal('')),
   creditLimit: z.number().min(0, 'Hạn mức tín dụng phải lớn hơn hoặc bằng 0').optional(),
+  rewardPoints: z.number().int().min(0, 'Điểm thưởng phải lớn hơn hoặc bằng 0').optional(),
+  rewardCode: z.string().max(50, 'Mã thưởng tối đa 50 ký tự').optional(),
   notes: z.string().max(255, 'Ghi chú tối đa 255 ký tự').optional(),
 });
 
