@@ -13,11 +13,11 @@ export interface DebtQueryParams {
   page?: number;
   limit?: number;
   search?: string;        // Tìm tên, sđt, mã...
-  status?: 'paid' | 'unpaid'; 
-  
+  status?: 'paid' | 'unpaid';
+
   assignedUserId?: number; // Lọc theo nhân viên phụ trách
   province?: string;       // Lọc theo tỉnh (chỉ áp dụng cho KH)
-  type?: 'customer' | 'supplier'; 
+  type?: 'customer' | 'supplier';
 }
 
 // ==========================================
@@ -26,14 +26,14 @@ export interface DebtQueryParams {
 export interface SyncDebtParams {
   customerId?: number;
   supplierId?: number;
-  
+
   year?: number;          // Năm cần đồng bộ
   notes?: string;         // Ghi chú hệ thống/thủ công
-  
-  assignedUserId?: number; // Cập nhật người phụ trách (nếu có)
-  
 
-  adjustmentAmount?: number; 
+  assignedUserId?: number; // Cập nhật người phụ trách (nếu có)
+
+
+  adjustmentAmount?: number;
 }
 
 // ==========================================
@@ -43,9 +43,9 @@ export interface SyncDebtParams {
 export interface SendDebtNoticeParams {
   id: number;                      // ID của Customer hoặc Supplier
   type: 'customer' | 'supplier';   // Loại đối tượng
-  
+
   year?: number;                   // Có year => Gửi biên bản đối chiếu. Không year => Nhắc nợ hiện tại
-  
+
   customEmail?: string;            // Nếu muốn gửi đè tới email khác (VD: email kế toán trưởng)
   message?: string;                // Lời nhắn thêm từ người gửi
   cc?: string[];                   // Danh sách email CC (nếu cần)
@@ -62,13 +62,13 @@ export interface DebtDetailParams {
 }
 
 class SmartDebtService {
-private cache: CacheHelper;
+  private cache: CacheHelper;
 
   constructor() {
     this.cache = new CacheHelper();
   }
 
-// =========================================================================
+  // =========================================================================
   // 1. GET ALL (ĐÃ FIX LỖI LỌC TỈNH CHO NCC VÀ ALL)
   // =========================================================================
   async getAll(params: DebtQueryParams) {
@@ -86,181 +86,183 @@ private cache: CacheHelper;
     // =========================================================================
     // A. CHIẾN LƯỢC QUERY
     // =========================================================================
-    
+
     // --- 1. LỌC THEO KHÁCH HÀNG (Query bảng Customer) ---
     if (type === 'customer') {
-        const where: any = { status: 'active' };
+      const where: any = { status: 'active' };
 
-        if (search) {
-            where.OR = [
-                { customerName: { contains: search } },
-                { customerCode: { contains: search } },
-                { phone: { contains: search } }
-            ];
+      if (search) {
+        where.OR = [
+          { customerName: { contains: search } },
+          { customerCode: { contains: search } },
+          { phone: { contains: search } }
+        ];
+      }
+      // ✅ Khách hàng: Lọc theo cột province
+      if (province) where.province = { contains: province };
+
+      if (assignedUserId) where.assignedUserId = Number(assignedUserId);
+
+      if (status) {
+        const debtCondition = { periodName: targetYearStr };
+        if (status === 'unpaid') {
+          where.debtPeriods = { some: { ...debtCondition, closingBalance: { gt: 1000 } } };
+        } else {
+          where.OR = [
+            { debtPeriods: { none: { periodName: targetYearStr } } },
+            { debtPeriods: { some: { ...debtCondition, closingBalance: { lte: 1000 } } } }
+          ];
         }
-        // ✅ Khách hàng: Lọc theo cột province
-        if (province) where.province = { contains: province };
-        
-        if (assignedUserId) where.assignedUserId = Number(assignedUserId);
-        
-        if (status) {
-            const debtCondition = { periodName: targetYearStr };
-            if (status === 'unpaid') {
-                where.debtPeriods = { some: { ...debtCondition, closingBalance: { gt: 1000 } } };
-            } else {
-                where.OR = [
-                    { debtPeriods: { none: { periodName: targetYearStr } } },
-                    { debtPeriods: { some: { ...debtCondition, closingBalance: { lte: 1000 } } } }
-                ];
-            }
-        }
+      }
 
-        const [customers, count] = await Promise.all([
-            prisma.customer.findMany({
-                where, skip, take: Number(limit),
-                include: {
-                    assignedUser: { select: { id: true, fullName: true } },
-                    debtPeriods: { where: { periodName: targetYearStr }, take: 1 } 
-                },
-                orderBy: { createdBy: 'desc' }
-            }),
-            prisma.customer.count({ where })
-        ]);
+      const [customers, count] = await Promise.all([
+        prisma.customer.findMany({
+          where, skip, take: Number(limit),
+          include: {
+            assignedUser: { select: { id: true, fullName: true } },
+            debtPeriods: { where: { periodName: targetYearStr }, take: 1 }
+          },
+          orderBy: { createdBy: 'desc' }
+        }),
+        prisma.customer.count({ where })
+      ]);
 
-        data = customers.map(c => {
-            const debt = c.debtPeriods[0];
-            return this._mapToDebtItem(c, debt, 'customer', targetYearStr);
-        });
-        total = count;
+      data = customers.map(c => {
+        const debt = c.debtPeriods[0];
+        return this._mapToDebtItem(c, debt, 'customer', targetYearStr);
+      });
+      total = count;
     }
 
     // --- 2. LỌC THEO NCC (Query bảng Supplier) ---
     else if (type === 'supplier') {
-        const where: any = { status: 'active' };
+      const where: any = { status: 'active' };
 
-        if (search) {
-            where.OR = [
-                { supplierName: { contains: search } },
-                { supplierCode: { contains: search } },
-                { phone: { contains: search } }
-            ];
+      if (search) {
+        where.OR = [
+          { supplierName: { contains: search } },
+          { supplierCode: { contains: search } },
+          { phone: { contains: search } }
+        ];
+      }
+
+      // ✅ NCC: Lọc theo cột address (Vì NCC không có cột province riêng)
+      if (province) where.address = { contains: province };
+
+      if (assignedUserId) where.assignedUserId = Number(assignedUserId);
+
+      if (status) {
+        const debtCondition = { periodName: targetYearStr };
+        if (status === 'unpaid') {
+          where.debtPeriods = { some: { ...debtCondition, closingBalance: { gt: 1000 } } };
+        } else {
+          where.OR = [
+            { debtPeriods: { none: { periodName: targetYearStr } } },
+            { debtPeriods: { some: { ...debtCondition, closingBalance: { lte: 1000 } } } }
+          ];
         }
-        
-        // ✅ NCC: Lọc theo cột address (Vì NCC không có cột province riêng)
-        if (province) where.address = { contains: province };
+      }
 
-        if (assignedUserId) where.assignedUserId = Number(assignedUserId);
+      const [suppliers, count] = await Promise.all([
+        prisma.supplier.findMany({
+          where, skip, take: Number(limit),
+          include: {
+            assignedUser: { select: { id: true, fullName: true } },
+            debtPeriods: { where: { periodName: targetYearStr }, take: 1 }
+          }
+        }),
+        prisma.supplier.count({ where })
+      ]);
 
-        if (status) {
-            const debtCondition = { periodName: targetYearStr };
-            if (status === 'unpaid') {
-                where.debtPeriods = { some: { ...debtCondition, closingBalance: { gt: 1000 } } };
-            } else {
-                where.OR = [
-                    { debtPeriods: { none: { periodName: targetYearStr } } },
-                    { debtPeriods: { some: { ...debtCondition, closingBalance: { lte: 1000 } } } }
-                ];
-            }
-        }
-
-        const [suppliers, count] = await Promise.all([
-            prisma.supplier.findMany({
-                where, skip, take: Number(limit),
-                include: {
-                    assignedUser: { select: { id: true, fullName: true } },
-                    debtPeriods: { where: { periodName: targetYearStr }, take: 1 }
-                }
-            }),
-            prisma.supplier.count({ where })
-        ]);
-
-        data = suppliers.map(s => {
-            const debt = s.debtPeriods[0];
-            return this._mapToDebtItem(s, debt, 'supplier', targetYearStr);
-        });
-        total = count;
+      data = suppliers.map(s => {
+        const debt = s.debtPeriods[0];
+        return this._mapToDebtItem(s, debt, 'supplier', targetYearStr);
+      });
+      total = count;
     }
 
-    // --- 3. TẤT CẢ (Query bảng DebtPeriod) ---
+    // --- 3. TẤT CẢ (Gộp cả Khách hàng và NCC) ---
     else {
-        const where: any = { periodName: targetYearStr };
-        
-        // Mảng điều kiện AND để kết hợp Search + Province + User
-        const andConditions: any[] = [];
+      // 1. Tạo điều kiện lọc cho Khách hàng
+      const customerWhere: any = { status: 'active' };
+      if (search) {
+        customerWhere.OR = [
+          { customerName: { contains: search } },
+          { customerCode: { contains: search } },
+          { phone: { contains: search } }
+        ];
+      }
+      if (province) customerWhere.province = { contains: province };
+      if (assignedUserId) customerWhere.assignedUserId = Number(assignedUserId);
 
-        // a. Search Text
-        if (search) {
-            andConditions.push({
-                OR: [
-                    { customer: { customerName: { contains: search } } },
-                    { customer: { customerCode: { contains: search } } },
-                    { supplier: { supplierName: { contains: search } } },
-                    { supplier: { supplierCode: { contains: search } } }
-                ]
-            });
-        }
+      // 2. Tạo điều kiện lọc cho Nhà cung cấp
+      const supplierWhere: any = { status: 'active' };
+      if (search) {
+        supplierWhere.OR = [
+          { supplierName: { contains: search } },
+          { supplierCode: { contains: search } },
+          { phone: { contains: search } }
+        ];
+      }
+      if (province) supplierWhere.address = { contains: province };
+      if (assignedUserId) supplierWhere.assignedUserId = Number(assignedUserId);
 
-        // b. Filter Tỉnh/Thành (QUAN TRỌNG: Lọc cả 2 bảng)
-        if (province) {
-            andConditions.push({
-                OR: [
-                    // Tìm trong Khách (cột province)
-                    { customer: { province: { contains: province } } },
-                    // Tìm trong NCC (cột address)
-                    { supplier: { address: { contains: province } } }
-                ]
-            });
-        }
+      // 3. Query song song cả 2 bảng
+      const [customers, suppliers] = await Promise.all([
+        prisma.customer.findMany({
+          where: customerWhere,
+          include: {
+            assignedUser: { select: { id: true, fullName: true } },
+            debtPeriods: { where: { periodName: targetYearStr }, take: 1 }
+          }
+        }),
+        prisma.supplier.findMany({
+          where: supplierWhere,
+          include: {
+            assignedUser: { select: { id: true, fullName: true } },
+            debtPeriods: { where: { periodName: targetYearStr }, take: 1 }
+          }
+        })
+      ]);
 
-        // c. Filter User phụ trách
-        if (assignedUserId) {
-            andConditions.push({
-                OR: [
-                    { customer: { assignedUserId: Number(assignedUserId) } },
-                    { supplier: { assignedUserId: Number(assignedUserId) } }
-                ]
-            });
-        }
+      // 4. Map dữ liệu về chuẩn chung
+      const allData = [
+        ...customers.map(c => this._mapToDebtItem(c, c.debtPeriods[0], 'customer', targetYearStr)),
+        ...suppliers.map(s => this._mapToDebtItem(s, s.debtPeriods[0], 'supplier', targetYearStr))
+      ];
 
-        // Gán vào where chính
-        if (andConditions.length > 0) {
-            where.AND = andConditions;
-        }
+      // 5. Lọc theo trạng thái công nợ (nếu có)
+      let filteredData = allData;
+      if (status === 'unpaid') {
+        // Thêm check item && ...
+        filteredData = allData.filter(item => item && item.closingBalance > 1000);
+      } else if (status === 'paid') {
+        filteredData = allData.filter(item => item && item.closingBalance <= 1000);
+      }
 
-        if (status === 'paid') where.closingBalance = { lte: 1000 };
-        else if (status === 'unpaid') where.closingBalance = { gt: 1000 };
-
-        const [periods, count] = await Promise.all([
-            prisma.debtPeriod.findMany({
-                where, skip, take: Number(limit),
-                orderBy: { closingBalance: 'desc' },
-                include: {
-                    customer: { include: { assignedUser: true } },
-                    supplier: { include: { assignedUser: true } }
-                }
-            }),
-            prisma.debtPeriod.count({ where })
-        ]);
-
-        data = periods.map(p => {
-            const isCustomer = !!p.customerId;
-            const obj = isCustomer ? p.customer : p.supplier;
-            return this._mapToDebtItem(obj, p, isCustomer ? 'customer' : 'supplier', targetYearStr);
-        });
-        total = count;
+      // 6. Sắp xếp
+      total = filteredData.length;
+      data = filteredData
+        .sort((a, b) => {
+          // Đảm bảo a và b tồn tại, nếu không coi như bằng 0
+          const valA = a?.closingBalance ?? 0;
+          const valB = b?.closingBalance ?? 0;
+          return valB - valA;
+        })
+        .slice(skip, skip + Number(limit));
     }
 
     const globalSummary = await this.getGlobalSummary(targetYearStr, type, assignedUserId);
 
     const result = {
-        data, // Biến data lấy từ logic query List (bước trước)
-        meta: {
-            total,
-            page: Number(page),
-            limit: Number(limit),
-            totalPages: Math.ceil(total / Number(limit)),
-            summary: globalSummary // ✅ Số liệu này luôn đúng và cố định
-        }
+      data, // Biến data lấy từ logic query List (bước trước)
+      meta: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(total / Number(limit)),
+        summary: globalSummary // ✅ Số liệu này luôn đúng và cố định
+      }
     };
 
     await this.cache.setDebtList(queryHash, result);
@@ -276,39 +278,39 @@ private cache: CacheHelper;
     const where: any = { periodName: year };
 
     if (type === 'customer') {
-        where.customerId = { not: null };
+      where.customerId = { not: null };
     } else if (type === 'supplier') {
-        where.supplierId = { not: null };
+      where.supplierId = { not: null };
     }
 
     // Nếu lọc theo User phụ trách thì Summary cũng nên theo User đó (Logic Dashboard cá nhân)
     if (assignedUserId) {
-        where.OR = [
-            { customer: { assignedUserId: Number(assignedUserId) } },
-            { supplier: { assignedUserId: Number(assignedUserId) } }
-        ];
+      where.OR = [
+        { customer: { assignedUserId: Number(assignedUserId) } },
+        { supplier: { assignedUserId: Number(assignedUserId) } }
+      ];
     }
 
     // Thực hiện tính toán
     const agg = await prisma.debtPeriod.aggregate({
-        _sum: { 
-            openingBalance: true, 
-            increasingAmount: true, 
-            decreasingAmount: true, 
-            returnAmount: true,      // Tổng trả hàng
-            adjustmentAmount: true,  // Tổng điều chỉnh
-            closingBalance: true 
-        },
-        where
+      _sum: {
+        openingBalance: true,
+        increasingAmount: true,
+        decreasingAmount: true,
+        returnAmount: true,      // Tổng trả hàng
+        adjustmentAmount: true,  // Tổng điều chỉnh
+        closingBalance: true
+      },
+      where
     });
 
     return {
-        opening: Number(agg._sum.openingBalance || 0),
-        increase: Number(agg._sum.increasingAmount || 0),
-        payment: Number(agg._sum.decreasingAmount || 0),
-        returnAmount: Number(agg._sum.returnAmount || 0),
-        adjustmentAmount: Number(agg._sum.adjustmentAmount || 0),
-        closing: Number(agg._sum.closingBalance || 0),
+      opening: Number(agg._sum.openingBalance || 0),
+      increase: Number(agg._sum.increasingAmount || 0),
+      payment: Number(agg._sum.decreasingAmount || 0),
+      returnAmount: Number(agg._sum.returnAmount || 0),
+      adjustmentAmount: Number(agg._sum.adjustmentAmount || 0),
+      closing: Number(agg._sum.closingBalance || 0),
     };
   }
 
@@ -318,34 +320,34 @@ private cache: CacheHelper;
   private _mapToDebtItem(obj: any, debt: any, type: 'customer' | 'supplier', year: string) {
     if (!obj) return null;
     return {
-        id: debt?.id || 0, // Nếu chưa có DebtPeriod, ID = 0
-        type,
-        objId: obj.id,
-        code: type === 'customer' ? obj.customerCode : obj.supplierCode,
-        name: type === 'customer' ? obj.customerName : obj.supplierName,
-        phone: obj.phone,
-        location: type === 'customer' 
-            ? [obj.district, obj.province].filter(Boolean).join(', ') 
-            : obj.address, // NCC dùng address
-        avatar: type === 'customer' ? obj.avatarUrl : null,
-        assignedUser: obj.assignedUser,
-        
-        periodName: year,
-        // Nếu không có debt record -> Tất cả bằng 0
-        openingBalance: Number(debt?.openingBalance || 0),
-        increasingAmount: Number(debt?.increasingAmount || 0),
-        decreasingAmount: Number(debt?.decreasingAmount || 0),
-        returnAmount: Number(debt?.returnAmount || 0),
-        adjustmentAmount: Number(debt?.adjustmentAmount || 0),
-        closingBalance: Number(debt?.closingBalance || 0),
-        
-        status: Number(debt?.closingBalance || 0) > 1000 ? 'unpaid' : 'paid',
-        updatedAt: debt?.updatedAt || new Date().toISOString(),
-        notes: debt?.notes || ''
+      id: debt?.id || 0, // Nếu chưa có DebtPeriod, ID = 0
+      type,
+      objId: obj.id,
+      code: type === 'customer' ? obj.customerCode : obj.supplierCode,
+      name: type === 'customer' ? obj.customerName : obj.supplierName,
+      phone: obj.phone,
+      location: type === 'customer'
+        ? [obj.district, obj.province].filter(Boolean).join(', ')
+        : obj.address, // NCC dùng address
+      avatar: type === 'customer' ? obj.avatarUrl : null,
+      assignedUser: obj.assignedUser,
+
+      periodName: year,
+      // Nếu không có debt record -> Tất cả bằng 0
+      openingBalance: Number(debt?.openingBalance || 0),
+      increasingAmount: Number(debt?.increasingAmount || 0),
+      decreasingAmount: Number(debt?.decreasingAmount || 0),
+      returnAmount: Number(debt?.returnAmount || 0),
+      adjustmentAmount: Number(debt?.adjustmentAmount || 0),
+      closingBalance: Number(debt?.closingBalance || 0),
+
+      status: Number(debt?.closingBalance || 0) > 1000 ? 'unpaid' : 'paid',
+      updatedAt: debt?.updatedAt || new Date().toISOString(),
+      notes: debt?.notes || ''
     };
   }
 
-// =========================================================================
+  // =========================================================================
   // 2. GET DETAIL (CÓ REDIS CACHE + CÁC TRƯỜNG MỚI TỪ DB THẬT)
   // =========================================================================
   async getDetail(id: number, type: 'customer' | 'supplier', year?: number) {
@@ -355,8 +357,8 @@ private cache: CacheHelper;
     // 🟢 BƯỚC 1: KIỂM TRA CACHE
     const cachedData = await this.cache.getDebtDetail(id, type, targetYear);
     if (cachedData) {
-        console.log(`🚀 Cache Hit: Smart Debt Detail [${type}:${id}:${targetYear}]`);
-        return cachedData;
+      console.log(`🚀 Cache Hit: Smart Debt Detail [${type}:${id}:${targetYear}]`);
+      return cachedData;
     }
 
     // 🟢 BƯỚC 2: LOGIC QUERY DB
@@ -369,9 +371,9 @@ private cache: CacheHelper;
     let debtPeriod: any = null;
     let orders: any[] = [];
     let payments: any[] = [];
-    
+
     // Biến cho các nghiệp vụ mới (Trả hàng, Điều chỉnh)
-    let returns: any[] = []; 
+    let returns: any[] = [];
     let adjustments: any[] = []; // Hiện tại chưa có bảng adjustment, để trống
 
     if (type === 'customer') {
@@ -380,7 +382,7 @@ private cache: CacheHelper;
         include: { assignedUser: true }
       });
       if (!customer) throw new NotFoundError('Không tìm thấy khách hàng này.');
-      
+
       entityInfo = {
         id: customer.id,
         code: customer.customerCode,
@@ -400,28 +402,28 @@ private cache: CacheHelper;
       });
 
       orders = await prisma.salesOrder.findMany({
-        where: { 
-            customerId: Number(id), 
-            orderDate: { gte: startOfYear, lte: endOfYear },
-            orderStatus: { not: 'cancelled' } 
+        where: {
+          customerId: Number(id),
+          orderDate: { gte: startOfYear, lte: endOfYear },
+          orderStatus: { not: 'cancelled' }
         },
         orderBy: { orderDate: 'desc' },
         select: {
-            id: true, orderCode: true, totalAmount: true, orderDate: true, orderStatus: true,
-            notes: true,
-            details: {
-                select: {
-                    quantity: true, unitPrice: true,
-                    product: { select: { id: true, productName: true, sku: true } }
-                }
+          id: true, orderCode: true, totalAmount: true, orderDate: true, orderStatus: true,
+          notes: true,
+          details: {
+            select: {
+              quantity: true, unitPrice: true,
+              product: { select: { id: true, productName: true, sku: true } }
             }
+          }
         }
       });
 
       payments = await prisma.paymentReceipt.findMany({
-        where: { 
-            customerId: Number(id), 
-            receiptDate: { gte: startOfYear, lte: endOfYear } 
+        where: {
+          customerId: Number(id),
+          receiptDate: { gte: startOfYear, lte: endOfYear }
         },
         orderBy: { receiptDate: 'desc' },
         select: { id: true, receiptCode: true, amount: true, receiptDate: true, notes: true }
@@ -430,30 +432,30 @@ private cache: CacheHelper;
       // ✅ LẤY DỮ LIỆU TRẢ HÀNG TỪ KHO (Sale Refunds)
       const orderIds = orders.map(o => o.id);
       if (orderIds.length > 0) {
-          const stockReturns = await prisma.stockTransaction.findMany({
-              where: {
-                  transactionType: 'import',      // Nhập kho lại
-                  referenceType: 'sale_refunds',  // Khách trả hàng
-                  referenceId: { in: orderIds },  // Thuộc các đơn hàng của khách này
-                  // created_at: { gte: startOfYear, lte: endOfYear } // (Optional: lọc theo ngày phiếu)
-              },
-              orderBy: { createdAt: 'desc' },
-              include: {
-                  details: {
-                      include: { product: { select: { productName: true, sku: true } } }
-                  }
-              }
-          });
+        const stockReturns = await prisma.stockTransaction.findMany({
+          where: {
+            transactionType: 'import',      // Nhập kho lại
+            referenceType: 'sale_refunds',  // Khách trả hàng
+            referenceId: { in: orderIds },  // Thuộc các đơn hàng của khách này
+            // created_at: { gte: startOfYear, lte: endOfYear } // (Optional: lọc theo ngày phiếu)
+          },
+          orderBy: { createdAt: 'desc' },
+          include: {
+            details: {
+              include: { product: { select: { productName: true, sku: true } } }
+            }
+          }
+        });
 
-          // Map về cấu trúc hiển thị
-          returns = stockReturns.map(r => ({
-              id: r.id,
-              code: r.transactionCode,
-              date: r.createdAt,
-              amount: Number(r.totalValue),
-              note: r.reason || r.notes || 'Khách trả hàng',
-              details: r.details
-          }));
+        // Map về cấu trúc hiển thị
+        returns = stockReturns.map(r => ({
+          id: r.id,
+          code: r.transactionCode,
+          date: r.createdAt,
+          amount: Number(r.totalValue),
+          note: r.reason || r.notes || 'Khách trả hàng',
+          details: r.details
+        }));
       }
 
     } else {
@@ -462,7 +464,7 @@ private cache: CacheHelper;
         include: { assignedUser: true }
       });
       if (!supplier) throw new NotFoundError('Không tìm thấy nhà cung cấp này.');
-      
+
       entityInfo = {
         id: supplier.id,
         code: supplier.supplierCode,
@@ -480,75 +482,75 @@ private cache: CacheHelper;
       });
 
       orders = await prisma.purchaseOrder.findMany({
-        where: { 
-            supplierId: Number(id), 
-            orderDate: { gte: startOfYear, lte: endOfYear },
-            status: { not: 'cancelled' } 
+        where: {
+          supplierId: Number(id),
+          orderDate: { gte: startOfYear, lte: endOfYear },
+          status: { not: 'cancelled' }
         },
         orderBy: { orderDate: 'desc' },
         select: {
-            id: true, poCode: true, totalAmount: true, orderDate: true, status: true,
-            notes: true,
-            details: {
-                include: { product: { select: { id: true, productName: true, sku: true } } }
-            }
+          id: true, poCode: true, totalAmount: true, orderDate: true, status: true,
+          notes: true,
+          details: {
+            include: { product: { select: { id: true, productName: true, sku: true } } }
+          }
         }
       });
 
       payments = await prisma.paymentVoucher.findMany({
-        where: { 
-            supplierId: Number(id), 
-            paymentDate: { gte: startOfYear, lte: endOfYear } 
+        where: {
+          supplierId: Number(id),
+          paymentDate: { gte: startOfYear, lte: endOfYear }
         },
         orderBy: { paymentDate: 'desc' },
         select: { id: true, voucherCode: true, amount: true, paymentDate: true, notes: true }
       });
-      
+
       // ✅ LẤY DỮ LIỆU TRẢ HÀNG NCC TỪ KHO (Purchase Refunds)
       const poIds = orders.map(p => p.id);
       if (poIds.length > 0) {
-          const stockReturns = await prisma.stockTransaction.findMany({
-              where: {
-                  transactionType: 'export',          // Xuất trả NCC
-                  referenceType: 'purchase_refunds',  // Trả hàng mua
-                  referenceId: { in: poIds },
-              },
-              orderBy: { createdAt: 'desc' },
-              include: {
-                  details: {
-                      include: { product: { select: { productName: true, sku: true } } }
-                  }
-              }
-          });
+        const stockReturns = await prisma.stockTransaction.findMany({
+          where: {
+            transactionType: 'export',          // Xuất trả NCC
+            referenceType: 'purchase_refunds',  // Trả hàng mua
+            referenceId: { in: poIds },
+          },
+          orderBy: { createdAt: 'desc' },
+          include: {
+            details: {
+              include: { product: { select: { productName: true, sku: true } } }
+            }
+          }
+        });
 
-          returns = stockReturns.map(r => ({
-              id: r.id,
-              code: r.transactionCode,
-              date: r.createdAt,
-              amount: Number(r.totalValue),
-              note: r.reason || r.notes || 'Trả hàng NCC',
-              details: r.details
-          }));
+        returns = stockReturns.map(r => ({
+          id: r.id,
+          code: r.transactionCode,
+          date: r.createdAt,
+          amount: Number(r.totalValue),
+          note: r.reason || r.notes || 'Trả hàng NCC',
+          details: r.details
+        }));
       }
     }
 
     // Flatten Product History
     let productHistory: any[] = [];
     orders.forEach((order: any) => {
-        if (order.details) {
-            order.details.forEach((item: any) => {
-                productHistory.push({
-                    orderId: order.id,
-                    orderCode: order.orderCode || order.poCode,
-                    date: order.orderDate,
-                    productId: item.productId, 
-                    productName: item.product?.productName || "Sản phẩm đã xóa",
-                    sku: item.product?.sku,
-                    quantity: Number(item.quantity),
-                    price: Number(item.unitPrice || item.price || 0),
-                });
-            });
-        }
+      if (order.details) {
+        order.details.forEach((item: any) => {
+          productHistory.push({
+            orderId: order.id,
+            orderCode: order.orderCode || order.poCode,
+            date: order.orderDate,
+            productId: item.productId,
+            productName: item.product?.productName || "Sản phẩm đã xóa",
+            sku: item.product?.sku,
+            quantity: Number(item.quantity),
+            price: Number(item.unitPrice || item.price || 0),
+          });
+        });
+      }
     });
 
     // Tính tổng tiền trả hàng thực tế từ DB
@@ -563,50 +565,50 @@ private cache: CacheHelper;
     // Nhưng để hiển thị tách bạch trên UI, ta cần:
     // - Payment (Thanh toán thuần) = decreasingAmount (DB) - Return (DB)
     // - Return = Return (DB)
-    
+
     // Tuy nhiên, vì bảng DebtPeriod hiện tại CHƯA có cột returnAmount riêng,
     // và decreasingAmount đang chứa cả hai (hoặc chỉ payment tùy logic sync cũ).
     // An toàn nhất là tính toán lại closing để hiển thị realtime:
-    
+
     const opening = Number(debtPeriod?.openingBalance || 0);
     const increase = Number(debtPeriod?.increasingAmount || 0);
     // Giả sử decreasingAmount trong DB chỉ là tiền thanh toán (từ PaymentReceipt/Voucher)
     // Nếu syncSnap logic cũ chỉ cộng PaymentReceipt vào decreasingAmount, thì Return chưa được trừ.
-    const payment = Number(debtPeriod?.decreasingAmount || 0); 
-    
+    const payment = Number(debtPeriod?.decreasingAmount || 0);
+
     // Vậy Closing hiển thị sẽ là:
     const closingCalculated = opening + increase - payment - totalReturnReal;
 
     const financials = debtPeriod ? {
-        opening,
-        increase,
-        payment, // Đây là tiền thanh toán
-        
-        returnAmount: totalReturnReal, 
-        adjustmentAmount: totalAdjustReal,
+      opening,
+      increase,
+      payment, // Đây là tiền thanh toán
 
-        closing: closingCalculated, // Số dư cuối kỳ chính xác
-        status: closingCalculated > 1000 ? 'unpaid' : 'paid'
+      returnAmount: totalReturnReal,
+      adjustmentAmount: totalAdjustReal,
+
+      closing: closingCalculated, // Số dư cuối kỳ chính xác
+      status: closingCalculated > 1000 ? 'unpaid' : 'paid'
     } : {
-        opening: 0, increase: 0, payment: 0, 
-        returnAmount: totalReturnReal, 
-        adjustmentAmount: 0, 
-        closing: 0 - totalReturnReal, // Khách trả hàng khi chưa mua gì -> Âm nợ (Có tiền dư)
-        status: 'paid'
+      opening: 0, increase: 0, payment: 0,
+      returnAmount: totalReturnReal,
+      adjustmentAmount: 0,
+      closing: 0 - totalReturnReal, // Khách trả hàng khi chưa mua gì -> Âm nợ (Có tiền dư)
+      status: 'paid'
     };
 
     const response = {
-        info: entityInfo,
-        periodName,
-        hasData: !!debtPeriod || orders.length > 0,
-        financials,
-        history: {
-            orders,
-            payments,
-            products: productHistory,
-            returns: returns,       // Danh sách trả hàng
-            adjustments: adjustments // Danh sách điều chỉnh
-        }
+      info: entityInfo,
+      periodName,
+      hasData: !!debtPeriod || orders.length > 0,
+      financials,
+      history: {
+        orders,
+        payments,
+        products: productHistory,
+        returns: returns,       // Danh sách trả hàng
+        adjustments: adjustments // Danh sách điều chỉnh
+      }
     };
 
     // 🟢 BƯỚC 3: LƯU VÀO CACHE
@@ -615,7 +617,7 @@ private cache: CacheHelper;
     return response;
   }
 
-// =================================================================
+  // =================================================================
   // 1. SYNC FULL (Đồng bộ toàn bộ lịch sử & Xóa Cache)
   // =================================================================
   async syncFull(data: SyncDebtParams) {
@@ -630,17 +632,17 @@ private cache: CacheHelper;
 
     // 🟢 BƯỚC 1: GÁN TRANSACTION VÀO BIẾN 'RESULT'
     const result = await prisma.$transaction(async (tx) => {
-      
+
       // 1.1. KIỂM TRA SỰ TỒN TẠI & CẬP NHẬT NGƯỜI QUẢN LÝ
       if (customerId) {
         const customer = await tx.customer.findUnique({ where: { id: Number(customerId) } });
         if (!customer) throw new NotFoundError(`Khách hàng ID ${customerId} không tồn tại`);
-        
+
         if (assignedUserId) {
-            await tx.customer.update({
-                where: { id: Number(customerId) },
-                data: { assignedUserId: Number(assignedUserId) }
-            });
+          await tx.customer.update({
+            where: { id: Number(customerId) },
+            data: { assignedUserId: Number(assignedUserId) }
+          });
         }
 
       } else if (supplierId) {
@@ -648,15 +650,15 @@ private cache: CacheHelper;
         if (!supplier) throw new NotFoundError(`Nhà cung cấp ID ${supplierId} không tồn tại`);
 
         if (assignedUserId) {
-            await tx.supplier.update({
-                where: { id: Number(supplierId) },
-                data: { assignedUserId: Number(assignedUserId) }
-            });
+          await tx.supplier.update({
+            where: { id: Number(supplierId) },
+            data: { assignedUserId: Number(assignedUserId) }
+          });
         }
       }
 
       // 1.2. TÌM NĂM BẮT ĐẦU (Quét lịch sử)
-      let startYear = targetYear; 
+      let startYear = targetYear;
 
       if (customerId) {
         const firstOrder = await tx.salesOrder.findFirst({
@@ -664,8 +666,8 @@ private cache: CacheHelper;
           orderBy: { orderDate: 'asc' }, select: { orderDate: true }
         });
         const firstReceipt = await tx.paymentReceipt.findFirst({
-            where: { customerId: Number(customerId) },
-            orderBy: { receiptDate: 'asc' }, select: { receiptDate: true }
+          where: { customerId: Number(customerId) },
+          orderBy: { receiptDate: 'asc' }, select: { receiptDate: true }
         });
         const orderYear = firstOrder ? firstOrder.orderDate.getFullYear() : targetYear;
         const receiptYear = firstReceipt ? firstReceipt.receiptDate.getFullYear() : targetYear;
@@ -677,8 +679,8 @@ private cache: CacheHelper;
           orderBy: { orderDate: 'asc' }, select: { orderDate: true }
         });
         const firstVoucher = await tx.paymentVoucher.findFirst({
-            where: { supplierId: Number(supplierId) },
-            orderBy: { paymentDate: 'asc' }, select: { paymentDate: true }
+          where: { supplierId: Number(supplierId) },
+          orderBy: { paymentDate: 'asc' }, select: { paymentDate: true }
         });
         const poYear = firstPO ? firstPO.orderDate.getFullYear() : targetYear;
         const voucherYear = firstVoucher ? firstVoucher.paymentDate.getFullYear() : targetYear;
@@ -696,78 +698,78 @@ private cache: CacheHelper;
       const startOfStartYear = new Date(startYear, 0, 1);
 
       if (customerId) {
-         // A. Tăng (Mua hàng quá khứ)
-         const prevOrders = await tx.salesOrder.aggregate({
-           where: { customerId: Number(customerId), orderDate: { lt: startOfStartYear }, orderStatus: { not: 'cancelled' } },
-           _sum: { totalAmount: true }
-         });
-         
-         // B. Giảm (Trả tiền quá khứ)
-         const prevReceipts = await tx.paymentReceipt.aggregate({
-           where: { customerId: Number(customerId), receiptDate: { lt: startOfStartYear } },
-           _sum: { amount: true }
-         });
+        // A. Tăng (Mua hàng quá khứ)
+        const prevOrders = await tx.salesOrder.aggregate({
+          where: { customerId: Number(customerId), orderDate: { lt: startOfStartYear }, orderStatus: { not: 'cancelled' } },
+          _sum: { totalAmount: true }
+        });
 
-         // C. Giảm (Trả hàng quá khứ) - ✅ LOGIC MỚI
-         let prevReturnAmount = 0;
-         // B1: Lấy danh sách đơn hàng cũ
-         const pastOrders = await tx.salesOrder.findMany({
-             where: { customerId: Number(customerId), orderDate: { lt: startOfStartYear } },
-             select: { id: true }
-         });
-         // B2: Tính tổng trả hàng từ kho
-         if (pastOrders.length > 0) {
-             const pastOrderIds = pastOrders.map((o: any) => o.id);
-             const stockReturns = await tx.stockTransaction.aggregate({
-                 where: {
-                     transactionType: 'import',
-                     referenceType: 'sale_refunds',
-                     referenceId: { in: pastOrderIds },
-                     createdAt: { lt: startOfStartYear }
-                 },
-                 _sum: { totalValue: true }
-             });
-             prevReturnAmount = Number(stockReturns._sum.totalValue || 0);
-         }
+        // B. Giảm (Trả tiền quá khứ)
+        const prevReceipts = await tx.paymentReceipt.aggregate({
+          where: { customerId: Number(customerId), receiptDate: { lt: startOfStartYear } },
+          _sum: { amount: true }
+        });
 
-         currentOpeningBalance = Number(prevOrders._sum.totalAmount || 0) 
-                               - Number(prevReceipts._sum.amount || 0)
-                               - prevReturnAmount;
+        // C. Giảm (Trả hàng quá khứ) - ✅ LOGIC MỚI
+        let prevReturnAmount = 0;
+        // B1: Lấy danh sách đơn hàng cũ
+        const pastOrders = await tx.salesOrder.findMany({
+          where: { customerId: Number(customerId), orderDate: { lt: startOfStartYear } },
+          select: { id: true }
+        });
+        // B2: Tính tổng trả hàng từ kho
+        if (pastOrders.length > 0) {
+          const pastOrderIds = pastOrders.map((o: any) => o.id);
+          const stockReturns = await tx.stockTransaction.aggregate({
+            where: {
+              transactionType: 'import',
+              referenceType: 'sale_refunds',
+              referenceId: { in: pastOrderIds },
+              createdAt: { lt: startOfStartYear }
+            },
+            _sum: { totalValue: true }
+          });
+          prevReturnAmount = Number(stockReturns._sum.totalValue || 0);
+        }
+
+        currentOpeningBalance = Number(prevOrders._sum.totalAmount || 0)
+          - Number(prevReceipts._sum.amount || 0)
+          - prevReturnAmount;
 
       } else if (supplierId) {
-         // A. Tăng (Mua hàng quá khứ)
-         const prevPO = await tx.purchaseOrder.aggregate({
-           where: { supplierId: Number(supplierId), orderDate: { lt: startOfStartYear }, status: { not: 'cancelled' } },
-           _sum: { totalAmount: true }
-         });
-         // B. Giảm (Trả tiền quá khứ)
-         const prevVouchers = await tx.paymentVoucher.aggregate({
-           where: { supplierId: Number(supplierId), paymentDate: { lt: startOfStartYear } },
-           _sum: { amount: true }
-         });
-         // C. Giảm (Trả hàng quá khứ) - ✅ LOGIC MỚI
-         let prevReturnAmount = 0;
-         const pastPOs = await tx.purchaseOrder.findMany({
-             where: { supplierId: Number(supplierId), orderDate: { lt: startOfStartYear } },
-             select: { id: true }
-         });
-         if (pastPOs.length > 0) {
-             const pastPOIds = pastPOs.map((p: any) => p.id);
-             const stockReturns = await tx.stockTransaction.aggregate({
-                 where: {
-                     transactionType: 'export',
-                     referenceType: 'purchase_refunds',
-                     referenceId: { in: pastPOIds },
-                     createdAt: { lt: startOfStartYear }
-                 },
-                 _sum: { totalValue: true }
-             });
-             prevReturnAmount = Number(stockReturns._sum.totalValue || 0);
-         }
+        // A. Tăng (Mua hàng quá khứ)
+        const prevPO = await tx.purchaseOrder.aggregate({
+          where: { supplierId: Number(supplierId), orderDate: { lt: startOfStartYear }, status: { not: 'cancelled' } },
+          _sum: { totalAmount: true }
+        });
+        // B. Giảm (Trả tiền quá khứ)
+        const prevVouchers = await tx.paymentVoucher.aggregate({
+          where: { supplierId: Number(supplierId), paymentDate: { lt: startOfStartYear } },
+          _sum: { amount: true }
+        });
+        // C. Giảm (Trả hàng quá khứ) - ✅ LOGIC MỚI
+        let prevReturnAmount = 0;
+        const pastPOs = await tx.purchaseOrder.findMany({
+          where: { supplierId: Number(supplierId), orderDate: { lt: startOfStartYear } },
+          select: { id: true }
+        });
+        if (pastPOs.length > 0) {
+          const pastPOIds = pastPOs.map((p: any) => p.id);
+          const stockReturns = await tx.stockTransaction.aggregate({
+            where: {
+              transactionType: 'export',
+              referenceType: 'purchase_refunds',
+              referenceId: { in: pastPOIds },
+              createdAt: { lt: startOfStartYear }
+            },
+            _sum: { totalValue: true }
+          });
+          prevReturnAmount = Number(stockReturns._sum.totalValue || 0);
+        }
 
-         currentOpeningBalance = Number(prevPO._sum.totalAmount || 0) 
-                               - Number(prevVouchers._sum.amount || 0)
-                               - prevReturnAmount;
+        currentOpeningBalance = Number(prevPO._sum.totalAmount || 0)
+          - Number(prevVouchers._sum.amount || 0)
+          - prevReturnAmount;
       }
 
       // 1.4. VÒNG LẶP THỜI GIAN
@@ -777,25 +779,25 @@ private cache: CacheHelper;
 
         // Gọi hàm xử lý và cập nhật lại currentOpeningBalance cho vòng lặp kế tiếp
         currentOpeningBalance = await this._processSinglePeriod(
-            tx, 
-            y, 
-            currentOpeningBalance, 
-            customerId ? Number(customerId) : undefined, 
-            supplierId ? Number(supplierId) : undefined, 
-            currentNotes
+          tx,
+          y,
+          currentOpeningBalance,
+          customerId ? Number(customerId) : undefined,
+          supplierId ? Number(supplierId) : undefined,
+          currentNotes
         );
       }
 
       // 1.5. TRẢ KẾT QUẢ TRANSACTION
-      return { 
-        message: "Đồng bộ hoàn tất", 
+      return {
+        message: "Đồng bộ hoàn tất",
         year: targetYear,
-        finalDebt: currentOpeningBalance 
+        finalDebt: currentOpeningBalance
       };
 
     }, {
-      maxWait: 10000, 
-      timeout: 120000 
+      maxWait: 10000,
+      timeout: 120000
     });
 
     // 🟢 BƯỚC 2: XÓA CACHE (SAU KHI TRANSACTION THÀNH CÔNG)
@@ -808,7 +810,7 @@ private cache: CacheHelper;
 
 
 
-// =================================================================
+  // =================================================================
   // 2. SYNC SNAP (CẬP NHẬT: GHI VÀO CỘT RIÊNG & TÍNH TRẢ HÀNG)
   // =================================================================
   async syncSnap(data: SyncDebtParams) {
@@ -826,19 +828,19 @@ private cache: CacheHelper;
 
     // 🟢 BƯỚC 1: GÁN TRANSACTION VÀO BIẾN 'RESULT'
     const result = await prisma.$transaction(async (tx) => {
-      
+
       // 2.1. KIỂM TRA SỰ TỒN TẠI
       if (customerId) {
         const customer = await tx.customer.findUnique({ where: { id: Number(customerId) } });
         if (!customer) throw new NotFoundError(`Khách hàng ID ${customerId} không tồn tại`);
         if (assignedUserId) {
-             await tx.customer.update({ where: { id: Number(customerId) }, data: { assignedUserId: Number(assignedUserId) } });
+          await tx.customer.update({ where: { id: Number(customerId) }, data: { assignedUserId: Number(assignedUserId) } });
         }
       } else if (supplierId) {
         const supplier = await tx.supplier.findUnique({ where: { id: Number(supplierId) } });
         if (!supplier) throw new NotFoundError(`Nhà cung cấp ID ${supplierId} không tồn tại`);
         if (assignedUserId) {
-             await tx.supplier.update({ where: { id: Number(supplierId) }, data: { assignedUserId: Number(assignedUserId) } });
+          await tx.supplier.update({ where: { id: Number(supplierId) }, data: { assignedUserId: Number(assignedUserId) } });
         }
       }
 
@@ -846,7 +848,7 @@ private cache: CacheHelper;
       let openingBalance = 0;
       let calculationMethod = 'SNAPSHOT';
 
-      const wherePrevPeriod = customerId 
+      const wherePrevPeriod = customerId
         ? { customerId_periodName: { customerId: Number(customerId), periodName: prevPeriodName } }
         : { supplierId_periodName: { supplierId: Number(supplierId), periodName: prevPeriodName } };
 
@@ -858,7 +860,7 @@ private cache: CacheHelper;
         calculationMethod = 'AGGREGATE_FALLBACK';
         // Logic tính fallback nếu chưa có kỳ trước (Tính tổng lịch sử)
         const startOfStartYear = startOfYear;
-        
+
         if (customerId) {
           const prevOrders = await tx.salesOrder.aggregate({
             where: { customerId: Number(customerId), orderDate: { lt: startOfStartYear }, orderStatus: { not: 'cancelled' } },
@@ -907,21 +909,21 @@ private cache: CacheHelper;
 
         // C. Giảm 2: Trả hàng (Stock Import - sale_refunds) - ✅ LOGIC MỚI
         const orderList = await tx.salesOrder.findMany({
-            where: { customerId: Number(customerId), orderDate: { gte: startOfYear, lte: endOfYear } },
-            select: { id: true }
+          where: { customerId: Number(customerId), orderDate: { gte: startOfYear, lte: endOfYear } },
+          select: { id: true }
         });
         if (orderList.length > 0) {
-            const ids = orderList.map((o:any) => o.id);
-            const stockReturns = await tx.stockTransaction.aggregate({
-                where: {
-                    transactionType: 'import',
-                    referenceType: 'sale_refunds', 
-                    referenceId: { in: ids },
-                    createdAt: { gte: startOfYear, lte: endOfYear }
-                },
-                _sum: { totalValue: true }
-            });
-            returnAmount = Number(stockReturns._sum.totalValue || 0);
+          const ids = orderList.map((o: any) => o.id);
+          const stockReturns = await tx.stockTransaction.aggregate({
+            where: {
+              transactionType: 'import',
+              referenceType: 'sale_refunds',
+              referenceId: { in: ids },
+              createdAt: { gte: startOfYear, lte: endOfYear }
+            },
+            _sum: { totalValue: true }
+          });
+          returnAmount = Number(stockReturns._sum.totalValue || 0);
         }
 
       } else if (supplierId) {
@@ -941,21 +943,21 @@ private cache: CacheHelper;
 
         // C. Giảm 2: Trả hàng (Stock Export - purchase_refunds) - ✅ LOGIC MỚI
         const poList = await tx.purchaseOrder.findMany({
-            where: { supplierId: Number(supplierId), orderDate: { gte: startOfYear, lte: endOfYear } },
-            select: { id: true }
+          where: { supplierId: Number(supplierId), orderDate: { gte: startOfYear, lte: endOfYear } },
+          select: { id: true }
         });
         if (poList.length > 0) {
-            const ids = poList.map((p:any) => p.id);
-            const stockReturns = await tx.stockTransaction.aggregate({
-                where: {
-                    transactionType: 'export',
-                    referenceType: 'purchase_refunds', 
-                    referenceId: { in: ids },
-                    createdAt: { gte: startOfYear, lte: endOfYear }
-                },
-                _sum: { totalValue: true }
-            });
-            returnAmount = Number(stockReturns._sum.totalValue || 0);
+          const ids = poList.map((p: any) => p.id);
+          const stockReturns = await tx.stockTransaction.aggregate({
+            where: {
+              transactionType: 'export',
+              referenceType: 'purchase_refunds',
+              referenceId: { in: ids },
+              createdAt: { gte: startOfYear, lte: endOfYear }
+            },
+            _sum: { totalValue: true }
+          });
+          returnAmount = Number(stockReturns._sum.totalValue || 0);
         }
       }
 
@@ -969,7 +971,7 @@ private cache: CacheHelper;
       }
 
       // 2.5. LƯU DB (Mapping vào đúng cột mới)
-      const whereClause = customerId 
+      const whereClause = customerId
         ? { customerId_periodName: { customerId: Number(customerId), periodName } }
         : { supplierId_periodName: { supplierId: Number(supplierId), periodName } };
 
@@ -1020,10 +1022,10 @@ private cache: CacheHelper;
 
       // 2.7. TRẢ KẾT QUẢ TRANSACTION
       const status = closingBalance <= 1000 ? 'paid' : 'unpaid';
-      return { 
-          ...period, 
-          status, 
-          method: calculationMethod 
+      return {
+        ...period,
+        status,
+        method: calculationMethod
       };
     });
 
@@ -1035,12 +1037,12 @@ private cache: CacheHelper;
     return result;
   }
 
-// =================================================================
+  // =================================================================
   // 3. SYNC FULL ALL (Chạy batch - Không cần sửa logic chính, chỉ cần helper chuẩn)
   // =================================================================
   async syncFullAll(year: number) {
     const targetYear = year || new Date().getFullYear();
-    
+
     console.log(`🚀 [Batch Full] Bắt đầu đồng bộ toàn bộ dữ liệu lịch sử cho năm ${targetYear}...`);
     const start = Date.now();
 
@@ -1100,7 +1102,7 @@ private cache: CacheHelper;
       success: successCount,
       failed: failCount,
       durationSeconds: duration,
-      errors 
+      errors
     };
   }
 
@@ -1110,7 +1112,7 @@ private cache: CacheHelper;
   async syncSnapAll(year: number) {
     const targetYear = year || new Date().getFullYear();
     console.log(`⚡ [Batch Snap] Bắt đầu đồng bộ nhanh toàn bộ cho năm ${targetYear}...`);
-    
+
     const start = Date.now();
 
     const activeCustomerIds = await this._getActiveCustomerIds(targetYear);
@@ -1177,18 +1179,18 @@ private cache: CacheHelper;
   // 4. DATA INTEGRITY CHECK (THANH TRA DỮ LIỆU) - VERSION 2.0
   // =========================================================================
 
-/**
-   * HÀM KIỂM TRA SAI SÓT (AUDIT TOOL)
-   * - Check 1: Logic toán học nội bộ (Internal Math)
-   * - Check 2: Tính nhất quán giữa các năm (Cross-Period Consistency)
-   * - Check 3: Phát hiện kỳ bị thiếu (Missing Periods)
-   */
+  /**
+     * HÀM KIỂM TRA SAI SÓT (AUDIT TOOL)
+     * - Check 1: Logic toán học nội bộ (Internal Math)
+     * - Check 2: Tính nhất quán giữa các năm (Cross-Period Consistency)
+     * - Check 3: Phát hiện kỳ bị thiếu (Missing Periods)
+     */
   async checkDataIntegrity(year: number) {
     const targetYear = year || new Date().getFullYear();
     console.log(`🕵️‍♀️ [Check] Bắt đầu kiểm tra dữ liệu năm ${targetYear}...`);
 
     const discrepancies: any[] = [];
-    
+
     // =========================================================================
     // 1. LẤY DỮ LIỆU ĐỂ SO SÁNH (Năm hiện tại & Năm trước)
     // =========================================================================
@@ -1207,8 +1209,8 @@ private cache: CacheHelper;
     // Key: "C-123" (Customer 123) hoặc "S-456" (Supplier 456)
     const prevPeriodMap = new Map<string, number>();
     prevPeriods.forEach(p => {
-        const key = p.customerId ? `C-${p.customerId}` : `S-${p.supplierId}`;
-        prevPeriodMap.set(key, Number(p.closingBalance));
+      const key = p.customerId ? `C-${p.customerId}` : `S-${p.supplierId}`;
+      prevPeriodMap.set(key, Number(p.closingBalance));
     });
 
     const checkedEntityKeys = new Set<string>(); // Để kiểm tra Check 3
@@ -1221,7 +1223,7 @@ private cache: CacheHelper;
       const entityId = isCustomer ? curr.customerId : curr.supplierId;
       const entityKey = isCustomer ? `C-${entityId}` : `S-${entityId}`;
       const entityName = isCustomer ? curr.customer?.customerName : curr.supplier?.supplierName;
-      
+
       checkedEntityKeys.add(entityKey);
 
       // ---------------------------------------------------------
@@ -1229,7 +1231,7 @@ private cache: CacheHelper;
       // Công thức: Cuối = Đầu + Tăng - Giảm
       // ---------------------------------------------------------
       const calcClosing = Number(curr.openingBalance) + Number(curr.increasingAmount) - Number(curr.decreasingAmount);
-      
+
       // Sai số cho phép (do làm tròn số thực) là 10 đồng
       if (Math.abs(calcClosing - Number(curr.closingBalance)) > 10) {
         discrepancies.push({
@@ -1239,7 +1241,7 @@ private cache: CacheHelper;
           name: entityName,
           reason: `Sai lệch công thức nội bộ năm ${targetYear}`,
           details: `Tính toán (${calcClosing}) != Lưu trữ (${curr.closingBalance})`,
-          severity: 'CRITICAL' 
+          severity: 'CRITICAL'
         });
       }
 
@@ -1259,7 +1261,7 @@ private cache: CacheHelper;
             name: entityName,
             reason: `Đứt gãy số liệu giữa ${targetYear - 1} và ${targetYear}`,
             details: `Cuối ${targetYear - 1} (${prevClosing}) != Đầu ${targetYear} (${currOpening})`,
-            severity: 'HIGH' 
+            severity: 'HIGH'
           });
         }
       }
@@ -1310,7 +1312,7 @@ private cache: CacheHelper;
     };
   }
 
-// =========================================================================
+  // =========================================================================
   // 5. SEND DEBT NOTICE (CẬP NHẬT: Gửi chi tiết gồm Trả hàng & Điều chỉnh)
   // =========================================================================
   // async sendDebtNotice(
@@ -1355,7 +1357,7 @@ private cache: CacheHelper;
   //   if (year) {
   //       // === TRƯỜNG HỢP A: Gửi Biên bản đối chiếu (Report) ===
   //       subject = `[NAM VIỆT] Biên bản đối chiếu công nợ năm ${year} - ${recipient.code}`;
-        
+
   //       // 🔥 GỌI LẠI getDetail ĐỂ LẤY SỐ LIỆU ĐẦY ĐỦ (Bao gồm Return/Adjustment)
   //       const detailData = await this.getDetail(id, type, year);
   //       const fin = detailData.financials;
@@ -1363,7 +1365,7 @@ private cache: CacheHelper;
   //       htmlContent = `
   //           <h3>Kính gửi: ${recipient.name} (${recipient.code})</h3>
   //           <p>Chúng tôi xin gửi thông báo đối chiếu công nợ năm <strong>${year}</strong> như sau:</p>
-            
+
   //           <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; max-width: 600px;">
   //               <tr style="background-color: #f3f4f6;">
   //                   <th>Khoản mục</th>
@@ -1429,7 +1431,7 @@ private cache: CacheHelper;
   //           type === 'customer' ? 'Customer' : 'Supplier',
   //           logAction,
   //       ); 
-        
+
   //   } catch (e) {
   //       console.warn("Log activity failed:", e);
   //   }
@@ -1442,7 +1444,7 @@ private cache: CacheHelper;
   //   };
   // }
 
-// =========================================================================
+  // =========================================================================
   // 6. GET LIST FOR EXPORT (Hỗ trợ lọc theo Loại: 'all' | 'customer' | 'supplier')
   // =========================================================================
   async getListForExport(year: number, type: 'all' | 'customer' | 'supplier' = 'all') {
@@ -1476,44 +1478,44 @@ private cache: CacheHelper;
 
     // --- 3. HÀM MAPPER CHUNG (Dùng cho cả 2 đối tượng) ---
     const mapItem = (item: any, itemType: 'customer' | 'supplier') => {
-        const debt = item.debtPeriods?.[0]; // Dùng optional chaining cho an toàn
-        const isCustomer = itemType === 'customer';
-        
-        return {
-            id: item.id,
-            // Mã & Tên: Tự động lấy theo loại
-            code: isCustomer ? item.customerCode : item.supplierCode,
-            name: isCustomer ? item.customerName : item.supplierName,
-            phone: item.phone,
-            
-            // Địa chỉ: Khách (Huyện, Tỉnh), NCC (Address full)
-            location: isCustomer 
-                ? [item.district, item.province].filter(Boolean).join(', ') 
-                : item.address,
-            
-            // Phân loại: Khách (Nhóm khách), NCC (Mặc định là 'NCC')
-            category: isCustomer ? item.classification : 'Nhà Cung Cấp',
-            
-            // Người phụ trách
-            pic: item.assignedUser?.fullName || '',
-            
-            // Ghi chú
-            customerNotes: item.notes,
+      const debt = item.debtPeriods?.[0]; // Dùng optional chaining cho an toàn
+      const isCustomer = itemType === 'customer';
 
-            // Số liệu tài chính (Mặc định 0 nếu không có)
-            opening: Number(debt?.openingBalance || 0),
-            increase: Number(debt?.increasingAmount || 0),
-            returnAmt: Number(debt?.returnAmount || 0),
-            adjustment: Number(debt?.adjustmentAmount || 0),
-            payment: Number(debt?.decreasingAmount || 0),
-            closing: Number(debt?.closingBalance || 0),
-        };
+      return {
+        id: item.id,
+        // Mã & Tên: Tự động lấy theo loại
+        code: isCustomer ? item.customerCode : item.supplierCode,
+        name: isCustomer ? item.customerName : item.supplierName,
+        phone: item.phone,
+
+        // Địa chỉ: Khách (Huyện, Tỉnh), NCC (Address full)
+        location: isCustomer
+          ? [item.district, item.province].filter(Boolean).join(', ')
+          : item.address,
+
+        // Phân loại: Khách (Nhóm khách), NCC (Mặc định là 'NCC')
+        category: isCustomer ? item.classification : 'Nhà Cung Cấp',
+
+        // Người phụ trách
+        pic: item.assignedUser?.fullName || '',
+
+        // Ghi chú
+        customerNotes: item.notes,
+
+        // Số liệu tài chính (Mặc định 0 nếu không có)
+        opening: Number(debt?.openingBalance || 0),
+        increase: Number(debt?.increasingAmount || 0),
+        returnAmt: Number(debt?.returnAmount || 0),
+        adjustment: Number(debt?.adjustmentAmount || 0),
+        payment: Number(debt?.decreasingAmount || 0),
+        closing: Number(debt?.closingBalance || 0),
+      };
     };
 
     // --- 4. GỘP DỮ LIỆU & TRẢ VỀ ---
     const list1 = customers.map(c => mapItem(c, 'customer'));
     const list2 = suppliers.map(s => mapItem(s, 'supplier'));
-    
+
     // Gộp lại và sắp xếp chung theo tên A-Z (để danh sách hỗn hợp nhìn đẹp hơn)
     const combined = [...list1, ...list2].sort((a, b) => a.name.localeCompare(b.name));
 
@@ -1530,143 +1532,143 @@ private cache: CacheHelper;
   // 🛠️ HELPER: XỬ LÝ 1 NĂM (Đã cập nhật logic Trả hàng & Ghi cột riêng)
   // =================================================================
   private async _processSinglePeriod(
-      tx: any, 
-      year: number, 
-      openingBalance: number, 
-      customerId?: number, 
-      supplierId?: number, 
-      notes?: string
+    tx: any,
+    year: number,
+    openingBalance: number,
+    customerId?: number,
+    supplierId?: number,
+    notes?: string
   ): Promise<number> {
-      
-      const periodName = String(year);
-      const startOfYear = new Date(year, 0, 1);
-      const endOfYear = new Date(year, 11, 31, 23, 59, 59);
 
-      let increasingAmount = 0; // Tăng (Mua)
-      let paymentAmount = 0;    // Giảm (Tiền)
-      let returnAmount = 0;     // Giảm (Hàng) - ✅ Mới
-      let adjustmentAmount = 0; // Điều chỉnh - ✅ Mới (Hiện tại để 0)
+    const periodName = String(year);
+    const startOfYear = new Date(year, 0, 1);
+    const endOfYear = new Date(year, 11, 31, 23, 59, 59);
 
-      if (customerId) {
-          // 1. Tăng: Đơn hàng
-          const orders = await tx.salesOrder.aggregate({
-              where: { customerId, orderDate: { gte: startOfYear, lte: endOfYear }, orderStatus: { not: 'cancelled' } },
-              _sum: { totalAmount: true }
-          });
-          increasingAmount = Number(orders._sum.totalAmount || 0);
+    let increasingAmount = 0; // Tăng (Mua)
+    let paymentAmount = 0;    // Giảm (Tiền)
+    let returnAmount = 0;     // Giảm (Hàng) - ✅ Mới
+    let adjustmentAmount = 0; // Điều chỉnh - ✅ Mới (Hiện tại để 0)
 
-          // 2. Giảm: Thanh toán
-          const receipts = await tx.paymentReceipt.aggregate({
-              where: { customerId, receiptDate: { gte: startOfYear, lte: endOfYear } },
-              _sum: { amount: true }
-          });
-          paymentAmount = Number(receipts._sum.amount || 0);
-
-          // 3. Giảm: Trả hàng (Sale Refunds) - ✅ Logic Mới
-          // B1: Tìm các đơn hàng trong kỳ
-          const orderList = await tx.salesOrder.findMany({
-              where: { customerId, orderDate: { gte: startOfYear, lte: endOfYear } },
-              select: { id: true }
-          });
-          // B2: Sum total_value từ kho
-          if (orderList.length > 0) {
-              const ids = orderList.map((o: any) => o.id);
-              const stock = await tx.stockTransaction.aggregate({
-                  where: {
-                      transactionType: 'import',
-                      referenceType: 'sale_refunds',
-                      referenceId: { in: ids },
-                      // Lấy theo ngày nhập kho để ghi nhận đúng thời điểm
-                      createdAt: { gte: startOfYear, lte: endOfYear }
-                  },
-                  _sum: { totalValue: true }
-              });
-              returnAmount = Number(stock._sum.totalValue || 0);
-          }
-
-      } else if (supplierId) {
-          // 1. Tăng: PO
-          const pos = await tx.purchaseOrder.aggregate({
-              where: { supplierId, orderDate: { gte: startOfYear, lte: endOfYear }, status: { not: 'cancelled' } },
-              _sum: { totalAmount: true }
-          });
-          increasingAmount = Number(pos._sum.totalAmount || 0);
-
-          // 2. Giảm: Thanh toán
-          const vouchers = await tx.paymentVoucher.aggregate({
-              where: { supplierId, paymentDate: { gte: startOfYear, lte: endOfYear } },
-              _sum: { amount: true }
-          });
-          paymentAmount = Number(vouchers._sum.amount || 0);
-
-          // 3. Giảm: Trả hàng (Purchase Refunds) - ✅ Logic Mới
-          const poList = await tx.purchaseOrder.findMany({
-              where: { supplierId, orderDate: { gte: startOfYear, lte: endOfYear } },
-              select: { id: true }
-          });
-          if (poList.length > 0) {
-              const ids = poList.map((p: any) => p.id);
-              const stock = await tx.stockTransaction.aggregate({
-                  where: {
-                      transactionType: 'export',
-                      referenceType: 'purchase_refunds',
-                      referenceId: { in: ids },
-                      createdAt: { gte: startOfYear, lte: endOfYear }
-                  },
-                  _sum: { totalValue: true }
-              });
-              returnAmount = Number(stock._sum.totalValue || 0);
-          }
-      }
-
-      // 4. Tính Chốt sổ (Công thức chuẩn: Đầu + Tăng - TrảTiền - TrảHàng - ĐiềuChỉnh)
-      const closingBalance = openingBalance + increasingAmount - paymentAmount - returnAmount - adjustmentAmount;
-
-      // 5. Upsert vào DB (Ghi rõ ràng từng cột)
-      const whereClause = customerId 
-        ? { customerId_periodName: { customerId, periodName } }
-        : { supplierId_periodName: { supplierId, periodName } };
-
-      await tx.debtPeriod.upsert({
-          where: whereClause,
-          update: {
-              openingBalance,
-              increasingAmount,
-              decreasingAmount: paymentAmount, // ✅ Cột Tiền
-              returnAmount,                    // ✅ Cột Hàng
-              adjustmentAmount,                // ✅ Cột Điều chỉnh
-              closingBalance,
-              updatedAt: new Date(),
-              ...(notes ? { notes } : {})
-          },
-          create: {
-              customerId: customerId || null,
-              supplierId: supplierId || null,
-              periodName,
-              startTime: startOfYear,
-              endTime: endOfYear,
-              openingBalance,
-              increasingAmount,
-              decreasingAmount: paymentAmount,
-              returnAmount,
-              adjustmentAmount,
-              closingBalance,
-              notes: notes || '',
-              isLocked: false
-          }
+    if (customerId) {
+      // 1. Tăng: Đơn hàng
+      const orders = await tx.salesOrder.aggregate({
+        where: { customerId, orderDate: { gte: startOfYear, lte: endOfYear }, orderStatus: { not: 'cancelled' } },
+        _sum: { totalAmount: true }
       });
+      increasingAmount = Number(orders._sum.totalAmount || 0);
 
-      // 6. Cập nhật số dư hiện tại vào bảng Master (Customer/Supplier) nếu là năm hiện tại
-      if (year === new Date().getFullYear()) {
-          if (customerId) {
-              await tx.customer.update({ where: { id: customerId }, data: { currentDebt: closingBalance, debtUpdatedAt: new Date() } });
-          } else if (supplierId) {
-              await tx.supplier.update({ where: { id: supplierId }, data: { totalPayable: closingBalance, payableUpdatedAt: new Date() } });
-          }
+      // 2. Giảm: Thanh toán
+      const receipts = await tx.paymentReceipt.aggregate({
+        where: { customerId, receiptDate: { gte: startOfYear, lte: endOfYear } },
+        _sum: { amount: true }
+      });
+      paymentAmount = Number(receipts._sum.amount || 0);
+
+      // 3. Giảm: Trả hàng (Sale Refunds) - ✅ Logic Mới
+      // B1: Tìm các đơn hàng trong kỳ
+      const orderList = await tx.salesOrder.findMany({
+        where: { customerId, orderDate: { gte: startOfYear, lte: endOfYear } },
+        select: { id: true }
+      });
+      // B2: Sum total_value từ kho
+      if (orderList.length > 0) {
+        const ids = orderList.map((o: any) => o.id);
+        const stock = await tx.stockTransaction.aggregate({
+          where: {
+            transactionType: 'import',
+            referenceType: 'sale_refunds',
+            referenceId: { in: ids },
+            // Lấy theo ngày nhập kho để ghi nhận đúng thời điểm
+            createdAt: { gte: startOfYear, lte: endOfYear }
+          },
+          _sum: { totalValue: true }
+        });
+        returnAmount = Number(stock._sum.totalValue || 0);
       }
 
-      // Trả về số dư cuối kỳ để làm đầu kỳ cho vòng lặp năm sau
-      return closingBalance; 
+    } else if (supplierId) {
+      // 1. Tăng: PO
+      const pos = await tx.purchaseOrder.aggregate({
+        where: { supplierId, orderDate: { gte: startOfYear, lte: endOfYear }, status: { not: 'cancelled' } },
+        _sum: { totalAmount: true }
+      });
+      increasingAmount = Number(pos._sum.totalAmount || 0);
+
+      // 2. Giảm: Thanh toán
+      const vouchers = await tx.paymentVoucher.aggregate({
+        where: { supplierId, paymentDate: { gte: startOfYear, lte: endOfYear } },
+        _sum: { amount: true }
+      });
+      paymentAmount = Number(vouchers._sum.amount || 0);
+
+      // 3. Giảm: Trả hàng (Purchase Refunds) - ✅ Logic Mới
+      const poList = await tx.purchaseOrder.findMany({
+        where: { supplierId, orderDate: { gte: startOfYear, lte: endOfYear } },
+        select: { id: true }
+      });
+      if (poList.length > 0) {
+        const ids = poList.map((p: any) => p.id);
+        const stock = await tx.stockTransaction.aggregate({
+          where: {
+            transactionType: 'export',
+            referenceType: 'purchase_refunds',
+            referenceId: { in: ids },
+            createdAt: { gte: startOfYear, lte: endOfYear }
+          },
+          _sum: { totalValue: true }
+        });
+        returnAmount = Number(stock._sum.totalValue || 0);
+      }
+    }
+
+    // 4. Tính Chốt sổ (Công thức chuẩn: Đầu + Tăng - TrảTiền - TrảHàng - ĐiềuChỉnh)
+    const closingBalance = openingBalance + increasingAmount - paymentAmount - returnAmount - adjustmentAmount;
+
+    // 5. Upsert vào DB (Ghi rõ ràng từng cột)
+    const whereClause = customerId
+      ? { customerId_periodName: { customerId, periodName } }
+      : { supplierId_periodName: { supplierId, periodName } };
+
+    await tx.debtPeriod.upsert({
+      where: whereClause,
+      update: {
+        openingBalance,
+        increasingAmount,
+        decreasingAmount: paymentAmount, // ✅ Cột Tiền
+        returnAmount,                    // ✅ Cột Hàng
+        adjustmentAmount,                // ✅ Cột Điều chỉnh
+        closingBalance,
+        updatedAt: new Date(),
+        ...(notes ? { notes } : {})
+      },
+      create: {
+        customerId: customerId || null,
+        supplierId: supplierId || null,
+        periodName,
+        startTime: startOfYear,
+        endTime: endOfYear,
+        openingBalance,
+        increasingAmount,
+        decreasingAmount: paymentAmount,
+        returnAmount,
+        adjustmentAmount,
+        closingBalance,
+        notes: notes || '',
+        isLocked: false
+      }
+    });
+
+    // 6. Cập nhật số dư hiện tại vào bảng Master (Customer/Supplier) nếu là năm hiện tại
+    if (year === new Date().getFullYear()) {
+      if (customerId) {
+        await tx.customer.update({ where: { id: customerId }, data: { currentDebt: closingBalance, debtUpdatedAt: new Date() } });
+      } else if (supplierId) {
+        await tx.supplier.update({ where: { id: supplierId }, data: { totalPayable: closingBalance, payableUpdatedAt: new Date() } });
+      }
+    }
+
+    // Trả về số dư cuối kỳ để làm đầu kỳ cho vòng lặp năm sau
+    return closingBalance;
   }
 
   // =================================================================
@@ -1693,33 +1695,33 @@ private cache: CacheHelper;
     // 3. Khách có trả hàng (Sale Refunds từ Stock) - ✅ MỚI
     // Vì StockTransaction không có customerId trực tiếp, ta phải đi vòng: Stock -> Order -> Customer
     const stockReturns = await prisma.stockTransaction.findMany({
-        where: {
-            transactionType: 'import',
-            referenceType: 'sale_refunds',
-            createdAt: { gte: startOfYear, lte: endOfYear }
-        },
-        select: { referenceId: true }, // Đây là Order ID
-        distinct: ['referenceId']
+      where: {
+        transactionType: 'import',
+        referenceType: 'sale_refunds',
+        createdAt: { gte: startOfYear, lte: endOfYear }
+      },
+      select: { referenceId: true }, // Đây là Order ID
+      distinct: ['referenceId']
     });
-    
+
     let returnCustomerIds: number[] = [];
     if (stockReturns.length > 0) {
-        const orderIds = stockReturns.map(s => s.referenceId).filter(id => id !== null) as number[];
-        if (orderIds.length > 0) {
-            const ordersFromReturns = await prisma.salesOrder.findMany({
-                where: { id: { in: orderIds } },
-                select: { customerId: true },
-                distinct: ['customerId']
-            });
-            returnCustomerIds = ordersFromReturns.map(o => o.customerId);
-        }
+      const orderIds = stockReturns.map(s => s.referenceId).filter(id => id !== null) as number[];
+      if (orderIds.length > 0) {
+        const ordersFromReturns = await prisma.salesOrder.findMany({
+          where: { id: { in: orderIds } },
+          select: { customerId: true },
+          distinct: ['customerId']
+        });
+        returnCustomerIds = ordersFromReturns.map(o => o.customerId);
+      }
     }
 
     // Gộp tất cả và lọc trùng (Set)
     const ids = new Set([
-        ...orders.map(o => o.customerId),
-        ...receipts.map(r => r.customerId),
-        ...returnCustomerIds
+      ...orders.map(o => o.customerId),
+      ...receipts.map(r => r.customerId),
+      ...returnCustomerIds
     ]);
 
     return Array.from(ids);
@@ -1749,33 +1751,33 @@ private cache: CacheHelper;
 
     // 3. NCC có trả hàng (Purchase Refunds từ Stock) - ✅ MỚI
     const stockReturns = await prisma.stockTransaction.findMany({
-        where: {
-            transactionType: 'export',
-            referenceType: 'purchase_refunds',
-            createdAt: { gte: startOfYear, lte: endOfYear }
-        },
-        select: { referenceId: true },
-        distinct: ['referenceId']
+      where: {
+        transactionType: 'export',
+        referenceType: 'purchase_refunds',
+        createdAt: { gte: startOfYear, lte: endOfYear }
+      },
+      select: { referenceId: true },
+      distinct: ['referenceId']
     });
 
     let returnSupplierIds: number[] = [];
     if (stockReturns.length > 0) {
-        const poIds = stockReturns.map(s => s.referenceId).filter(id => id !== null) as number[];
-        if (poIds.length > 0) {
-            const posFromReturns = await prisma.purchaseOrder.findMany({
-                where: { id: { in: poIds } },
-                select: { supplierId: true },
-                distinct: ['supplierId']
-            });
-            returnSupplierIds = posFromReturns.map(p => p.supplierId);
-        }
+      const poIds = stockReturns.map(s => s.referenceId).filter(id => id !== null) as number[];
+      if (poIds.length > 0) {
+        const posFromReturns = await prisma.purchaseOrder.findMany({
+          where: { id: { in: poIds } },
+          select: { supplierId: true },
+          distinct: ['supplierId']
+        });
+        returnSupplierIds = posFromReturns.map(p => p.supplierId);
+      }
     }
 
     // Gộp tất cả
     const ids = new Set([
-        ...pos.map(p => p.supplierId),
-        ...voucherSupplierIds,
-        ...returnSupplierIds
+      ...pos.map(p => p.supplierId),
+      ...voucherSupplierIds,
+      ...returnSupplierIds
     ]);
 
     return Array.from(ids);
