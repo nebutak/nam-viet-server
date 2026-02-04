@@ -2,10 +2,11 @@ import prisma from '../config/prisma';
 import { CreateTaskInput, UpdateTaskInput, TaskQueryInput } from '../validators/task.validator';
 import { NotFoundError } from '../utils/errors';
 import { Prisma } from '@prisma/client';
+import notificationService from './notification.service';
 
 class TaskService {
   async create(userId: number, data: CreateTaskInput) {
-    return await prisma.crmTask.create({
+    const task = await prisma.crmTask.create({
       data: {
         title: data.title,
         description: data.description,
@@ -23,6 +24,19 @@ class TaskService {
         creator: true,
       },
     });
+
+    // Notify assigned
+    if (task.assignedToId) {
+        notificationService.notifyTaskAssigned({
+            taskId: task.id,
+            title: task.title,
+            assigneeId: task.assignedToId,
+            assignerName: task.creator?.fullName || 'Hệ thống',
+            dueDate: task.dueDate
+        }).catch(console.error);
+    }
+
+    return task;
   }
 
   async findAll(query: TaskQueryInput) {
@@ -105,9 +119,9 @@ class TaskService {
   }
 
   async update(id: number, data: UpdateTaskInput) {
-    await this.findOne(id);
+    const oldTask = await this.findOne(id);
 
-    return await prisma.crmTask.update({
+    const updatedTask = await prisma.crmTask.update({
       where: { id },
       data: {
         ...data,
@@ -119,6 +133,19 @@ class TaskService {
         relatedTicket: true,
       },
     });
+
+    // Notify Assignee Change
+    if (updatedTask.assignedToId && updatedTask.assignedToId !== oldTask.assignedToId) {
+        notificationService.notifyTaskAssigned({
+            taskId: updatedTask.id,
+            title: updatedTask.title,
+            assigneeId: updatedTask.assignedToId,
+            assignerName: 'Hệ thống',
+            dueDate: updatedTask.dueDate
+        }).catch(console.error);
+    }
+
+    return updatedTask;
   }
 
   async delete(id: number) {

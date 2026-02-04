@@ -18,6 +18,11 @@ import uploadService from '@services/upload.service';
 import { setupSwagger } from '@config/swagger';
 import { connectDatabase } from '@config/prisma';
 
+// Add this to handle BigInt serialization globally
+(BigInt.prototype as any).toJSON = function () {
+  return this.toString();
+};
+
 // Import routes
 import authRoutes from '@routes/auth.routes';
 import userRoutes from '@routes/user.routes';
@@ -74,6 +79,7 @@ import contactRoutes from '@routes/contact.routes';
 // CRM Routes
 import ticketRoutes from '@routes/ticket.routes';
 import taskRoutes from '@routes/task.routes';
+import activityLogRoutes from '@routes/activity-log.routes';
 
 // Import notification scheduler
 import notificationScheduler from '@schedulers/notification.scheduler';
@@ -82,6 +88,14 @@ dotenv.config();
 
 const app: Application = express();
 const PORT = process.env.PORT || 5000;
+
+// Configure JSON serialization for BigInt
+app.set('json replacer', (_key: string, value: any) => {
+  if (typeof value === 'bigint') {
+    return value.toString();
+  }
+  return value;
+});
 
 // Khởi tạo Redis
 const initializeRedis = async () => {
@@ -259,6 +273,7 @@ app.use('/api/news-categories', newsCategoryRoutes);
 // CRM Routes
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/tasks', taskRoutes);
+app.use('/api/activity-logs', activityLogRoutes);
 
 // 404 handler
 app.use(notFoundHandler);

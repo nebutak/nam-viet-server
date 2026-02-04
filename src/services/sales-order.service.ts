@@ -2,6 +2,7 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import { NotFoundError, ValidationError } from '@utils/errors';
 import { logActivity } from '@utils/logger';
 import customerService from './customer.service';
+import notificationService from './notification.service';
 import {
   CreateSalesOrderInput,
   UpdateSalesOrderInput,
@@ -462,9 +463,11 @@ class SalesOrderService {
 
     const orderCode = await this.generateOrderCode();
 
+    let result: any;
+
     // Route to appropriate handler based on pickup/delivery
     if (data.isPickupOrder) {
-      return this.createPickupOrder(
+      result = await this.createPickupOrder(
         data,
         itemsWithCalculations,
         orderCode,
@@ -474,7 +477,7 @@ class SalesOrderService {
         inventoryShortages
       );
     } else {
-      return this.createDeliveryOrder(
+      result = await this.createDeliveryOrder(
         data,
         itemsWithCalculations,
         orderCode,
@@ -484,6 +487,16 @@ class SalesOrderService {
         inventoryShortages
       );
     }
+
+    // Trigger notification (fire and forget)
+    notificationService.notifyNewOrder({
+        orderId: result.id,
+        orderCode: result.orderCode,
+        customerName: result.customer?.customerName || 'Khách lẻ',
+        totalAmount: Number(result.totalAmount)
+    }).catch(err => console.error('Failed to send new order notification', err));
+
+    return result;
   }
 
   private async createPickupOrder(
