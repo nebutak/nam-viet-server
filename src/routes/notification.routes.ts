@@ -2,7 +2,7 @@ import { Router } from 'express';
 import notificationController from '@controllers/notification.controller';
 import { authentication } from '@middlewares/auth';
 import { requireRole } from '@middlewares/authorize';
-import { validate } from '@middlewares/validate';
+import { validateNested } from '@middlewares/validate';
 import { asyncHandler } from '@middlewares/errorHandler';
 import {
   createNotificationSchema,
@@ -23,7 +23,7 @@ router.use(authentication);
 // GET /api/notifications - Get all notifications for current user
 router.get(
   '/',
-  validate(getNotificationsQuerySchema),
+  validateNested(getNotificationsQuerySchema),
   asyncHandler(notificationController.getAll.bind(notificationController))
 );
 
@@ -42,14 +42,14 @@ router.get(
 // GET /api/notifications/:id - Get notification by ID
 router.get(
   '/:id',
-  validate(notificationIdParamSchema),
+  validateNested(notificationIdParamSchema),
   asyncHandler(notificationController.getById.bind(notificationController))
 );
 
 // PUT /api/notifications/:id/read - Mark notification as read
 router.put(
   '/:id/read',
-  validate(notificationIdParamSchema),
+  validateNested(notificationIdParamSchema),
   asyncHandler(notificationController.markAsRead.bind(notificationController))
 );
 
@@ -62,7 +62,7 @@ router.put(
 // DELETE /api/notifications/:id - Delete notification
 router.delete(
   '/:id',
-  validate(notificationIdParamSchema),
+  validateNested(notificationIdParamSchema),
   asyncHandler(notificationController.delete.bind(notificationController))
 );
 
@@ -80,7 +80,7 @@ router.delete(
 router.post(
   '/',
   requireRole('admin'),
-  validate(createNotificationSchema),
+  validateNested(createNotificationSchema),
   asyncHandler(notificationController.create.bind(notificationController))
 );
 
@@ -88,7 +88,7 @@ router.post(
 router.post(
   '/broadcast',
   requireRole('admin'),
-  validate(broadcastNotificationSchema),
+  validateNested(broadcastNotificationSchema),
   asyncHandler(notificationController.broadcast.bind(notificationController))
 );
 

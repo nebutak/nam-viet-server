@@ -1,10 +1,6 @@
 import { PrismaClient, Prisma } from '@prisma/client';
-import RedisService, { CachePrefix } from './redis.service';
 
 const prisma = new PrismaClient();
-const redis = RedisService.getInstance();
-
-const DASHBOARD_CACHE_TTL = parseInt(process.env.CACHE_TTL_DASHBOARD || '300');
 
 interface DateRange {
   fromDate: Date;
@@ -32,51 +28,64 @@ class ReportService {
   // =====================================================
   // DASHBOARD COMPLETE STATS (Optimized All-in-One)
   // =====================================================
-  async getDashboardStats(period: string = 'month') {
-    const cacheKey = `dashboard:stats:${period}`;
-    const cached = await redis.get(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
+  async getDashboardStats(options: { period?: string; fromDate?: string; toDate?: string; warehouseId?: number }) {
+    const { period = 'month', fromDate, toDate, warehouseId } = options;
+    
     const today = new Date();
     let periodFromDate: Date, periodToDate: Date;
     let previousFromDate: Date, previousToDate: Date;
 
-    // Calculate period dates
-    switch (period) {
-      case 'week':
-        periodFromDate = new Date(today);
-        periodFromDate.setDate(today.getDate() - today.getDay());
-        periodFromDate.setHours(0, 0, 0, 0);
-        periodToDate = new Date(today.setHours(23, 59, 59, 999));
+    // Determine period dates: Use custom if provided, otherwise switch on period
+    if (fromDate && toDate) {
+      periodFromDate = new Date(fromDate);
+      periodToDate = new Date(toDate);
+      // Calculate previous period same length as current
+      const duration = periodToDate.getTime() - periodFromDate.getTime();
+      previousToDate = new Date(periodFromDate.getTime()); // Prev end is current start (approx, or -1ms)
+      previousFromDate = new Date(previousToDate.getTime() - duration);
+    } else {
+      // Calculate period dates
+      switch (period) {
+        case 'week':
+          periodFromDate = new Date(today);
+          periodFromDate.setDate(today.getDate() - today.getDay());
+          periodFromDate.setHours(0, 0, 0, 0);
+          periodToDate = new Date(today.setHours(23, 59, 59, 999));
 
-        previousFromDate = new Date(periodFromDate);
-        previousFromDate.setDate(previousFromDate.getDate() - 7);
-        previousToDate = new Date(periodFromDate);
-        previousToDate.setHours(23, 59, 59, 999);
-        previousToDate.setDate(previousToDate.getDate() - 1);
-        break;
+          previousFromDate = new Date(periodFromDate);
+          previousFromDate.setDate(previousFromDate.getDate() - 7);
+          previousToDate = new Date(periodFromDate);
+          previousToDate.setHours(23, 59, 59, 999);
+          previousToDate.setDate(previousToDate.getDate() - 1);
+          break;
 
-      case 'day':
-        periodFromDate = new Date(today.setHours(0, 0, 0, 0));
-        periodToDate = new Date(today.setHours(23, 59, 59, 999));
+        case 'day':
+          periodFromDate = new Date(today.setHours(0, 0, 0, 0));
+          periodToDate = new Date(today.setHours(23, 59, 59, 999));
 
-        previousFromDate = new Date(periodFromDate);
-        previousFromDate.setDate(previousFromDate.getDate() - 1);
-        previousToDate = new Date(previousFromDate);
-        previousToDate.setHours(23, 59, 59, 999);
-        break;
+          previousFromDate = new Date(periodFromDate);
+          previousFromDate.setDate(previousFromDate.getDate() - 1);
+          previousToDate = new Date(previousFromDate);
+          previousToDate.setHours(23, 59, 59, 999);
+          break;
 
-      case 'month':
-      default:
-        periodFromDate = new Date(today.getFullYear(), today.getMonth(), 1);
-        periodToDate = new Date(today.setHours(23, 59, 59, 999));
+        case 'month':
+        default:
+          periodFromDate = new Date(today.getFullYear(), today.getMonth(), 1);
+          periodToDate = new Date(today.setHours(23, 59, 59, 999));
 
-        previousFromDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-        previousToDate = new Date(today.getFullYear(), today.getMonth(), 0, 23, 59, 59, 999);
-        break;
+          previousFromDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+          previousToDate = new Date(today.getFullYear(), today.getMonth(), 0, 23, 59, 59, 999);
+          break;
+      }
     }
+
+    // Common WHERE clauses for quick inline usage
+    const salesOrderWhere: any = { orderStatus: 'pending' };
+    if (warehouseId) salesOrderWhere.warehouseId = warehouseId;
+    
+    // Note: Production Order and Activity Logs might not support warehouse param easily
+    // We will apply warehouse filter where straightforward
 
     // Fetch all data in parallel
     const [
@@ -87,8 +96,8 @@ class ReportService {
       ordersPending,
       totalInventoryValue,
       lowStockCount,
-      totalReceivables,
-      overdueDebtCount,
+      totalReceivables, // Note: Debt usually not filtered by warehouse
+      overdueDebtCount, // Note: Debt usually not filtered by warehouse
       activeProduction,
 
       // Charts data
@@ -106,30 +115,36 @@ class ReportService {
       activityLogs,
     ] = await Promise.all([
       // KPI
-      this.getRevenueByPeriod(periodFromDate, periodToDate),
-      this.getRevenueByPeriod(previousFromDate, previousToDate),
-      this.getOrderCountByPeriod(periodFromDate, periodToDate),
-      prisma.salesOrder.count({ where: { orderStatus: 'pending' } }),
-      this.getTotalInventoryValue(),
-      this.getLowStockCount(),
-      this.getTotalReceivables(),
-      this.getOverdueDebtCount(),
-      prisma.productionOrder.count({ where: { status: 'in_progress' } }),
+      this.getRevenueByPeriod(periodFromDate, periodToDate, warehouseId),
+      this.getRevenueByPeriod(previousFromDate, previousToDate, warehouseId),
+      this.getOrderCountByPeriod(periodFromDate, periodToDate, warehouseId),
+      prisma.salesOrder.count({ where: salesOrderWhere }),
+      this.getTotalInventoryValue(warehouseId),
+      this.getLowStockCount(warehouseId),
+      this.getTotalReceivables(), // Global debt
+      this.getOverdueDebtCount(), // Global debt
+      prisma.productionOrder.count({ where: { status: 'in_progress' } }), // Global production for now
 
       // Charts
-      this.getDashboardRevenue(period),
-      this.getDashboardSalesChannels(),
-      this.getDashboardInventoryByType(),
+      this.getDashboardRevenue({
+        period,
+        fromDate: periodFromDate,
+        toDate: periodToDate,
+        warehouseId,
+      }),
+      this.getDashboardSalesChannels(periodFromDate.toISOString(), periodToDate.toISOString(), warehouseId),
+      this.getDashboardInventoryByType(warehouseId),
 
-      // Alerts: Get low stock items with proper query
+      // Alerts: Get low stock items
       prisma.inventory.findMany({
         where: {
+          ...(warehouseId && { warehouseId }),
           product: {
             minStockLevel: { gt: 0 },
             status: 'active',
           },
           quantity: {
-            lt: 100, // Simplified: any stock < 100
+            lt: 100, // Simplified trigger
           },
         },
         take: 3,
@@ -159,6 +174,7 @@ class ReportService {
 
       // Recent
       prisma.salesOrder.findMany({
+        where: warehouseId ? { warehouseId } : undefined,
         take: 5,
         orderBy: { createdAt: 'desc' },
         select: {
@@ -171,7 +187,7 @@ class ReportService {
           customer: { select: { id: true, customerName: true } },
         },
       }),
-      this.getDashboardTopProducts(5),
+      this.getDashboardTopProducts(5, periodFromDate.toISOString(), periodToDate.toISOString()), // Missing warehouse
       prisma.activityLog.findMany({
         take: 10,
         orderBy: { createdAt: 'desc' },
@@ -296,17 +312,6 @@ class ReportService {
       timestamp: new Date().toISOString(),
     };
 
-    // Convert to plain object for Redis serialization (remove BigInt fields)
-    const resultForCache = JSON.parse(
-      JSON.stringify(result, (_key, value) => {
-        if (typeof value === 'bigint') {
-          return value.toString();
-        }
-        return value;
-      })
-    );
-
-    await redis.set(cacheKey, resultForCache, DASHBOARD_CACHE_TTL);
     return result;
   }
 
@@ -314,12 +319,6 @@ class ReportService {
   // DASHBOARD METRICS
   // =====================================================
   async getDashboard() {
-    const cacheKey = `${CachePrefix.DASHBOARD}overview`;
-    const cached = await redis.get(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
     const today = new Date();
     const startOfToday = new Date(today.setHours(0, 0, 0, 0));
     const endOfToday = new Date(today.setHours(23, 59, 59, 999));
@@ -429,18 +428,11 @@ class ReportService {
       },
     };
 
-    await redis.set(cacheKey, dashboard, DASHBOARD_CACHE_TTL);
     return dashboard;
   }
 
   // GET /api/reports/dashboard/metrics - Dashboard metrics only
   async getDashboardMetrics() {
-    const cacheKey = `${CachePrefix.DASHBOARD}metrics`;
-    const cached = await redis.get(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
     const today = new Date();
     const startOfToday = new Date(today.setHours(0, 0, 0, 0));
     const endOfToday = new Date(today.setHours(23, 59, 59, 999));
@@ -491,49 +483,53 @@ class ReportService {
       },
     };
 
-    await redis.set(cacheKey, metrics, DASHBOARD_CACHE_TTL);
     return metrics;
   }
 
   // GET /api/reports/dashboard/revenue?period=month
-  async getDashboardRevenue(period: string = 'month') {
-    const cacheKey = `${CachePrefix.DASHBOARD}revenue:${period}`;
-    const cached = await redis.get(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
+  async getDashboardRevenue(options: { period?: string; fromDate?: Date; toDate?: Date; warehouseId?: number }) {
+    const { period = 'month', fromDate: customFromDate, toDate: customToDate, warehouseId } = options;
     const today = new Date();
     let fromDate: Date;
-    let toDate = new Date();
+    let toDate = customToDate || new Date();
 
-    switch (period) {
-      case 'today':
-        fromDate = new Date(today.setHours(0, 0, 0, 0));
-        toDate = new Date(today.setHours(23, 59, 59, 999));
-        break;
-      case 'week':
-        fromDate = new Date(today);
-        fromDate.setDate(today.getDate() - today.getDay());
-        fromDate.setHours(0, 0, 0, 0);
-        break;
-      case 'year':
-        fromDate = new Date(today.getFullYear(), 0, 1);
-        break;
-      case 'month':
-      default:
-        fromDate = new Date(today.getFullYear(), today.getMonth(), 1);
-        break;
+    if (customFromDate && customToDate) {
+      fromDate = customFromDate;
+    } else {
+      switch (period) {
+        case 'today':
+          fromDate = new Date(today.setHours(0, 0, 0, 0));
+          toDate = new Date(today.setHours(23, 59, 59, 999));
+          break;
+        case 'week':
+          fromDate = new Date(today);
+          fromDate.setDate(today.getDate() - today.getDay());
+          fromDate.setHours(0, 0, 0, 0);
+          break;
+        case 'year':
+          fromDate = new Date(today.getFullYear(), 0, 1);
+          break;
+        case 'month':
+        default:
+          fromDate = new Date(today.getFullYear(), today.getMonth(), 1);
+          break;
+      }
+    }
+
+    const where: any = {
+      orderStatus: 'completed',
+      completedAt: {
+        gte: fromDate,
+        lte: toDate,
+      },
+    };
+
+    if (warehouseId) {
+      where.warehouseId = warehouseId;
     }
 
     const orders = await prisma.salesOrder.findMany({
-      where: {
-        orderStatus: 'completed',
-        completedAt: {
-          gte: fromDate,
-          lte: toDate,
-        },
-      },
+      where,
       select: {
         completedAt: true,
         totalAmount: true,
@@ -564,39 +560,29 @@ class ReportService {
       total_orders: orders.length,
     };
 
-    await redis.set(cacheKey, result, DASHBOARD_CACHE_TTL);
     return result;
   }
 
   // GET /api/reports/dashboard/sales-channels
-  async getDashboardSalesChannels() {
-    const cacheKey = `${CachePrefix.DASHBOARD}sales-channels`;
-    const cached = await redis.get(cacheKey);
-    if (cached) {
-      return cached;
-    }
+  // GET /api/reports/dashboard/sales-channels
+  async getDashboardSalesChannels(fromDate?: string, toDate?: string, warehouseId?: number) {
+    const start = fromDate ? new Date(fromDate) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const end = toDate ? new Date(toDate) : new Date();
 
-    const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     const result = await this.getRevenueByChannel(
-      startOfMonth.toISOString(),
-      new Date().toISOString()
+      start.toISOString(),
+      end.toISOString(),
+      warehouseId
     );
 
-    await redis.set(cacheKey, result, DASHBOARD_CACHE_TTL);
     return result;
   }
 
   // GET /api/reports/dashboard/inventory-by-type
-  async getDashboardInventoryByType() {
-    const cacheKey = `${CachePrefix.DASHBOARD}inventory-by-type`;
-    const cached = await redis.get(cacheKey);
-    if (cached) {
-      return cached;
-    }
+  // GET /api/reports/dashboard/inventory-by-type
+  async getDashboardInventoryByType(warehouseId?: number) {
+    const result = await this.getInventoryByType(warehouseId);
 
-    const result = await this.getInventoryByType();
-
-    await redis.set(cacheKey, result, DASHBOARD_CACHE_TTL);
     return result;
   }
 
@@ -626,32 +612,21 @@ class ReportService {
   }
 
   // GET /api/reports/dashboard/top-products?limit=10
-  async getDashboardTopProducts(limit: number = 10) {
-    const cacheKey = `${CachePrefix.DASHBOARD}top-products:${limit}`;
-    const cached = await redis.get(cacheKey);
-    if (cached) {
-      return cached;
-    }
+  async getDashboardTopProducts(limit: number = 10, fromDate?: string, toDate?: string) {
+    const start = fromDate ? new Date(fromDate) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const end = toDate ? new Date(toDate) : new Date();
 
-    const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     const result = await this.getTopSellingProducts(
       limit,
-      startOfMonth.toISOString(),
-      new Date().toISOString()
+      start.toISOString(),
+      end.toISOString()
     );
 
-    await redis.set(cacheKey, result, DASHBOARD_CACHE_TTL);
     return result;
   }
 
   // GET /api/reports/dashboard/overdue-debts
   async getDashboardOverdueDebts() {
-    const cacheKey = `${CachePrefix.DASHBOARD}overdue-debts`;
-    const cached = await redis.get(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -692,7 +667,6 @@ class ReportService {
       };
     });
 
-    await redis.set(cacheKey, result, DASHBOARD_CACHE_TTL);
     return result;
   }
 
@@ -825,18 +799,24 @@ class ReportService {
     };
   }
 
-  async getRevenueByChannel(fromDate?: string, toDate?: string) {
+  async getRevenueByChannel(fromDate?: string, toDate?: string, warehouseId?: number) {
     const dateRange = this.getDateRange(fromDate, toDate);
+
+    const where: any = {
+      orderStatus: 'completed',
+      completedAt: {
+        gte: dateRange.fromDate,
+        lte: dateRange.toDate,
+      },
+    };
+
+    if (warehouseId) {
+      where.warehouseId = warehouseId;
+    }
 
     const result = await prisma.salesOrder.groupBy({
       by: ['salesChannel'],
-      where: {
-        orderStatus: 'completed',
-        completedAt: {
-          gte: dateRange.fromDate,
-          lte: dateRange.toDate,
-        },
-      },
+      where,
       _sum: {
         totalAmount: true,
         paidAmount: true,
@@ -1143,8 +1123,14 @@ class ReportService {
     return stockFlow;
   }
 
-  async getInventoryByType() {
+  async getInventoryByType(warehouseId?: number) {
+    const where: any = {};
+    if (warehouseId) {
+      where.warehouseId = warehouseId;
+    }
+
     const result = await prisma.inventory.findMany({
+      where,
       include: {
         product: {
           select: {
@@ -1861,7 +1847,7 @@ class ReportService {
     return { fromDate: from, toDate: to };
   }
 
-  private async getRevenueByPeriod(fromDate: Date, toDate: Date): Promise<number> {
+  private async getRevenueByPeriod(fromDate: Date, toDate: Date, warehouseId?: number): Promise<number> {
     const result = await prisma.salesOrder.aggregate({
       where: {
         orderStatus: 'completed',
@@ -1869,6 +1855,7 @@ class ReportService {
           gte: fromDate,
           lte: toDate,
         },
+        ...(warehouseId && { warehouseId }),
       },
       _sum: {
         totalAmount: true,
@@ -1878,7 +1865,7 @@ class ReportService {
     return Number(result._sum.totalAmount || 0);
   }
 
-  private async getOrderCountByPeriod(fromDate: Date, toDate: Date): Promise<number> {
+  private async getOrderCountByPeriod(fromDate: Date, toDate: Date, warehouseId?: number): Promise<number> {
     return await prisma.salesOrder.count({
       where: {
         orderStatus: 'completed',
@@ -1886,12 +1873,17 @@ class ReportService {
           gte: fromDate,
           lte: toDate,
         },
+        ...(warehouseId && { warehouseId }),
       },
     });
   }
 
-  private async getTotalInventoryValue(): Promise<number> {
+  private async getTotalInventoryValue(warehouseId?: number): Promise<number> {
+    const where: any = {};
+    if (warehouseId) where.warehouseId = warehouseId;
+
     const inventory = await prisma.inventory.findMany({
+      where,
       include: {
         product: {
           select: {
@@ -1907,8 +1899,12 @@ class ReportService {
     }, 0);
   }
 
-  private async getLowStockCount(): Promise<number> {
+  private async getLowStockCount(warehouseId?: number): Promise<number> {
+    const where: any = {};
+    if (warehouseId) where.warehouseId = warehouseId;
+
     const inventory = await prisma.inventory.findMany({
+      where,
       include: {
         product: {
           select: {

@@ -6,8 +6,13 @@ import financialService from '@services/financial.service';
 class ReportController {
   // GET /api/reports/dashboard/stats - Complete dashboard stats (optimized all-in-one)
   async getDashboardStats(req: AuthRequest, res: Response) {
-    const { period = 'month' } = req.query;
-    const stats = await reportService.getDashboardStats(period as string);
+    const { period = 'month', fromDate, toDate, warehouseId } = req.query;
+    const stats = await reportService.getDashboardStats({
+      period: period as string,
+      fromDate: fromDate as string,
+      toDate: toDate as string,
+      warehouseId: warehouseId ? parseInt(warehouseId as string) : undefined,
+    });
 
     res.status(200).json({
       success: true,
@@ -40,8 +45,13 @@ class ReportController {
 
   // GET /api/reports/dashboard/revenue?period=month - Dashboard revenue
   async getDashboardRevenue(req: AuthRequest, res: Response) {
-    const { period = 'month' } = req.query;
-    const revenue = await reportService.getDashboardRevenue(period as string);
+    const { period = 'month', fromDate, toDate, warehouseId } = req.query;
+    const revenue = await reportService.getDashboardRevenue({
+      period: period as string,
+      fromDate: fromDate ? new Date(fromDate as string) : undefined,
+      toDate: toDate ? new Date(toDate as string) : undefined,
+      warehouseId: warehouseId ? parseInt(warehouseId as string) : undefined,
+    });
 
     res.status(200).json({
       success: true,
@@ -51,8 +61,13 @@ class ReportController {
   }
 
   // GET /api/reports/dashboard/sales-channels - Revenue by sales channel
-  async getDashboardSalesChannels(_req: AuthRequest, res: Response) {
-    const salesChannels = await reportService.getDashboardSalesChannels();
+  async getDashboardSalesChannels(req: AuthRequest, res: Response) {
+    const { fromDate, toDate, warehouseId } = req.query;
+    const salesChannels = await reportService.getDashboardSalesChannels(
+      fromDate as string,
+      toDate as string,
+      warehouseId ? parseInt(warehouseId as string) : undefined
+    );
 
     res.status(200).json({
       success: true,
@@ -62,8 +77,11 @@ class ReportController {
   }
 
   // GET /api/reports/dashboard/inventory-by-type - Inventory grouped by type
-  async getDashboardInventoryByType(_req: AuthRequest, res: Response) {
-    const inventoryByType = await reportService.getDashboardInventoryByType();
+  async getDashboardInventoryByType(req: AuthRequest, res: Response) {
+    const { warehouseId } = req.query;
+    const inventoryByType = await reportService.getDashboardInventoryByType(
+      warehouseId ? parseInt(warehouseId as string) : undefined
+    );
 
     res.status(200).json({
       success: true,

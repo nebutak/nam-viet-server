@@ -557,6 +557,109 @@ class NotificationService {
   }
 
   // =====================================================
+  // TICKET & TASK NOTIFICATIONS
+  // =====================================================
+
+  // New ticket notification
+  async notifyNewTicket(ticketData: {
+    ticketId: number;
+    ticketCode: string;
+    title: string;
+    customerName: string;
+    priority: string;
+  }) {
+    // Notify admins and customer support
+    const users = await prisma.user.findMany({
+      where: {
+        role: { roleKey: { in: ['admin', 'customer_support', 'sale'] } },
+        status: 'active',
+      },
+      select: { id: true },
+    });
+
+    if (users.length === 0) return;
+
+    await this.sendToUsers({
+      userIds: users.map((u) => u.id),
+      title: 'Yêu cầu hỗ trợ mới',
+      message: `Phiếu #${ticketData.ticketCode}: ${ticketData.title} đã được tạo bởi ${ticketData.customerName}`,
+      notificationType: 'system',
+      priority: ticketData.priority === 'urgent' || ticketData.priority === 'high' ? 'high' : 'normal',
+      channel: 'web',
+      referenceType: 'ticket',
+      referenceId: ticketData.ticketId,
+      metaData: ticketData,
+    });
+  }
+
+  // Ticket assigned notification
+  async notifyTicketAssigned(data: {
+    ticketId: number;
+    ticketCode: string;
+    title: string;
+    assigneeId: number;
+    assignerName: string;
+  }) {
+    await this.create({
+      userId: data.assigneeId,
+      title: 'Được phân công phiếu hỗ trợ',
+      message: `Bạn đã được phân công xử lý phiếu #${data.ticketCode}: ${data.title} bởi ${data.assignerName}`,
+      notificationType: 'system',
+      priority: 'normal',
+      channel: 'web',
+      referenceType: 'ticket',
+      referenceId: data.ticketId,
+      metaData: data,
+    });
+  }
+
+  // Ticket status change notification
+  async notifyTicketStatusChange(data: {
+    ticketId: number;
+    ticketCode: string;
+    title: string;
+    oldStatus: string;
+    newStatus: string;
+    creatorId: number; // To notify the creator
+    updaterName: string;
+  }) {
+    // Don't notify if creator is the updater (optional logic, but keep simple for now)
+    
+    await this.create({
+      userId: data.creatorId,
+      title: 'Cập nhật trạng thái phiếu hỗ trợ',
+      message: `Phiếu #${data.ticketCode}: ${data.title} đã chuyển từ ${data.oldStatus} sang ${data.newStatus}`,
+      notificationType: 'system',
+      priority: 'normal',
+      channel: 'web',
+      referenceType: 'ticket',
+      referenceId: data.ticketId,
+      metaData: data,
+    });
+  }
+
+  // Task assigned notification
+  async notifyTaskAssigned(data: {
+    taskId: number;
+    title: string;
+    assigneeId: number;
+    assignerName: string;
+    dueDate?: Date | null;
+  }) {
+    await this.create({
+      userId: data.assigneeId,
+      title: 'Được phân công công việc',
+      message: `Bạn được phân công công việc: ${data.title} ${data.dueDate ? `(Hạn: ${data.dueDate.toLocaleDateString('vi-VN')})` : ''}`,
+      notificationType: 'system',
+      priority: 'normal',
+      channel: 'web',
+      referenceType: 'task',
+      referenceId: data.taskId,
+      metaData: data,
+    });
+  }
+
+  // =====================================================
   // EMAIL NOTIFICATIONS
   // =====================================================
 

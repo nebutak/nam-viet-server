@@ -2,6 +2,7 @@ import prisma from '../config/prisma';
 import { CreateTicketInput, UpdateTicketInput, TicketQueryInput } from '../validators/ticket.validator';
 import { NotFoundError } from '../utils/errors';
 import { Prisma } from '@prisma/client';
+import notificationService from './notification.service';
 
 class TicketService {
   async create(userId: number, data: CreateTicketInput) {
@@ -17,7 +18,7 @@ class TicketService {
     });
     const ticketCode = `TCK-${dateStr}-${(count + 1).toString().padStart(3, '0')}`;
 
-    return await prisma.ticket.create({
+    const ticket = await prisma.ticket.create({
       data: {
         ticketCode,
         title: data.title,
@@ -33,6 +34,28 @@ class TicketService {
         creator: true,
       },
     });
+
+    // Notify new ticket
+    notificationService.notifyNewTicket({
+        ticketId: ticket.id,
+        ticketCode: ticket.ticketCode,
+        title: ticket.title,
+        customerName: ticket.customer?.customerName || 'Khách hàng',
+        priority: ticket.priority
+    }).catch(console.error);
+
+    // Notify assigned
+    if (ticket.assignedToId) {
+        notificationService.notifyTicketAssigned({
+            ticketId: ticket.id,
+            ticketCode: ticket.ticketCode,
+            title: ticket.title,
+            assigneeId: ticket.assignedToId,
+            assignerName: ticket.creator?.fullName || 'Hệ thống'
+        }).catch(console.error);
+    }
+
+    return ticket;
   }
 
   async findAll(query: TicketQueryInput) {
@@ -111,9 +134,9 @@ class TicketService {
   }
 
   async update(id: number, data: UpdateTicketInput) {
-    await this.findOne(id);
+    const oldTicket = await this.findOne(id);
 
-    return await prisma.ticket.update({
+    const updatedTicket = await prisma.ticket.update({
       where: { id },
       data: {
         ...data,
@@ -123,6 +146,32 @@ class TicketService {
         assignedTo: true,
       },
     });
+
+    // Notify Status Change
+    if (updatedTicket.status !== oldTicket.status) {
+        notificationService.notifyTicketStatusChange({
+            ticketId: updatedTicket.id,
+            ticketCode: updatedTicket.ticketCode,
+            title: updatedTicket.title,
+            oldStatus: oldTicket.status,
+            newStatus: updatedTicket.status,
+            creatorId: oldTicket.createdBy,
+            updaterName: 'Hệ thống' 
+        }).catch(console.error);
+    }
+
+    // Notify Assignee Change
+    if (updatedTicket.assignedToId && updatedTicket.assignedToId !== oldTicket.assignedToId) {
+        notificationService.notifyTicketAssigned({
+            ticketId: updatedTicket.id,
+            ticketCode: updatedTicket.ticketCode,
+            title: updatedTicket.title,
+            assigneeId: updatedTicket.assignedToId,
+            assignerName: 'Hệ thống'
+        }).catch(console.error);
+    }
+
+    return updatedTicket;
   }
 
   async delete(id: number) {
