@@ -315,6 +315,7 @@ class UserService {
         ...(data.password && data.password.trim() && { passwordHash: await hashPassword(data.password) }),
         ...(data.roleId && { roleId: data.roleId }),
         ...(data.warehouseId !== undefined && { warehouseId: data.warehouseId }),
+        ...(data.status && { status: data.status }),
         updatedBy,
       },
       select: {

@@ -10,7 +10,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "prisma:seed": "ts-node prisma/seed.ts",
+    "prisma:seed": "ts-node prisma/seed-product.ts",
     "prisma:seed-hovtoi": "ts-node prisma/seed-hovtoi.ts",
     "prisma:seed-admin": "ts-node prisma/seed-admin.ts",
     "test": "jest",

@@ -84,6 +84,7 @@ class PromotionService {
               employeeCode: true,
             },
           },
+          products: true,
           _count: {
             select: {
               products: true,
@@ -252,8 +253,6 @@ class PromotionService {
           promotionCode: data.promotionCode,
           promotionName: data.promotionName,
           promotionType: data.promotionType,
-          discountValue: data.discountValue,
-          maxDiscountValue: data.maxDiscountValue,
           startDate: new Date(data.startDate),
           endDate: new Date(data.endDate),
           isRecurring: data.isRecurring || false,
@@ -298,8 +297,6 @@ class PromotionService {
           promotionCode: data.promotionCode,
           promotionName: data.promotionName,
           promotionType: data.promotionType,
-          discountValue: data.discountValue,
-          maxDiscountValue: data.maxDiscountValue,
           startDate: new Date(data.startDate),
           endDate: new Date(data.endDate),
           isRecurring: data.isRecurring || false,
@@ -385,10 +382,6 @@ class PromotionService {
     const updateData: any = {
       // ...(data.po)
       ...(data.promotionName && { promotionName: data.promotionName }),
-      ...(data.discountValue !== undefined && { discountValue: data.discountValue }),
-      ...(data.maxDiscountValue !== undefined && {
-        maxDiscountValue: data.maxDiscountValue,
-      }),
       ...(data.startDate && { startDate: new Date(data.startDate) }),
       ...(data.endDate && { endDate: new Date(data.endDate) }),
       ...(data.isRecurring !== undefined && { isRecurring: data.isRecurring }),
@@ -532,8 +525,8 @@ class PromotionService {
       throw new NotFoundError('Promotion');
     }
 
-    if (promotion.status !== 'pending') {
-      throw new ValidationError('Chỉ có thể xóa khuyến mãi ở trạng thái chờ duyệt');
+    if (promotion.status !== 'pending' && promotion.status !== 'cancelled') {
+      throw new ValidationError('Chỉ có thể xóa khuyến mãi ở trạng thái chờ duyệt hoặc đã hủy');
     }
 
     const updated = await prisma.promotion.update({
@@ -746,21 +739,6 @@ class PromotionService {
     const giftProducts: { productId: number; quantity: number }[] = [];
 
     switch (promotion.promotionType) {
-      case 'percent_discount': {
-        discountAmount = (data.orderAmount * Number(promotion.discountValue)) / 100;
-
-        // Apply max discount limit
-        if (promotion.maxDiscountValue && discountAmount > Number(promotion.maxDiscountValue)) {
-          discountAmount = Number(promotion.maxDiscountValue);
-        }
-        break;
-      }
-
-      case 'fixed_discount': {
-        discountAmount = Number(promotion.discountValue);
-        break;
-      }
-
       case 'buy_x_get_y': {
         const conditions = promotion.conditions as PromotionConditions;
         if (conditions.buy_quantity && conditions.get_quantity) {
@@ -826,22 +804,14 @@ class PromotionService {
   // Validate promotion type specific fields
   private validatePromotionType(data: CreatePromotionInput) {
     switch (data.promotionType) {
-      case 'percent_discount':
-      case 'fixed_discount':
-        if (!data.discountValue || data.discountValue <= 0) {
-          throw new ValidationError('Giá trị giảm giá là bắt buộc và phải lớn hơn 0');
-        }
-        break;
-
       case 'buy_x_get_y': {
-        const conditions = data.products as PromotionConditions | undefined;
-        // console.log("điều kiện", conditions, data.minQuantity)
+        const conditions = data.conditions as PromotionConditions | undefined;
         if (
           !conditions ||
-          !data.minQuantity ||
-          !data.products?.[0]?.giftQuantity ||
-          data.minQuantity <= 0 ||
-          data.products?.[0]?.giftQuantity <= 0
+          !conditions.buy_quantity ||
+          !conditions.get_quantity ||
+          conditions.buy_quantity <= 0 ||
+          conditions.get_quantity <= 0
         ) {
           throw new ValidationError(
             'Khuyến mãi Mua X Tặng Y yêu cầu buy_quantity và get_quantity hợp lệ trong điều kiện'

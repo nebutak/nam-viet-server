@@ -109,6 +109,7 @@ export const updateUserSchema = z.object({
     .optional()
     .nullable(),
   canEditProfile: z.boolean().optional(),
+  status: userStatusEnum.optional(),
 });
 
 // Update user status schema

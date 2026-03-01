@@ -27,21 +27,21 @@ router.get('/me', asyncHandler(userController.getMe.bind(userController)));
 router.get(
   '/',
   validate(queryUsersSchema, 'query'),
-  authorize('view_users'),
+  authorize('GET_USER'),
   asyncHandler(userController.getAllUsers.bind(userController))
 );
 
 // GET /api/users/:id - Get user by ID
 router.get(
   '/:id',
-  authorize('view_users'),
+  authorize('GET_USER'),
   asyncHandler(userController.getUserById.bind(userController))
 );
 
 // POST /api/users - Create new user
 router.post(
   '/',
-  authorize('create_user'),
+  authorize('CREATE_USER'),
   validate(createUserSchema),
   logActivityMiddleware('create', 'user'),
   asyncHandler(userController.createUser.bind(userController))
@@ -50,7 +50,7 @@ router.post(
 // PUT /api/users/:id
 router.put(
   '/:id',
-  authorize('update_user'),
+  authorize('UPDATE_USER'),
   validate(updateUserSchema),
   logActivityMiddleware('update', 'user'),
   asyncHandler(userController.updateUser.bind(userController))
@@ -59,7 +59,7 @@ router.put(
 // PUT /api/users/:id/password - Change password
 router.put(
   '/:id/password',
-  authorize('update_user'),
+  authorize('UPDATE_USER'),
   validate(updateUserSchema),
   logActivityMiddleware('change password', 'user'),
   asyncHandler(userController.changePassword.bind(userController))
@@ -68,7 +68,7 @@ router.put(
 // DELETE /api/users/:id
 router.delete(
   '/:id',
-  authorize('delete_user'),
+  authorize('DELETE_USER'),
   logActivityMiddleware('delete', 'user'),
   asyncHandler(userController.deleteUser.bind(userController))
 );
@@ -76,7 +76,7 @@ router.delete(
 // PATCH /api/users/:id/status
 router.patch(
   '/:id/status',
-  authorize('update_user'),
+  authorize('UPDATE_USER'),
   validate(updateUserStatusSchema),
   logActivityMiddleware('update status', 'user'),
   asyncHandler(userController.updateUserStatus.bind(userController))
@@ -85,7 +85,7 @@ router.patch(
 // PATCH /api/users/:id - Toggle Can Edit Profile
 router.patch(
   '/:id',
-  authorize('update_user'),
+  authorize('UPDATE_USER'),
   logActivityMiddleware('toggle edit profile', 'user'),
   asyncHandler(userController.toggleCanEditProfile.bind(userController))
 );
@@ -93,7 +93,7 @@ router.patch(
 // POST /api/users/:id/avatar
 router.post(
   '/:id/avatar',
-  authorize('update_user'),
+  authorize('UPDATE_USER'),
   uploadRateLimiter, // Rate limit: 20 uploads per hour
   uploadService.getUploadMiddleware().single('avatar'),
   logActivityMiddleware('upload avatar', 'user'),
@@ -103,7 +103,7 @@ router.post(
 // DELETE /api/users/:id/avatar
 router.delete(
   '/:id/avatar',
-  authorize('update_user'),
+  authorize('UPDATE_USER'),
   logActivityMiddleware('delete avatar', 'user'),
   asyncHandler(userController.deleteAvatar.bind(userController))
 );
@@ -111,35 +111,35 @@ router.delete(
 // GET /api/users/:id/activity-logs - Get user activity logs
 router.get(
   '/:id/activity-logs',
-  authorize('view_users'),
+  authorize('GET_USER'),
   asyncHandler(userController.getActivityLogs.bind(userController))
 );
 
 // GET /api/users/:id/permissions - Get user's direct permissions
 router.get(
   '/:id/permissions',
-  authorize('view_users'),
+  authorize('USER_MANAGEMENT'),
   asyncHandler(userPermissionController.getUserPermissions.bind(userPermissionController))
 );
 
 // POST /api/users/:id/permissions - Assign permission to user
 router.post(
   '/:id/permissions',
-  authorize('update_user'),
+  authorize('USER_MANAGEMENT'),
   asyncHandler(userPermissionController.assignUserPermission.bind(userPermissionController))
 );
 
 // DELETE /api/users/:id/permissions/:permissionId - Revoke permission from user
 router.delete(
   '/:id/permissions/:permissionId',
-  authorize('update_user'),
+  authorize('USER_MANAGEMENT'),
   asyncHandler(userPermissionController.revokeUserPermission.bind(userPermissionController))
 );
 
 // GET /api/users/:id/permissions/effective - Get effective permissions
 router.get(
   '/:id/permissions/effective',
-  authorize('view_users'),
+  authorize('USER_MANAGEMENT'),
   asyncHandler(userPermissionController.getEffectivePermissions.bind(userPermissionController))
 );
 

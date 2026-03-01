@@ -23,7 +23,7 @@ router.use(authentication);
 // GET /api/promotions - Get all promotions
 router.get(
   '/',
-  authorize('view_promotions'),
+  authorize('GET_PROMOTION'),
   validate(promotionQuerySchema, 'query'),
   asyncHandler(promotionController.getAll.bind(promotionController))
 );
@@ -38,26 +38,26 @@ router.get(
 // POST /api/promotions/auto-expire - Auto expire promotions (cron job)
 router.post(
   '/auto-expire',
-  authorize('manage_promotions'),
+  authorize('PROMOTION_MANAGEMENT'),
   asyncHandler(promotionController.autoExpire.bind(promotionController))
 );
 
 router.get(
   '/statistics',
-  authorize('view_promotions'),
+  authorize('GET_PROMOTION'),
   asyncHandler(promotionController.getStatistics.bind(promotionController))
 );
 // GET /api/promotions/:id - Get promotion by ID
 router.get(
   '/:id',
-  authorize('view_promotions'),
+  authorize('GET_PROMOTION'),
   asyncHandler(promotionController.getById.bind(promotionController))
 );
 
 // POST /api/promotions - Create new promotion
 router.post(
   '/',
-  authorize('create_promotion'),
+  authorize('CREATE_PROMOTION'),
   validate(createPromotionSchema),
   logActivityMiddleware('create', 'promotion'),
   asyncHandler(promotionController.create.bind(promotionController))
@@ -66,7 +66,7 @@ router.post(
 // PUT /api/promotions/:id - Update promotion
 router.put(
   '/:id',
-  authorize('update_promotion'),
+  authorize('UPDATE_PROMOTION'),
   validate(updatePromotionSchema),
   logActivityMiddleware('update', 'promotion'),
   asyncHandler(promotionController.update.bind(promotionController))
@@ -75,7 +75,7 @@ router.put(
 // PUT /api/promotions/:id/approve - Approve promotion
 router.put(
   '/:id/approve',
-  authorize('approve_promotion'),
+  authorize('UPDATE_PROMOTION'),
   validate(approvePromotionSchema),
   logActivityMiddleware('approve', 'promotion'),
   asyncHandler(promotionController.approve.bind(promotionController))
@@ -84,10 +84,18 @@ router.put(
 // DELETE /api/promotions/:id - Cancel promotion
 router.delete(
   '/:id',
-  authorize('cancel_promotion'),
+  authorize('DELETE_PROMOTION'),
   validate(cancelPromotionSchema),
   logActivityMiddleware('cancel', 'promotion'),
   asyncHandler(promotionController.cancel.bind(promotionController))
+);
+
+// DELETE /api/promotions/:id/delete - Delete promotion (soft delete)
+router.delete(
+  '/:id/delete',
+  authorize('DELETE_PROMOTION'),
+  logActivityMiddleware('delete', 'promotion'),
+  asyncHandler(promotionController.delete.bind(promotionController))
 );
 
 // POST /api/promotions/:id/apply - Apply promotion to order

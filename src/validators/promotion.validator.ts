@@ -2,8 +2,6 @@ import { z } from 'zod';
 
 // Promotion Types Enum
 export const promotionTypeEnum = z.enum([
-  'percent_discount',
-  'fixed_discount',
   'buy_x_get_y',
   'gift',
 ]);
@@ -52,8 +50,6 @@ export const createPromotionSchema = z.object({
   promotionCode: z.string().min(1, 'Mã khuyến mãi là bắt buộc').max(50),
   promotionName: z.string().min(1, 'Tên khuyến mãi là bắt buộc').max(200),
   promotionType: promotionTypeEnum,
-  discountValue: z.number().min(0).optional(),
-  maxDiscountValue: z.number().min(0).optional(),
   startDate: z.string().refine((val) => !isNaN(Date.parse(val)), {
     message: 'Ngày bắt đầu không hợp lệ',
   }),
@@ -83,8 +79,6 @@ export const createPromotionSchema = z.object({
 // Update Promotion Schema
 export const updatePromotionSchema = z.object({
   promotionName: z.string().min(1).max(200).optional(),
-  discountValue: z.number().min(0).optional(),
-  maxDiscountValue: z.number().min(0).optional(),
   startDate: z
     .string()
     .refine((val) => !isNaN(Date.parse(val)), {
