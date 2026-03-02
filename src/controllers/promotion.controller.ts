@@ -210,6 +210,44 @@ class PromotionController {
     }
   }
 
+  // POST /api/promotions/bulk-delete - Bulk delete promotions
+  async bulkDelete(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const { ids } = req.body;
+      const userId = req.user!.id;
+
+      if (!Array.isArray(ids) || ids.length === 0) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Danh sách ID khuyến mãi không hợp lệ',
+            timestamp: new Date().toISOString(),
+          },
+        });
+        return;
+      }
+
+      const result = await promotionService.bulkDelete(ids, userId);
+
+      res.json({
+        success: true,
+        data: result,
+        message: `Đã xóa thành công ${result.count} khuyến mãi`,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({
+        success: false,
+        error: {
+          code: error.code || 'INTERNAL_ERROR',
+          message: error.message,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
+  }
+
   // GET /api/promotions/active - Get active promotions
   async getActive(req: AuthRequest, res: Response): Promise<void> {
     try {

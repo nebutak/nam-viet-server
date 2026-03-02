@@ -525,8 +525,8 @@ class PromotionService {
       throw new NotFoundError('Promotion');
     }
 
-    if (promotion.status !== 'pending' && promotion.status !== 'cancelled') {
-      throw new ValidationError('Chỉ có thể xóa khuyến mãi ở trạng thái chờ duyệt hoặc đã hủy');
+    if (promotion.status !== 'cancelled') {
+      throw new ValidationError('Chỉ có thể xóa khuyến mãi ở trạng thái đã hủy');
     }
 
     const updated = await prisma.promotion.update({
@@ -544,6 +544,40 @@ class PromotionService {
     logActivity('delete', userId, 'promotions', { id, code: updated.promotionCode });
 
     return updated;
+  }
+
+  // Bulk delete promotions (soft delete)
+  async bulkDelete(ids: number[], userId: number) {
+    // Filter out promotions that can't be deleted (not pending or cancelled)
+    const validPromotions = await prisma.promotion.findMany({
+      where: {
+        id: { in: ids },
+        status: 'cancelled',
+        deletedAt: null
+      },
+    });
+
+    const validIds = validPromotions.map(p => p.id);
+
+    if (validIds.length === 0) {
+      throw new ValidationError('Không có khuyến mãi nào hợp lệ để xóa (phải ở trạng thái chờ duyệt hoặc đã hủy)');
+    }
+
+    const result = await prisma.promotion.updateMany({
+      where: {
+        id: { in: validIds }
+      },
+      data: {
+        deletedAt: new Date(),
+      },
+    });
+
+    // Log activity for each deleted promotion
+    validPromotions.forEach(promotion => {
+      logActivity('delete', userId, 'promotions', { id: promotion.id, code: promotion.promotionCode, bulk: true });
+    });
+
+    return { count: result.count, deletedIds: validIds };
   }
 
   // Get active promotions
@@ -821,14 +855,10 @@ class PromotionService {
       }
 
       case 'gift': {
-        if (!data.products || data.products.length === 0) {
+        if (!data.conditions) {
           throw new ValidationError('Khuyến mãi quà tặng yêu cầu ít nhất một sản phẩm');
         }
 
-        const hasGift = data.products.some((p) => p.giftProductId && p.giftQuantity);
-        if (!hasGift) {
-          throw new ValidationError('Khuyến mãi quà tặng yêu cầu giftProductId và giftQuantity');
-        }
         break;
       }
     }

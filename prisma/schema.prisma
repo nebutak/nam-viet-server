@@ -1562,6 +1562,7 @@ enum ApplicableTo {
   product_group
   specific_product
   customer_group
+  specific_customer
 }
 
 enum PromotionStatus {

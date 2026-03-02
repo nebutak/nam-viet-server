@@ -98,6 +98,14 @@ router.delete(
   asyncHandler(promotionController.delete.bind(promotionController))
 );
 
+// POST /api/promotions/bulk-delete - Bulk delete promotions
+router.post(
+  '/bulk-delete',
+  authorize('DELETE_PROMOTION'),
+  logActivityMiddleware('delete', 'promotion'),
+  asyncHandler(promotionController.bulkDelete.bind(promotionController))
+);
+
 // POST /api/promotions/:id/apply - Apply promotion to order
 router.post(
   '/:id/apply',

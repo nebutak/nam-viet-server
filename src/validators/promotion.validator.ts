@@ -12,6 +12,7 @@ export const applicableToEnum = z.enum([
   'product_group',
   'specific_product',
   'customer_group',
+  'specific_customer',
 ]);
 
 export const promotionStatusEnum = z.enum(['pending', 'active', 'expired', 'cancelled']);
@@ -28,6 +29,7 @@ export const conditionsSchema = z.object({
   get_same_product: z.boolean().optional(),
   gift_product_id: z.number().optional(),
   gift_quantity: z.number().optional(),
+  customer_id: z.number().optional(),
 });
 
 // Query Schema
