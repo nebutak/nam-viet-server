@@ -1,4 +1,4 @@
-import { PrismaClient, Prisma } from '@prisma/client';
+import { PrismaClient, Prisma, WarehouseStatus } from '@prisma/client';
 import { NotFoundError, ValidationError, ConflictError } from '@utils/errors';
 import { logActivity } from '@utils/logger';
 import type {
@@ -486,6 +486,161 @@ class WarehouseService {
 
     return !!warehouse;
   }
+
+  async updateStatus(id: number, status: WarehouseStatus, updatedBy: number) {
+    const existingWarehouse = await prisma.warehouse.findUnique({
+      where: { id },
+    });
+
+    if (!existingWarehouse) {
+      throw new NotFoundError('Không tìm thấy kho này');
+    }
+
+    const updatedWarehouse = await prisma.warehouse.update({
+      where: { id },
+      data: { status },
+      select: {
+        id: true,
+        warehouseCode: true,
+        warehouseName: true,
+        warehouseType: true,
+        status: true,
+        updatedAt: true,
+      },
+    });
+
+    logActivity('update_status', updatedBy, 'warehouses', {
+      recordId: id,
+      oldValue: existingWarehouse.status,
+      newValue: updatedWarehouse.status,
+    });
+
+    return updatedWarehouse;
+  }
+
+  async bulkDelete(ids: number[], deletedBy: number) {
+    const warehouses = await prisma.warehouse.findMany({
+      where: { id: { in: ids } },
+      include: {
+        _count: {
+          select: { inventory: true, stockTransactions: true },
+        },
+      },
+    });
+
+    if (warehouses.length === 0) {
+      throw new NotFoundError('Không tìm thấy kho nào để xóa');
+    }
+
+    const validIds = warehouses
+      .filter((w) => w._count.inventory === 0 && w._count.stockTransactions === 0)
+      .map((w) => w.id);
+
+    if (validIds.length === 0) {
+      throw new ConflictError('Không thể xóa các kho đã chọn vì đang có hàng tồn hoặc giao dịch');
+    }
+
+    await prisma.warehouse.deleteMany({
+      where: { id: { in: validIds } },
+    });
+
+    logActivity('bulk_delete', deletedBy, 'warehouses', {
+      deletedIds: validIds,
+      totalRequested: ids.length,
+      totalDeleted: validIds.length,
+    });
+
+    return {
+      message: `Đã xóa thành công ${validIds.length}/${ids.length} kho`,
+    };
+  }
+
+  async importWarehouses(items: any[], createdBy: number) {
+    let successCount = 0;
+    const errors: any[] = [];
+
+    for (const [index, item] of items.entries()) {
+      try {
+        const codeExists = await this.checkWarehouseCodeExists(item.warehouseCode);
+        if (codeExists) {
+          throw new Error(`Mã kho '${item.warehouseCode}' đã tồn tại`);
+        }
+
+        await prisma.warehouse.create({
+          data: {
+            warehouseCode: item.warehouseCode,
+            warehouseName: item.warehouseName,
+            warehouseType: item.warehouseType || 'goods',
+            city: item.city || null,
+            region: item.region || null,
+            address: item.address || null,
+            capacity: item.capacity || null,
+            description: item.description || null,
+            status: 'active',
+          },
+        });
+        successCount++;
+      } catch (error: any) {
+        errors.push({
+          row: index + 2, // Excel rows start at 1, header is 1, data starts at 2
+          errors: [{ field: 'warehouse', message: error.message }],
+        });
+      }
+    }
+
+    logActivity('import', createdBy, 'warehouses', {
+      totalImported: successCount,
+      totalFailed: errors.length,
+    });
+
+    if (errors.length > 0) {
+      const errObj: any = new Error('Lỗi import dữ liệu kho');
+      errObj.statusCode = 400;
+      errObj.importErrors = errors;
+      throw errObj;
+    }
+
+    return { message: `Đã import thành công ${successCount} kho hàng` };
+  }
+
+  async getImportTemplate() {
+    const ExcelJS = require('exceljs');
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Template');
+
+    worksheet.columns = [
+      { header: 'Mã kho (*)', key: 'code', width: 20 },
+      { header: 'Tên kho (*)', key: 'name', width: 30 },
+      { header: 'Loại kho', key: 'type', width: 20 },
+      { header: 'Tỉnh/Thành', key: 'city', width: 20 },
+      { header: 'Khu vực', key: 'region', width: 20 },
+      { header: 'Địa chỉ chi tiết', key: 'address', width: 40 },
+      { header: 'Sức chứa', key: 'capacity', width: 15 },
+      { header: 'Mô tả', key: 'note', width: 30 },
+    ];
+
+    worksheet.addRow({
+      code: 'KHO-TEST01',
+      name: 'Kho trung tâm',
+      type: 'Thành phẩm',
+      city: 'Hồ Chí Minh',
+      region: 'Miền Nam',
+      address: '123 Đường ABC, Quận 1',
+      capacity: 1000,
+      note: 'Kho chính',
+    });
+
+    worksheet.getRow(1).font = { bold: true };
+    worksheet.getRow(1).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE6F2FF' },
+    };
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return buffer as Buffer;
+  }
 }
 
 export default new WarehouseService();
+
