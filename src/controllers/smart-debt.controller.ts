@@ -24,7 +24,7 @@ class SmartDebtController {
    */
   async getAll(req: Request, res: Response, next: NextFunction) {
     try {
-      const { page, limit, search, status, year, assignedUserId, type } = req.query;
+      const { page, limit, search, status, year, assignedUserId, type, address } = req.query;
 
       const result = await debtService.getAll({
         page: Number(page) || 1,
@@ -33,9 +33,10 @@ class SmartDebtController {
         status: status as 'paid' | 'unpaid',
         year: year ? Number(year) : undefined,
         assignedUserId: assignedUserId ? Number(assignedUserId) : undefined,
-        type: type as 'customer' | 'supplier'
+        type: type as 'customer' | 'supplier',
+        address: address as string
       });
-      
+
       res.status(200).json({
         success: true,
         data: (result as any).data,
@@ -48,17 +49,17 @@ class SmartDebtController {
     }
   }
 
-/**
-   * GET /api/smart-debt/export-list
-   * Params: year (number), type ('all' | 'customer' | 'supplier')
-   */
+  /**
+     * GET /api/smart-debt/export-list
+     * Params: year (number), type ('all' | 'customer' | 'supplier')
+     */
   async exportList(req: Request, res: Response, next: NextFunction) {
     try {
       // 1. Lấy tham số từ Query String
       const { year, type } = req.query;
-      
+
       const targetYear = year ? Number(year) : new Date().getFullYear();
-      
+
       // 2. Validate và gán mặc định cho 'type'
       // Nếu user gửi linh tinh hoặc không gửi -> mặc định là 'all'
       const exportType = (type === 'customer' || type === 'supplier') ? type : 'all';
@@ -87,18 +88,18 @@ class SmartDebtController {
   async getById(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params; // Đây là CustomerID hoặc SupplierID
-      const { year, type } = req.query; 
+      const { year, type } = req.query;
 
       if (!type || (type !== 'customer' && type !== 'supplier')) {
         throw new ValidationError("Vui lòng truyền tham số type='customer' hoặc 'supplier'");
       }
 
       const data = await debtService.getDetail(
-          Number(id), 
-          type as 'customer' | 'supplier',
-          year ? Number(year) : undefined
+        Number(id),
+        type as 'customer' | 'supplier',
+        year ? Number(year) : undefined
       );
-      
+
       res.status(200).json({
         success: true,
         data: data,
@@ -168,8 +169,8 @@ class SmartDebtController {
         notes,
         assignedUserId: assignedUserId ? Number(assignedUserId) : undefined
       })
-      .then(() => console.log(`✅ [Background] SyncFull hoàn tất cho ${customerId ? 'C-'+customerId : 'S-'+supplierId}`))
-      .catch((err) => console.error(`❌ [Background] Lỗi SyncFull:`, err));
+        .then(() => console.log(`✅ [Background] SyncFull hoàn tất cho ${customerId ? 'C-' + customerId : 'S-' + supplierId}`))
+        .catch((err) => console.error(`❌ [Background] Lỗi SyncFull:`, err));
 
       res.status(202).json({
         success: true,
@@ -241,20 +242,20 @@ class SmartDebtController {
    */
   async checkIntegrity(req: Request, res: Response, next: NextFunction) {
     try {
-        const year = req.query.year ? Number(req.query.year) : new Date().getFullYear();
-        
-        const result = await debtService.checkDataIntegrity(year);
-        
-        res.status(200).json({
-            success: true,
-            message: result.discrepanciesCount > 0 
-                ? `Cảnh báo: Phát hiện ${result.discrepanciesCount} sai lệch dữ liệu!` 
-                : 'Dữ liệu toàn vẹn, không có sai lệch.',
-            data: result,
-            timestamp: new Date().toISOString(),
-        });
+      const year = req.query.year ? Number(req.query.year) : new Date().getFullYear();
+
+      const result = await debtService.checkDataIntegrity(year);
+
+      res.status(200).json({
+        success: true,
+        message: result.discrepanciesCount > 0
+          ? `Cảnh báo: Phát hiện ${result.discrepanciesCount} sai lệch dữ liệu!`
+          : 'Dữ liệu toàn vẹn, không có sai lệch.',
+        data: result,
+        timestamp: new Date().toISOString(),
+      });
     } catch (error) {
-        next(error);
+      next(error);
     }
   }
 
@@ -306,26 +307,26 @@ class SmartDebtController {
    */
   async exportPdf(req: Request, res: Response, next: NextFunction) {
     try {
-        const { id } = req.params;
-        const { year, type } = req.query;
+      const { id } = req.params;
+      const { year, type } = req.query;
 
-        if (!type || (type !== 'customer' && type !== 'supplier')) {
-            throw new ValidationError("Thiếu tham số type");
-        }
+      if (!type || (type !== 'customer' && type !== 'supplier')) {
+        throw new ValidationError("Thiếu tham số type");
+      }
 
-        const data = await debtService.getDetail(
-            Number(id), 
-            type as 'customer' | 'supplier',
-            year ? Number(year) : undefined
-        );
-        
-        res.status(200).json({
-            success: true,
-            data: data,
-            message: 'Ready for printing',
-        });
+      const data = await debtService.getDetail(
+        Number(id),
+        type as 'customer' | 'supplier',
+        year ? Number(year) : undefined
+      );
+
+      res.status(200).json({
+        success: true,
+        data: data,
+        message: 'Ready for printing',
+      });
     } catch (error) {
-        next(error);
+      next(error);
     }
   }
 

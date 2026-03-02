@@ -13,6 +13,7 @@ export interface DebtQueryParams {
 
   assignedUserId?: number; // Lọc theo nhân viên phụ trách
   type?: 'customer' | 'supplier';
+  address?: string;        // Lọc theo địa chỉ
 }
 
 // ==========================================
@@ -61,7 +62,7 @@ class SmartDebtService {
   // =========================================================================
   async getAll(params: DebtQueryParams) {
 
-    const { page = 1, limit = 20, search, status, year, assignedUserId, type } = params;
+    const { page = 1, limit = 20, search, status, year, assignedUserId, type, address } = params;
     const skip = (Number(page) - 1) * Number(limit);
     const targetYearStr = year ? String(year) : String(new Date().getFullYear());
 
@@ -84,6 +85,7 @@ class SmartDebtService {
         ];
       }
       if (assignedUserId) where.assignedUserId = Number(assignedUserId);
+      if (address) where.address = { contains: address };
 
       if (status) {
         const debtCondition = { periodName: targetYearStr };
@@ -129,6 +131,7 @@ class SmartDebtService {
       }
 
       if (assignedUserId) where.assignedUserId = Number(assignedUserId);
+      if (address) where.address = { contains: address };
 
       if (status) {
         const debtCondition = { periodName: targetYearStr };
@@ -171,6 +174,7 @@ class SmartDebtService {
         ];
       }
       if (assignedUserId) customerWhere.assignedUserId = Number(assignedUserId);
+      if (address) customerWhere.address = { contains: address };
 
       // 2. Tạo điều kiện lọc cho Nhà cung cấp
       const supplierWhere: any = { status: 'active' };
@@ -181,6 +185,7 @@ class SmartDebtService {
         ];
       }
       if (assignedUserId) supplierWhere.assignedUserId = Number(assignedUserId);
+      if (address) supplierWhere.address = { contains: address };
 
       // 3. Query song song cả 2 bảng
       const [customers, suppliers] = await Promise.all([

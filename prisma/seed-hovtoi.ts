@@ -6,39 +6,99 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Starting database seed...\n');
 
-  // // =====================================================
-  // // 0. CLEAN DATABASE (Delete existing data)
-  // // =====================================================
-  // console.log('🗑️  Cleaning database...\n');
+  // =====================================================
+  // 0. CLEAN DATABASE (Delete existing data)
+  // =====================================================
+  console.log('🗑️  Cleaning database...\n');
 
-  // try {
-  //   // Delete in correct order to respect foreign key constraints
-  //   await prisma.rolePermission.deleteMany({});
-  //   console.log('   ✓ Deleted RolePermissions');
+  try {
+    // Delete in correct order to respect foreign key constraints
+    await prisma.customerAccount.deleteMany({});
+    console.log('   ✓ Deleted CustomerAccounts');
 
-  //   await prisma.user.deleteMany({});
-  //   console.log('   ✓ Deleted Users');
+    await prisma.activityLog.deleteMany({});
+    console.log('   ✓ Deleted ActivityLogs');
 
-  //   await prisma.warehouse.deleteMany({});
-  //   console.log('   ✓ Deleted Warehouses');
+    await prisma.verificationCode.deleteMany({});
+    console.log('   ✓ Deleted VerificationCodes');
 
-  //   await prisma.supplier.deleteMany({});
-  //   console.log('   ✓ Deleted Suppliers');
+    await prisma.rolePermission.deleteMany({});
+    console.log('   ✓ Deleted RolePermissions');
 
-  //   await prisma.category.deleteMany({});
-  //   console.log('   ✓ Deleted Categories');
+    // Need to remove relations from warehouse & customers to user first if any strict FKs exist
+    // Prisma deleteMany will fail if other tables reference User. Let's delete dependent tables first
+    await prisma.stockTransferDetail.deleteMany({});
+    await prisma.stockTransfer.deleteMany({});
+    await prisma.stockTransactionDetail.deleteMany({});
+    await prisma.stockTransaction.deleteMany({});
+    await prisma.productionOrderMaterial.deleteMany({});
+    await prisma.productionOrder.deleteMany({});
+    await prisma.bomMaterial.deleteMany({});
+    await prisma.bom.deleteMany({});
+    await prisma.salesOrderDetail.deleteMany({});
+    await prisma.salesOrder.deleteMany({});
+    await prisma.purchaseOrderDetail.deleteMany({});
+    await prisma.purchaseOrder.deleteMany({});
+    await prisma.paymentVoucher.deleteMany({});
+    await prisma.paymentReceipt.deleteMany({});
 
-  //   await prisma.permission.deleteMany({});
-  //   console.log('   ✓ Deleted Permissions');
+    await prisma.crmTask.deleteMany({});
+    await prisma.ticket.deleteMany({});
+    
+    await prisma.customer.deleteMany({});
+    console.log('   ✓ Deleted Customers');
 
-  //   await prisma.role.deleteMany({});
-  //   console.log('   ✓ Deleted Roles');
+    await prisma.supplier.deleteMany({});
+    console.log('   ✓ Deleted Suppliers');
 
-  //   console.log('\n✅ Database cleaned successfully!\n');
-  // } catch (error) {
-  //   console.error('⚠️  Error cleaning database:', error);
-  //   console.log('   Continuing with seed process...\n');
-  // }
+    await prisma.promotionProduct.deleteMany({});
+    await prisma.productImage.deleteMany({});
+    await prisma.productVideo.deleteMany({});
+    await prisma.inventory.deleteMany({});
+    await prisma.product.deleteMany({});
+    console.log('   ✓ Deleted Products');
+
+    await prisma.warehouse.deleteMany({});
+    console.log('   ✓ Deleted Warehouses');
+
+    await prisma.newsTagRelation.deleteMany({});
+    await prisma.newsTag.deleteMany({});
+    await prisma.news.deleteMany({});
+    await prisma.newsCategory.deleteMany({});
+    await prisma.attendanceQRLog.deleteMany({});
+    await prisma.attendanceQRCode.deleteMany({});
+    await prisma.loginHistory.deleteMany({});
+    await prisma.userPermission.deleteMany({});
+    await prisma.notification.deleteMany({});
+    await prisma.overtimeEntry.deleteMany({});
+    await prisma.overtimeSession.deleteMany({});
+    await prisma.salary.deleteMany({});
+    await prisma.attendance.deleteMany({});
+    await prisma.attendanceMonth.deleteMany({});
+    await prisma.promotion.deleteMany({});
+    await prisma.cashFund.deleteMany({});
+    await prisma.delivery.deleteMany({});
+    await prisma.generalSetting.deleteMany({});
+    
+    await prisma.user.deleteMany({});
+    console.log('   ✓ Deleted Users');
+
+    await prisma.category.deleteMany({});
+    console.log('   ✓ Deleted Categories');
+
+    await prisma.permission.deleteMany({});
+    console.log('   ✓ Deleted Permissions');
+
+    await prisma.role.deleteMany({});
+    console.log('   ✓ Deleted Roles');
+
+
+
+    console.log('\n✅ Database cleaned successfully!\n');
+  } catch (error) {
+    console.error('⚠️  Error cleaning database:', error);
+    console.log('   Continuing with seed process...\n');
+  }
 
   // =====================================================
   // 1. SEED ROLES
@@ -126,215 +186,295 @@ async function main() {
   console.log('📝 Seeding permissions...');
 
   const permissionsData = [
-    // ============================================================
-    // USER MANAGEMENT
-    // ============================================================
-    { key: 'view_users', name: 'Xem danh sách người dùng', module: 'users' },
-    { key: 'create_user', name: 'Tạo người dùng mới', module: 'users' },
-    { key: 'update_user', name: 'Cập nhật người dùng', module: 'users' },
-    { key: 'delete_user', name: 'Xóa người dùng', module: 'users' },
-    { key: 'manage_roles', name: 'Quản lý vai trò và quyền', module: 'users' },
+    // Quản lý nhân sự
+    { key: "USER_MANAGEMENT", name: "Quản lý nhân sự", module: "user" },
+    { key: "GET_USER", name: "Xem nhân sự", module: "user" },
+    { key: "CREATE_USER", name: "Thêm nhân sự", module: "user" },
+    { key: "UPDATE_USER", name: "Sửa nhân sự", module: "user" },
+    { key: "DELETE_USER", name: "Xóa nhân sự", module: "user" },
 
-    // ============================================================
-    // WAREHOUSE MANAGEMENT
-    // ============================================================
-    // Warehouses
-    { key: 'view_warehouses', name: 'Xem danh sách kho', module: 'warehouse' },
-    { key: 'create_warehouse', name: 'Tạo kho mới', module: 'warehouse' },
-    { key: 'update_warehouse', name: 'Cập nhật kho', module: 'warehouse' },
-    { key: 'delete_warehouse', name: 'Xóa kho', module: 'warehouse' },
+    // Quản lý vai trò
+    { key: "ROLE_MANAGEMENT", name: "Quản lý vai trò", module: "role" },
+    { key: "GET_ROLE", name: "Xem vai trò", module: "role" },
+    { key: "CREATE_ROLE", name: "Thêm vai trò", module: "role" },
+    { key: "UPDATE_ROLE", name: "Sửa vai trò", module: "role" },
+    { key: "DELETE_ROLE", name: "Xóa vai trò", module: "role" },
 
-    // Inventory
-    { key: 'view_inventory', name: 'Xem tồn kho', module: 'warehouse' },
-    { key: 'manage_inventory', name: 'Quản lý tồn kho', module: 'warehouse' },
+    // Quản lý vị trí
+    { key: "POSITION_MANAGEMENT", name: "Quản lý vị trí", module: "position" },
+    { key: "GET_POSITION", name: "Xem vị trí", module: "position" },
+    { key: "CREATE_POSITION", name: "Thêm vị trí", module: "position" },
+    { key: "UPDATE_POSITION", name: "Sửa vị trí", module: "position" },
+    { key: "DELETE_POSITION", name: "Xóa vị trí", module: "position" },
 
-    // Stock Transactions (FIXED: Added 's')
-    { key: 'view_stock_transactions', name: 'Xem phiếu kho', module: 'warehouse' },
-    { key: 'create_stock_transactions', name: 'Tạo phiếu kho', module: 'warehouse' },
-    { key: 'approve_stock_transactions', name: 'Phê duyệt phiếu kho', module: 'warehouse' },
-    { key: 'cancel_stock_transactions', name: 'Hủy phiếu kho', module: 'warehouse' },
-    { key: 'stocktake_warehouse', name: 'Kiểm kê kho', module: 'warehouse' },
-    {
-      key: 'create_disposal_transaction',
-      name: 'Tạo phiếu xuất hủy hàng hỏng',
-      module: 'warehouse',
-    },
+    // Quản lý danh mục
+    { key: "CATEGORY_MANAGEMENT", name: "Quản lý danh mục", module: "category" },
+    { key: "GET_CATEGORY", name: "Xem danh mục", module: "category" },
+    { key: "CREATE_CATEGORY", name: "Thêm danh mục", module: "category" },
+    { key: "UPDATE_CATEGORY", name: "Sửa danh mục", module: "category" },
+    { key: "DELETE_CATEGORY", name: "Xóa danh mục", module: "category" },
 
-    // Stock Transfers (NEW)
-    { key: 'view_stock_transfers', name: 'Xem phiếu chuyển kho', module: 'warehouse' },
-    { key: 'create_stock_transfers', name: 'Tạo phiếu chuyển kho', module: 'warehouse' },
-    { key: 'update_stock_transfers', name: 'Cập nhật phiếu chuyển kho', module: 'warehouse' },
-    { key: 'delete_stock_transfers', name: 'Xóa phiếu chuyển kho', module: 'warehouse' },
-    { key: 'approve_stock_transfers', name: 'Phê duyệt phiếu chuyển kho', module: 'warehouse' },
-    { key: 'cancel_stock_transfers', name: 'Hủy phiếu chuyển kho', module: 'warehouse' },
-    { key: 'complete_stock_transfers', name: 'Hoàn thành chuyển kho', module: 'warehouse' },
+    // Quản lý đơn vị
+    { key: "UNIT_MANAGEMENT", name: "Quản lý đơn vị", module: "unit" },
+    { key: "GET_UNIT", name: "Xem đơn vị", module: "unit" },
+    { key: "CREATE_UNIT", name: "Thêm đơn vị", module: "unit" },
+    { key: "UPDATE_UNIT", name: "Sửa đơn vị", module: "unit" },
+    { key: "DELETE_UNIT", name: "Xóa đơn vị", module: "unit" },
 
-    // ============================================================
-    // SUPPLIER MANAGEMENT (NEW MODULE)
-    // ============================================================
-    { key: 'view_suppliers', name: 'Xem nhà cung cấp', module: 'suppliers' },
-    { key: 'create_supplier', name: 'Tạo nhà cung cấp', module: 'suppliers' },
-    { key: 'update_supplier', name: 'Cập nhật nhà cung cấp', module: 'suppliers' },
-    { key: 'delete_supplier', name: 'Xóa nhà cung cấp', module: 'suppliers' },
+    // Quản lý thuộc tính
+    { key: "GET_ATTRIBUTE", name: "Xem thuộc tính", module: "attribute" },
+    { key: "CREATE_ATTRIBUTE", name: "Thêm thuộc tính", module: "attribute" },
+    { key: "UPDATE_ATTRIBUTE", name: "Sửa thuộc tính", module: "attribute" },
+    { key: "DELETE_ATTRIBUTE", name: "Xóa thuộc tính", module: "attribute" },
 
-    // ============================================================
-    // PURCHASE ORDER MANAGEMENT (NEW MODULE)
-    // ============================================================
-    { key: 'view_purchase_orders', name: 'Xem đơn đặt hàng', module: 'procurement' },
-    { key: 'create_purchase_order', name: 'Tạo đơn đặt hàng', module: 'procurement' },
-    { key: 'update_purchase_order', name: 'Cập nhật đơn đặt hàng', module: 'procurement' },
-    { key: 'delete_purchase_order', name: 'Xóa đơn đặt hàng', module: 'procurement' },
-    { key: 'approve_purchase_order', name: 'Phê duyệt đơn đặt hàng', module: 'procurement' },
-    { key: 'sendEmail_purchase_order', name: 'Gửi mail đơn đặt hàng', module: 'procurement' },
-    { key: 'receive_purchase_order', name: 'Nhận hàng đơn đặt hàng', module: 'procurement' },
-    { key: 'cancel_purchase_order', name: 'Hủy đơn đặt hàng', module: 'procurement' },
-    { key: 'view_procurement', name: 'Xem mua hàng', module: 'procurement' },
-    { key: 'manage_procurement', name: 'Quản lý mua hàng', module: 'procurement' },
+    // Quản lý nhà cung cấp
+    { key: "SUPPLIER_MANAGEMENT", name: "Quản lý nhà cung cấp", module: "supplier" },
+    { key: "GET_SUPPLIER", name: "Xem nhà cung cấp", module: "supplier" },
+    { key: "CREATE_SUPPLIER", name: "Thêm nhà cung cấp", module: "supplier" },
+    { key: "UPDATE_SUPPLIER", name: "Sửa nhà cung cấp", module: "supplier" },
+    { key: "DELETE_SUPPLIER", name: "Xóa nhà cung cấp", module: "supplier" },
 
-    // ============================================================
-    // PRODUCT MANAGEMENT
-    // ============================================================
-    // Products
-    { key: 'view_products', name: 'Xem sản phẩm', module: 'products' },
-    { key: 'create_product', name: 'Tạo sản phẩm', module: 'products' },
-    { key: 'update_product', name: 'Cập nhật sản phẩm', module: 'products' },
-    { key: 'delete_product', name: 'Xóa sản phẩm', module: 'products' },
+    // Quản lý sản phẩm
+    { key: "PRODUCT_MANAGEMENT", name: "Quản lý sản phẩm", module: "product" },
+    { key: "GET_PRODUCT", name: "Xem sản phẩm", module: "product" },
+    { key: "CREATE_PRODUCT", name: "Thêm sản phẩm", module: "product" },
+    { key: "UPDATE_PRODUCT", name: "Sửa sản phẩm", module: "product" },
+    { key: "DELETE_PRODUCT", name: "Xóa sản phẩm", module: "product" },
 
-    // Categories (NEW)
-    { key: 'view_categories', name: 'Xem danh mục', module: 'products' },
-    { key: 'create_category', name: 'Tạo danh mục', module: 'products' },
-    { key: 'update_category', name: 'Cập nhật danh mục', module: 'products' },
-    { key: 'delete_category', name: 'Xóa danh mục', module: 'products' },
+    // Quản lý khách hàng
+    { key: "CUSTOMER_MANAGEMENT", name: "Quản lý khách hàng", module: "customer" },
+    { key: "GET_CUSTOMER", name: "Xem khách hàng", module: "customer" },
+    { key: "GET_CUSTOMER_USER", name: "Xem khách hàng của tôi", module: "customer" },
+    { key: "CREATE_CUSTOMER", name: "Thêm khách hàng", module: "customer" },
+    { key: "UPDATE_CUSTOMER", name: "Sửa khách hàng", module: "customer" },
+    { key: "DELETE_CUSTOMER", name: "Xóa khách hàng", module: "customer" },
 
-    // ============================================================
-    // PRODUCTION MANAGEMENT
-    // ============================================================
-    // BOM
-    { key: 'view_bom', name: 'Xem công thức sản xuất', module: 'production' },
-    { key: 'create_bom', name: 'Tạo công thức sản xuất', module: 'production' },
-    { key: 'update_bom', name: 'Cập nhật công thức sản xuất', module: 'production' },
-    { key: 'delete_bom', name: 'Xóa công thức sản xuất', module: 'production' },
-    { key: 'approve_bom', name: 'Phê duyệt công thức', module: 'production' },
+    // Chăm sóc khách hàng & Nhiệm vụ
+    { key: "CUSTOMER_CARE_MANAGEMENT", name: "Quản lý CSKH", module: "crm" },
+    { key: "GET_CUSTOMER_CARE", name: "Xem CSKH", module: "crm" },
+    { key: "CREATE_CUSTOMER_CARE", name: "Thêm CSKH", module: "crm" },
+    { key: "UPDATE_CUSTOMER_CARE", name: "Sửa CSKH", module: "crm" },
+    { key: "DELETE_CUSTOMER_CARE", name: "Xóa CSKH", module: "crm" },
+    { key: "UPDATE_CUSTOMER_CARE_STATUS", name: "Sửa trạng thái CSKH", module: "crm" },
+    { key: "CRM_MANAGEMENT", name: "Quản lý CRM", module: "crm" },
+    
+    { key: "TASK_MANAGEMENT", name: "Quản lý nhiệm vụ", module: "task" },
+    { key: "GET_TASK", name: "Xem nhiệm vụ", module: "task" },
+    { key: "CREATE_TASK", name: "Thêm nhiệm vụ", module: "task" },
+    { key: "UPDATE_TASK", name: "Sửa nhiệm vụ", module: "task" },
+    { key: "DELETE_TASK", name: "Xóa nhiệm vụ", module: "task" },
+    { key: "UPDATE_TASK_STATUS", name: "Sửa trạng thái nhiệm vụ", module: "task" },
 
-    // Production
-    { key: 'view_production', name: 'Xem thông tin sản xuất', module: 'production' },
-    { key: 'manage_production', name: 'Quản lý sản xuất', module: 'production' },
-    { key: 'view_production_orders', name: 'Xem lệnh sản xuất', module: 'production' },
-    { key: 'create_production_order', name: 'Tạo lệnh sản xuất', module: 'production' },
-    { key: 'update_production_order', name: 'Cập nhật lệnh sản xuất', module: 'production' },
-    { key: 'delete_production_order', name: 'Xóa lệnh sản xuất', module: 'production' },
-    { key: 'approve_production_order', name: 'Phê duyệt lệnh sản xuất', module: 'production' },
-    { key: 'cancel_production_order', name: 'Hủy lệnh sản xuất', module: 'production' },
-    { key: 'start_production', name: 'Bắt đầu sản xuất', module: 'production' },
-    { key: 'complete_production', name: 'Hoàn thành sản xuất', module: 'production' },
-    { key: 'view_production_reports', name: 'Xem báo cáo sản xuất', module: 'production' },
+    // Quản lý hóa đơn / Bán hàng
+    { key: "SALES_MANAGEMENT", name: "Quản lý bán hàng", module: "sales" },
+    { key: "INVOICE_MANAGEMENT", name: "Quản lý hóa đơn", module: "invoice" },
+    { key: "GET_INVOICE", name: "Xem hóa đơn", module: "invoice" },
+    { key: "GET_INVOICE_USER", name: "Xem hóa đơn của tôi", module: "invoice" },
+    { key: "CREATE_INVOICE", name: "Thêm hóa đơn", module: "invoice" },
+    { key: "UPDATE_INVOICE", name: "Sửa hóa đơn", module: "invoice" },
+    { key: "DELETE_INVOICE", name: "Xóa hóa đơn", module: "invoice" },
+    { key: "DELETE_INVOICE_USER", name: "Xóa hóa đơn của tôi", module: "invoice" },
+    { key: "APPROVE_INVOICE", name: "Duyệt hóa đơn", module: "invoice" },
+    { key: "REJECT_INVOICE", name: "Từ chối hóa đơn", module: "invoice" },
+    { key: "REVERT_INVOICE", name: "Hoàn tác hóa đơn", module: "invoice" },
+    { key: "ISSUE_INVOICE", name: "Xuất hóa đơn", module: "invoice" },
+    { key: "PREVIEW_INVOICE", name: "Xem trước hóa đơn", module: "invoice" },
+    { key: "DOWNLOAD_INVOICE", name: "Tải hóa đơn", module: "invoice" },
 
-    // ============================================================
-    // SALES MANAGEMENT
-    // ============================================================
-    // Customers
-    { key: 'view_customers', name: 'Xem khách hàng', module: 'sales' },
-    { key: 'create_customer', name: 'Tạo khách hàng', module: 'sales' },
-    { key: 'update_customer', name: 'Cập nhật khách hàng', module: 'sales' },
-    { key: 'delete_customer', name: 'Xóa khách hàng', module: 'sales' },
-    { key: 'view_customer_debt', name: 'Xem công nợ khách hàng', module: 'sales' },
-    { key: 'update_customer_credit_limit', name: 'Cập nhật hạn mức', module: 'sales' },
-    { key: 'update_customer_status', name: 'Cập nhật trạng thái KH', module: 'sales' },
+    // Hợp đồng bán hàng
+    { key: "SALES_CONTRACT_MANAGEMENT", name: "Quản lý HĐ bán", module: "sales_contract" },
+    { key: "GET_SALES_CONTRACT", name: "Xem HĐ bán", module: "sales_contract" },
+    { key: "SALES_CONTRACT_VIEW_ALL", name: "Xem tất cả HĐ bán", module: "sales_contract" },
+    { key: "CREATE_SALES_CONTRACT", name: "Thêm HĐ bán", module: "sales_contract" },
+    { key: "SALES_CONTRACT_CREATE", name: "Tạo HĐ bán", module: "sales_contract" },
+    { key: "UPDATE_SALES_CONTRACT", name: "Sửa HĐ bán", module: "sales_contract" },
+    { key: "SALES_CONTRACT_UPDATE", name: "Cập nhật HĐ bán", module: "sales_contract" },
+    { key: "DELETE_SALES_CONTRACT", name: "Xóa HĐ bán", module: "sales_contract" },
+    { key: "SALES_CONTRACT_DELETE", name: "Xóa HĐ bán", module: "sales_contract" },
+    { key: "CONFIRM_SALES_CONTRACT", name: "Xác nhận HĐ bán", module: "sales_contract" },
+    { key: "SALES_CONTRACT_APPROVE", name: "Duyệt HĐ bán", module: "sales_contract" },
+    { key: "SALES_CONTRACT_CANCEL", name: "Hủy HĐ bán", module: "sales_contract" },
+    { key: "SALES_CONTRACT_LIQUIDATE", name: "Thanh lý HĐ bán", module: "sales_contract" },
 
-    // Sales Orders
-    { key: 'view_sales_orders', name: 'Xem đơn hàng', module: 'sales' },
-    { key: 'create_sales_order', name: 'Tạo đơn hàng', module: 'sales' },
-    { key: 'update_sales_order', name: 'Cập nhật đơn hàng', module: 'sales' },
-    { key: 'delete_sales_order', name: 'Xóa đơn hàng', module: 'sales' },
-    { key: 'approve_sales_order', name: 'Phê duyệt đơn hàng', module: 'sales' },
-    { key: 'cancel_sales_order', name: 'Hủy đơn hàng', module: 'sales' },
-    { key: 'complete_sales_order', name: 'Hoàn thành đơn hàng', module: 'sales' },
+    // Đơn mua hàng
+    { key: "PURCHASING_MANAGEMENT", name: "Quản lý mua hàng", module: "purchase" },
+    { key: "PURCHASE_ORDER_MANAGEMENT", name: "Quản lý đơn mua", module: "purchase_order" },
+    { key: "GET_PURCHASE_ORDER", name: "Xem đơn mua", module: "purchase_order" },
+    { key: "GET_PURCHASE_ORDER_USER", name: "Xem đơn mua của tôi", module: "purchase_order" },
+    { key: "PURCHASE_ORDER_VIEW_ALL", name: "Xem tất cả đơn mua", module: "purchase_order" },
+    { key: "CREATE_PURCHASE_ORDER", name: "Thêm đơn mua", module: "purchase_order" },
+    { key: "PURCHASE_ORDER_CREATE", name: "Tạo đơn mua", module: "purchase_order" },
+    { key: "UPDATE_PURCHASE_ORDER", name: "Sửa đơn mua", module: "purchase_order" },
+    { key: "PURCHASE_ORDER_UPDATE", name: "Cập nhật đơn mua", module: "purchase_order" },
+    { key: "DELETE_PURCHASE_ORDER", name: "Xóa đơn mua", module: "purchase_order" },
+    { key: "PURCHASE_ORDER_DELETE", name: "Xóa đơn mua", module: "purchase_order" },
+    { key: "CONFIRM_PURCHASE_ORDER", name: "Xác nhận đơn mua", module: "purchase_order" },
+    { key: "PURCHASE_ORDER_APPROVE", name: "Duyệt đơn mua", module: "purchase_order" },
+    { key: "CANCEL_PURCHASE_ORDER", name: "Hủy đơn mua", module: "purchase_order" },
+    { key: "PURCHASE_ORDER_CANCEL", name: "Hủy đơn mua", module: "purchase_order" },
+    { key: "PURCHASE_ORDER_REVERT", name: "Hoàn tác đơn mua", module: "purchase_order" },
 
-    // Deliveries (NEW MODULE)
-    { key: 'view_deliveries', name: 'Xem phiếu giao hàng', module: 'sales' },
-    { key: 'create_delivery', name: 'Tạo phiếu giao hàng', module: 'sales' },
-    { key: 'update_delivery', name: 'Cập nhật phiếu giao', module: 'sales' },
-    { key: 'delete_delivery', name: 'Xóa phiếu giao', module: 'sales' },
-    { key: 'start_delivery', name: 'Bắt đầu giao hàng', module: 'sales' },
-    { key: 'complete_delivery', name: 'Hoàn thành giao hàng', module: 'sales' },
-    { key: 'fail_delivery', name: 'Báo giao hàng thất bại', module: 'sales' },
-    { key: 'settle_cod', name: 'Quyết toán COD', module: 'sales' },
-    { key: 'view_delivery_settlement', name: 'Xem quyết toán giao hàng', module: 'sales' },
+    // Hợp đồng mua hàng
+    { key: "SALES_PURCHASE_MANAGEMENT", name: "Quản lý HĐ mua", module: "purchase_contract" },
+    { key: "GET_PURCHASE_CONTRACT", name: "Xem HĐ mua", module: "purchase_contract" },
+    { key: "PURCHASE_CONTRACT_VIEW_ALL", name: "Xem tất cả HĐ mua", module: "purchase_contract" },
+    { key: "CREATE_PURCHASE_CONTRACT", name: "Thêm HĐ mua", module: "purchase_contract" },
+    { key: "PURCHASE_CONTRACT_CREATE", name: "Tạo HĐ mua", module: "purchase_contract" },
+    { key: "UPDATE_PURCHASE_CONTRACT", name: "Sửa HĐ mua", module: "purchase_contract" },
+    { key: "PURCHASE_CONTRACT_UPDATE", name: "Cập nhật HĐ mua", module: "purchase_contract" },
+    { key: "DELETE_PURCHASE_CONTRACT", name: "Xóa HĐ mua", module: "purchase_contract" },
+    { key: "PURCHASE_CONTRACT_DELETE", name: "Xóa HĐ mua", module: "purchase_contract" },
+    { key: "CONFIRM_PURCHASE_CONTRACT", name: "Xác nhận HĐ mua", module: "purchase_contract" },
+    { key: "PURCHASE_CONTRACT_LIQUIDATE", name: "Thanh lý HĐ mua", module: "purchase_contract" },
 
-    // Promotions (NEW MODULE)
-    { key: 'view_promotions', name: 'Xem khuyến mãi', module: 'sales' },
-    { key: 'create_promotion', name: 'Tạo khuyến mãi', module: 'sales' },
-    { key: 'update_promotion', name: 'Cập nhật khuyến mãi', module: 'sales' },
-    { key: 'approve_promotion', name: 'Phê duyệt khuyến mãi', module: 'sales' },
-    { key: 'cancel_promotion', name: 'Hủy khuyến mãi', module: 'sales' },
-    { key: 'delete_promotion', name: 'Xóa khuyến mãi', module: 'sales' },
-    { key: 'manage_promotions', name: 'Quản lý khuyến mãi', module: 'sales' },
+    // Phiếu thu
+    { key: "RECEIPT_MANAGEMENT", name: "Quản lý phiếu thu", module: "receipt" },
+    { key: "GET_RECEIPT", name: "Xem phiếu thu", module: "receipt" },
+    { key: "RECEIPT_VIEW_ALL", name: "Xem tất cả phiếu thu", module: "receipt" },
+    { key: "GET_RECEIPT_USER", name: "Xem phiếu thu của tôi", module: "receipt" },
+    { key: "RECEIPT_VIEW_OWN", name: "Xem phiếu thu của tôi", module: "receipt" },
+    { key: "CREATE_RECEIPT", name: "Thêm phiếu thu", module: "receipt" },
+    { key: "RECEIPT_CREATE", name: "Tạo phiếu thu", module: "receipt" },
+    { key: "UPDATE_RECEIPT", name: "Sửa phiếu thu", module: "receipt" },
+    { key: "RECEIPT_UPDATE", name: "Cập nhật phiếu thu", module: "receipt" },
+    { key: "DELETE_RECEIPT", name: "Xóa phiếu thu", module: "receipt" },
+    { key: "RECEIPT_DELETE", name: "Xóa phiếu thu", module: "receipt" },
+    { key: "DELETE_RECEIPT_USER", name: "Xóa phiếu thu của tôi", module: "receipt" },
+    { key: "RECEIPT_APPROVE", name: "Duyệt phiếu thu", module: "receipt" },
+    { key: "RECEIPT_CANCEL", name: "Hủy phiếu thu", module: "receipt" },
 
-    // ============================================================
-    // FINANCIAL MANAGEMENT
-    // ============================================================
-    // Reports
-    { key: 'view_financial_reports', name: 'Xem báo cáo tài chính', module: 'finance' },
-
-    // Payment Receipts
-    { key: 'create_payment_receipt', name: 'Tạo phiếu thu', module: 'finance' },
-    { key: 'view_payment_receipts', name: 'Xem phiếu thu', module: 'finance' },
-    { key: 'update_payment_receipt', name: 'Cập nhật phiếu thu', module: 'finance' },
-    { key: 'delete_payment_receipt', name: 'Xóa phiếu thu', module: 'finance' },
-    { key: 'post_payment_receipt', name: 'Hạch toán phiếu thu', module: 'finance' },
-
-    // Payment Vouchers
-    { key: 'create_payment_voucher', name: 'Tạo phiếu chi', module: 'finance' },
-    { key: 'view_payment_vouchers', name: 'Xem phiếu chi', module: 'finance' },
-    { key: 'update_payment_voucher', name: 'Cập nhật phiếu chi', module: 'finance' },
-    { key: 'delete_payment_voucher', name: 'Xóa phiếu chi', module: 'finance' },
-    { key: 'post_payment_voucher', name: 'Hạch toán phiếu chi', module: 'finance' },
-    { key: 'approve_payment_voucher', name: 'Phê duyệt phiếu chi', module: 'finance' },
-
+    // Phiếu chi (Payment Voucher)
+    { key: "PAYMENT_VOUCHER_MANAGEMENT", name: "Quản lý phiếu chi", module: "payment" },
+    { key: "GET_PAYMENT_VOUCHER", name: "Xem phiếu chi", module: "payment" },
+    { key: "CREATE_PAYMENT_VOUCHER", name: "Thêm phiếu chi", module: "payment" },
+    { key: "UPDATE_PAYMENT_VOUCHER", name: "Sửa phiếu chi", module: "payment" },
+    { key: "DELETE_PAYMENT_VOUCHER", name: "Xóa phiếu chi", module: "payment" },
+    { key: "COMPLETE_PAYMENT_VOUCHER", name: "Hoàn thành phiếu chi", module: "payment" },
+    
     // Payment
-    { key: 'approve_payment', name: 'Phê duyệt thu chi', module: 'finance' },
-    { key: 'process_payment', name: 'Xử lý thanh toán', module: 'finance' },
+    { key: "PAYMENT_VIEW_ALL", name: "Xem tất cả phiếu chi", module: "payment" },
+    { key: "PAYMENT_VIEW_OWN", name: "Xem phiếu chi của tôi", module: "payment" },
+    { key: "CREATE_PAYMENT", name: "Tạo phiếu chi", module: "payment" },
+    { key: "PAYMENT_CREATE", name: "Tạo phiếu chi", module: "payment" },
+    { key: "UPDATE_PAYMENT", name: "Cập nhật phiếu chi", module: "payment" },
+    { key: "PAYMENT_UPDATE", name: "Cập nhật phiếu chi", module: "payment" },
+    { key: "DELETE_PAYMENT", name: "Xóa phiếu chi", module: "payment" },
+    { key: "PAYMENT_DELETE", name: "Xóa phiếu chi", module: "payment" },
+    { key: "PAYMENT_APPROVE", name: "Duyệt phiếu chi", module: "payment" },
+    { key: "PAYMENT_CANCEL", name: "Hủy phiếu chi", module: "payment" },
 
-    // Debt Management
-    { key: 'manage_debt', name: 'Quản lý công nợ', module: 'finance' },
-    { key: 'reconcile_debt', name: 'Đối chiếu công nợ', module: 'finance' },
+    // Thuế
+    { key: "TAX_MANAGEMENT", name: "Quản lý thuế", module: "tax" },
+    { key: "GET_TAX", name: "Xem thuế", module: "tax" },
+    { key: "CREATE_TAX", name: "Thêm thuế", module: "tax" },
+    { key: "UPDATE_TAX", name: "Sửa thuế", module: "tax" },
+    { key: "DELETE_TAX", name: "Xóa thuế", module: "tax" },
 
-    // Debt Reconciliation (NEW - Chi tiết)
-    { key: 'view_debt_reconciliation', name: 'Xem đối chiếu công nợ', module: 'finance' },
-    { key: 'create_debt_reconciliation', name: 'Tạo biên bản đối chiếu', module: 'finance' },
-    { key: 'confirm_debt_reconciliation', name: 'Xác nhận đối chiếu', module: 'finance' },
-    { key: 'send_debt_reconciliation_email', name: 'Gửi email đối chiếu', module: 'finance' },
+    // Sau bán hàng / Bảo hành / Hạn sử dụng
+    { key: "AFTER_SALES_MANAGEMENT", name: "Quản lý sau bán hàng", module: "after_sales" },
+    { key: "WARRANTY_MANAGEMENT", name: "Quản lý bảo hành", module: "warranty" },
+    { key: "GET_WARRANTY", name: "Xem bảo hành", module: "warranty" },
+    { key: "UPDATE_WARRANTY", name: "Cập nhật bảo hành", module: "warranty" },
+    { key: "DELETE_WARRANTY", name: "Xóa bảo hành", module: "warranty" },
+    { key: "REMIND_WARRANTY", name: "Nhắc nhở bảo hành", module: "warranty" },
+    { key: "UPDATE_WARRANTY_STATUS", name: "Sửa trạng thái bảo hành", module: "warranty" },
+    
+    { key: "EXPIRY_MANAGEMENT", name: "Quản lý HSD", module: "expiry" },
+    { key: "GET_EXPIRY", name: "Xem HSD", module: "expiry" },
+    { key: "GET_EXPIRY_USER", name: "Xem HSD của tôi", module: "expiry" },
+    { key: "CREATE_EXPIRY", name: "Thêm HSD", module: "expiry" },
+    { key: "UPDATE_EXPIRY", name: "Sửa HSD", module: "expiry" },
+    { key: "DELETE_EXPIRY", name: "Xóa HSD", module: "expiry" },
 
-    // ============================================================
-    // HR MANAGEMENT
-    // ============================================================
-    // Attendance
-    { key: 'view_attendance', name: 'Xem chấm công', module: 'hr' },
-    { key: 'manage_attendance', name: 'Quản lý chấm công', module: 'hr' },
-    { key: 'update_attendance', name: 'Cập nhật chấm công', module: 'hr' },
-    { key: 'delete_attendance', name: 'Xóa chấm công', module: 'hr' },
+    // Kho
+    { key: "WAREHOUSE_MANAGEMENT", name: "Quản lý kho", module: "warehouse" },
+    { key: "STOCK_MANAGEMENT", name: "Quản lý tồn kho", module: "stock" },
+    { key: "GET_STOCK", name: "Xem tồn kho", module: "stock" },
+    { key: "CREATE_STOCK", name: "Thêm tồn kho", module: "stock" },
+    { key: "UPDATE_STOCK", name: "Sửa tồn kho", module: "stock" },
+    { key: "DELETE_STOCK", name: "Xóa tồn kho", module: "stock" },
+    { key: "LOT_MANAGEMENT", name: "Quản lý lô", module: "lot" },
+    { key: "GET_LOT", name: "Xem lô", module: "lot" },
+    { key: "CREATE_LOT", name: "Thêm lô", module: "lot" },
+    { key: "UPDATE_LOT", name: "Sửa lô", module: "lot" },
+    { key: "DELETE_LOT", name: "Xóa lô", module: "lot" },
 
-    // Salary
-    { key: 'view_salary', name: 'Xem lương', module: 'hr' },
-    { key: 'manage_salary', name: 'Quản lý lương', module: 'hr' },
-    { key: 'update_salary', name: 'Cập nhật lương', module: 'hr' },
-    { key: 'delete_salary', name: 'Xóa lương', module: 'hr' },
-    { key: 'calculate_salary', name: 'Tính lương', module: 'hr' },
-    { key: 'approve_salary', name: 'Phê duyệt lương', module: 'hr' },
-    { key: 'pay_salary', name: 'Thanh toán lương', module: 'hr' },
+    // Nhập xuất kho
+    { key: "WAREHOUSE_RECEIPT_MANAGEMENT", name: "Quản lý phiếu nhập kho", module: "warehouse_in" },
+    { key: "IMPORT_RECEIPT_MANAGEMENT", name: "Quản lý phiếu nhập", module: "warehouse_in" },
+    { key: "GET_WAREHOUSE_RECEIPT", name: "Xem phiếu nhập kho", module: "warehouse_in" },
+    { key: "CREATE_WAREHOUSE_RECEIPT", name: "Thêm phiếu nhập kho", module: "warehouse_in" },
+    { key: "UPDATE_WAREHOUSE_RECEIPT", name: "Sửa phiếu nhập kho", module: "warehouse_in" },
+    { key: "DELETE_WAREHOUSE_RECEIPT", name: "Xóa phiếu nhập kho", module: "warehouse_in" },
+    { key: "POST_WAREHOUSE_RECEIPT", name: "Ghi sổ phiếu nhập kho", module: "warehouse_in" },
+    { key: "GET_IMPORT_RECEIPT", name: "Xem phiếu nhập", module: "warehouse_in" },
+    { key: "CREATE_IMPORT_RECEIPT", name: "Thêm phiếu nhập", module: "warehouse_in" },
+    { key: "UPDATE_IMPORT_RECEIPT", name: "Sửa phiếu nhập", module: "warehouse_in" },
+    { key: "DELETE_IMPORT_RECEIPT", name: "Xóa phiếu nhập", module: "warehouse_in" },
 
-    // ============================================================
-    // REPORTS & DASHBOARD
-    // ============================================================
-    { key: 'view_dashboard', name: 'Xem dashboard', module: 'reports' },
-    { key: 'view_reports', name: 'Xem báo cáo', module: 'reports' },
-    { key: 'export_reports', name: 'Xuất báo cáo', module: 'reports' },
+    { key: "WAREHOUSE_IMPORT_VIEW_ALL", name: "Xem tất cả phiếu nhập", module: "warehouse_in" },
+    { key: "WAREHOUSE_IMPORT_CREATE", name: "Tạo phiếu nhập", module: "warehouse_in" },
+    { key: "WAREHOUSE_IMPORT_UPDATE", name: "Cập nhật phiếu nhập", module: "warehouse_in" },
+    { key: "WAREHOUSE_IMPORT_DELETE", name: "Xóa phiếu nhập", module: "warehouse_in" },
+    { key: "WAREHOUSE_IMPORT_CONFIRM", name: "Xác nhận phiếu nhập", module: "warehouse_in" },
+    { key: "WAREHOUSE_IMPORT_POST", name: "Ghi sổ phiếu nhập", module: "warehouse_in" },
+    { key: "WAREHOUSE_IMPORT_CANCEL", name: "Hủy phiếu nhập", module: "warehouse_in" },
 
-    // ============================================================
-    // SETTINGS
-    // ============================================================
-    { key: 'manage_settings', name: 'Quản lý cài đặt hệ thống', module: 'settings' },
+    { key: "WAREHOUSE_EXPORT_VIEW_ALL", name: "Xem tất cả phiếu xuất", module: "warehouse_out" },
+    { key: "WAREHOUSE_EXPORT_CREATE", name: "Tạo phiếu xuất", module: "warehouse_out" },
+    { key: "WAREHOUSE_EXPORT_UPDATE", name: "Cập nhật phiếu xuất", module: "warehouse_out" },
+    { key: "WAREHOUSE_EXPORT_DELETE", name: "Xóa phiếu xuất", module: "warehouse_out" },
+    { key: "WAREHOUSE_EXPORT_CONFIRM", name: "Xác nhận phiếu xuất", module: "warehouse_out" },
+    { key: "WAREHOUSE_EXPORT_POST", name: "Ghi sổ phiếu xuất", module: "warehouse_out" },
+    { key: "WAREHOUSE_EXPORT_CANCEL", name: "Hủy phiếu xuất", module: "warehouse_out" },
+
+    // Báo cáo tồn kho
+    { key: "INVENTORY_MANAGEMENT", name: "Quản lý báo cáo tồn kho", module: "inventory" },
+    { key: "GET_INVENTORY", name: "Xem tồn kho", module: "inventory" },
+    { key: "GET_INVENTORY_BALANCE", name: "Xem số dư tồn kho", module: "inventory" },
+    { key: "INVENTORY_BALANCE_VIEW", name: "Xem số dư tồn kho", module: "inventory" },
+    { key: "INVENTORY_SUMMARY_VIEW", name: "Xem tổng hợp tồn kho", module: "inventory" },
+    { key: "GET_INVENTORY_LEDGER", name: "Xem sổ chi tiết vật tư", module: "inventory" },
+    { key: "INVENTORY_LEDGER_VIEW", name: "Xem sổ chi tiết vật tư", module: "inventory" },
+    { key: "INVENTORY_NXT_VIEW", name: "Xem báo cáo XNT", module: "inventory" },
+    { key: "INVENTORY_VALUE_VIEW", name: "Xem giá trị tồn kho", module: "inventory" },
+    { key: "INVENTORY_PRODUCT_VIEW", name: "Xem tồn kho theo sản phẩm", module: "inventory" },
+    { key: "EXPORT_INVENTORY_REPORT", name: "Xuất báo cáo tồn kho", module: "inventory" },
+
+    // Credit Note
+    { key: "CREDIT_NOTE_MANAGEMENT", name: "Quản lý giấy báo có", module: "credit_note" },
+    { key: "GET_CREDIT_NOTE", name: "Xem giấy báo có", module: "credit_note" },
+    { key: "CREATE_CREDIT_NOTE", name: "Thêm giấy báo có", module: "credit_note" },
+    { key: "UPDATE_CREDIT_NOTE", name: "Sửa giấy báo có", module: "credit_note" },
+    { key: "DELETE_CREDIT_NOTE", name: "Xóa giấy báo có", module: "credit_note" },
+
+    // Báo cáo
+    { key: "OVERVIEW_MANAGEMENT", name: "Quản lý tổng quan", module: "report" },
+    { key: "REPORT_MANAGEMENT", name: "Quản lý báo cáo", module: "report" },
+    { key: "REPORTS_MANAGEMENT", name: "Quản lý báo cáo", module: "report" },
+    { key: "GET_REPORT", name: "Xem báo cáo", module: "report" },
+    { key: "EXPORT_REPORT", name: "Xuất báo cáo", module: "report" },
+    { key: "REPORT_PURCHASE_VIEW", name: "Xem báo cáo mua hàng", module: "report" },
+    { key: "REPORT_UNDELIVERED_VIEW", name: "Xem báo cáo chưa giao", module: "report" },
+    { key: "REPORT_UNRECEIVED_VIEW", name: "Xem báo cáo chưa nhận", module: "report" },
+
+    // Cài đặt
+    { key: "SETTING_MANAGEMENT", name: "Quản lý cài đặt", module: "setting" },
+    { key: "SETTINGS_MANAGEMENT", name: "Quản lý cài đặt", module: "setting" },
+    { key: "GET_SETTING", name: "Xem cài đặt", module: "setting" },
+    { key: "GENERAL_SETTING", name: "Cài đặt chung", module: "setting" },
+    { key: "SHARING_RATIO_SETTING", name: "Cài đặt tỷ lệ", module: "setting" },
+    { key: "NOTIFICATION_SETTING", name: "Cài đặt thông báo", module: "setting" },
+    { key: "SYSTEM_SETTING", name: "Cài đặt hệ thống", module: "setting" },
+    { key: "SESSION_SETTING", name: "Cài đặt phiên bản", module: "setting" },
+    { key: "GET_STORAGE_SIZE_SETTING", name: "Xem dung lượng lưu trữ", module: "setting" },
+    
+    // Khác
+    { key: "PRODUCTS_MANAGEMENT", name: "Quản lý sản phẩm", module: "product" },
+    { key: "GET_PERMISSION", name: "Xem quyền", module: "permission" },
+    { key: "GET_AUDIT_LOG", name: "Xem nhật ký hệ thống", module: "audit_log" }
   ];
+
 
   const permissions = await Promise.all(
     permissionsData.map((p) =>
@@ -428,14 +568,14 @@ async function main() {
 
   let adminUser = await prisma.user.findFirst({
     where: {
-      OR: [{ email: 'hovtoi@gmail.com' }, { employeeCode: 'NV-0001' }],
+      OR: [{ email: 'hovtoi@gmail.com' }, { employeeCode: 'NV-00010' }],
     },
   });
 
   if (!adminUser) {
     adminUser = await prisma.user.create({
       data: {
-        employeeCode: 'NV-0001',
+        employeeCode: 'NV-00010',
         email: 'hovtoi@gmail.com',
         passwordHash: hashedPassword,
         fullName: 'Quản trị viên hệ thống',
@@ -713,7 +853,7 @@ async function main() {
   console.log('✅ Database seed completed successfully! 🎉\n');
   console.log('📌 Login Credentials:\n');
   console.log('👤 Admin:');
-  console.log('   Email: hovtoi03@gmail.com');
+  console.log('   Email: leeminhkang@gmail.com');
   console.log('   Password: admin123\n');
   console.log('👥 Other Users (password: 123456):');
   console.log('   - manager1@company.com (Nguyễn Văn Quản - Warehouse Manager)');
