@@ -90,6 +90,14 @@ router.delete(
   asyncHandler(promotionController.cancel.bind(promotionController))
 );
 
+// PUT /api/promotions/:id/restore - Restore cancelled promotion
+router.put(
+  '/:id/restore',
+  authorize('UPDATE_PROMOTION'),
+  logActivityMiddleware('update', 'promotion'),
+  asyncHandler(promotionController.restore.bind(promotionController))
+);
+
 // DELETE /api/promotions/:id/delete - Delete promotion (soft delete)
 router.delete(
   '/:id/delete',
@@ -104,6 +112,30 @@ router.post(
   authorize('DELETE_PROMOTION'),
   logActivityMiddleware('delete', 'promotion'),
   asyncHandler(promotionController.bulkDelete.bind(promotionController))
+);
+
+// POST /api/promotions/bulk-cancel - Bulk cancel promotions
+router.post(
+  '/bulk-cancel',
+  authorize('UPDATE_PROMOTION'),
+  logActivityMiddleware('cancel', 'promotion'),
+  asyncHandler(promotionController.bulkCancel.bind(promotionController))
+);
+
+// POST /api/promotions/bulk-restore - Bulk restore promotions
+router.post(
+  '/bulk-restore',
+  authorize('UPDATE_PROMOTION'),
+  logActivityMiddleware('update', 'promotion'),
+  asyncHandler(promotionController.bulkRestore.bind(promotionController))
+);
+
+// POST /api/promotions/bulk-approve - Bulk approve promotions
+router.post(
+  '/bulk-approve',
+  authorize('UPDATE_PROMOTION'),
+  logActivityMiddleware('approve', 'promotion'),
+  asyncHandler(promotionController.bulkApprove.bind(promotionController))
 );
 
 // POST /api/promotions/:id/apply - Apply promotion to order
