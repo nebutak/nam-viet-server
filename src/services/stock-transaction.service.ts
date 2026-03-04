@@ -66,11 +66,11 @@ class StockTransactionService {
       ...(warehouseId && { warehouseId: parseInt(warehouseId) }),
       ...(fromDate &&
         toDate && {
-          createdAt: {
-            gte: new Date(fromDate),
-            lte: new Date(toDate),
-          },
-        }),
+        createdAt: {
+          gte: new Date(fromDate),
+          lte: new Date(toDate),
+        },
+      }),
     };
 
     const total = await prisma.stockTransaction.count({ where });
@@ -1015,9 +1015,8 @@ class StockTransactionService {
                 quantity: transactionQuantity,
                 notes:
                   data.adjustmentType === 'stocktake'
-                    ? `Kiểm kê: Hệ thống ${currentQuantity}, Thực tế ${
-                        data.actualQuantity
-                      }, Chênh lệch ${transactionQuantity > 0 ? '+' : ''}${transactionQuantity}`
+                    ? `Kiểm kê: Hệ thống ${currentQuantity}, Thực tế ${data.actualQuantity
+                    }, Chênh lệch ${transactionQuantity > 0 ? '+' : ''}${transactionQuantity}`
                     : data.reason,
               },
             ],
@@ -1079,6 +1078,7 @@ class StockTransactionService {
 
     const product = await prisma.product.findUnique({
       where: { id: productId },
+      include: { unit: { select: { unitCode: true, unitName: true } } },
     });
     if (!product) {
       throw new NotFoundError('Sản phẩm');
@@ -1208,7 +1208,8 @@ class StockTransactionService {
             id: true,
             sku: true,
             productName: true,
-            unit: true,
+            unitId: true,
+            unit: { select: { unitCode: true, unitName: true } },
           },
         },
       },
@@ -1279,7 +1280,7 @@ class StockTransactionService {
         id: product.id,
         sku: product.sku,
         productName: product.productName,
-        unit: product.unit,
+        unit: (product.unit as any)?.unitName || '',
       },
       warehouse: {
         id: warehouse.id,

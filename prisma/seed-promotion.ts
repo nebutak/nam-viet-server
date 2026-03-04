@@ -12,8 +12,32 @@ export async function main() {
   // Lấy dữ liệu cần thiết
   const users = await prisma.user.findMany({ take: 5 });
   const products = await prisma.product.findMany({ take: 20 });
-  const adminUser = users.find((u) => u.roleId === 1) || users[0];
 
+  let adminUser = users.find((u) => u.roleId === 1) || users[0];
+
+  if (!adminUser) {
+    console.warn('⚠️  Không tìm thấy users, tạo admin tạm thời...');
+    let role = await prisma.role.findFirst({ where: { roleKey: 'ADMIN' } });
+    if (!role) {
+      // Find any role if ADMIN is not found
+      role = await prisma.role.findFirst() || await prisma.role.create({
+        data: {
+          roleKey: 'ADMIN',
+          roleName: 'Quản trị viên',
+        }
+      });
+    }
+
+    adminUser = await prisma.user.create({
+      data: {
+        employeeCode: 'ADMIN_' + Date.now(),
+        email: 'admin_' + Date.now() + '@example.com',
+        passwordHash: 'dummy',
+        fullName: 'Admin Seed',
+        roleId: role.id,
+      }
+    });
+  }
   if (!products.length) {
     console.warn('⚠️  Không tìm thấy products, hãy chạy seed products trước');
     return;
