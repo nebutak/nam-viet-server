@@ -60,8 +60,7 @@ class PromotionService {
         ],
       }),
       ...(isActive === 'true' && {
-        status: 'active',
-        startDate: { lte: new Date() },
+        status: { notIn: ['cancelled', 'expired'] },
         endDate: { gte: new Date() },
       }),
     };
@@ -379,9 +378,11 @@ class PromotionService {
     }
 
     // If products are provided, delete old and create new
+    console.log('[UPDATE] data received:', JSON.stringify(data, null, 2));
     const updateData: any = {
-      // ...(data.po)
       ...(data.promotionName && { promotionName: data.promotionName }),
+      ...(data.promotionType && { promotionType: data.promotionType }),
+      ...(data.applicableTo && { applicableTo: data.applicableTo }),
       ...(data.startDate && { startDate: new Date(data.startDate) }),
       ...(data.endDate && { endDate: new Date(data.endDate) }),
       ...(data.isRecurring !== undefined && { isRecurring: data.isRecurring }),
@@ -390,12 +391,31 @@ class PromotionService {
       ...(data.conditions !== undefined && { conditions: data.conditions || Prisma.JsonNull }),
       ...(data.quantityLimit !== undefined && { quantityLimit: data.quantityLimit }),
     };
+    console.log('[UPDATE] updateData:', JSON.stringify(updateData, null, 2));
+
+    const isAllProductsBuyXGetY =
+      data.products &&
+      data.products.length > 0 &&
+      data.products[0].productId === 0;
 
     const promotion = await prisma.$transaction(async (tx) => {
-      // Delete existing products if new products provided
-      if (data.products) {
+      // Delete existing products if new products provided (including empty array = clear all)
+      if (data.products !== undefined) {
         await tx.promotionProduct.deleteMany({
           where: { promotionId: id },
+        });
+      }
+
+      // For buy_x_get_y with applicableTo=all: create PromotionProduct for every product
+      if (isAllProductsBuyXGetY) {
+        const allProducts = await tx.product.findMany({ select: { id: true } });
+        await tx.promotionProduct.createMany({
+          data: allProducts.map(({ id: productId }) => ({
+            promotionId: id,
+            productId,
+            giftProductId: data.products![0].giftProductId,
+            giftQuantity: data.products![0].giftQuantity || 0,
+          })),
         });
       }
 
@@ -404,12 +424,13 @@ class PromotionService {
         where: { id },
         data: {
           ...updateData,
-          ...(data.products && {
+          // Only inline-create products when productId != 0 (not "all products" case)
+          ...(data.products && data.products.length > 0 && !isAllProductsBuyXGetY && {
             products: {
               create: data.products.map((p) => ({
                 productId: p.productId,
                 discountValueOverride: p.discountValueOverride,
-                minQuantity: p.minQuantity || 1,
+                minQuantity: p.minQuantity || 0,
                 giftProductId: p.giftProductId,
                 giftQuantity: p.giftQuantity || 0,
                 note: p.note,
@@ -515,6 +536,38 @@ class PromotionService {
     return updated;
   }
 
+  // Restore cancelled promotion to pending
+  async restore(id: number, userId: number) {
+    const promotion = await prisma.promotion.findUnique({
+      where: { id },
+    });
+
+    if (!promotion) {
+      throw new NotFoundError('Khuyến mãi');
+    }
+
+    if (promotion.status !== 'cancelled') {
+      throw new ValidationError('Chỉ có thể hoàn trả các khuyến mãi đã bị hủy');
+    }
+
+    const updated = await prisma.promotion.update({
+      where: { id },
+      data: {
+        status: 'pending',
+        cancelledBy: null,
+        cancelledAt: null,
+      },
+      include: {
+        creator: true,
+      },
+    });
+
+    // Log activity
+    logActivity('update', userId, 'promotions', { id, action: 'restore', code: updated.promotionCode });
+
+    return updated;
+  }
+
   // Delete promotion (soft delete)
   async delete(id: number, userId: number) {
     const promotion = await prisma.promotion.findUnique({
@@ -525,8 +578,8 @@ class PromotionService {
       throw new NotFoundError('Promotion');
     }
 
-    if (promotion.status !== 'pending' && promotion.status !== 'cancelled') {
-      throw new ValidationError('Chỉ có thể xóa khuyến mãi ở trạng thái chờ duyệt hoặc đã hủy');
+    if (promotion.status !== 'cancelled') {
+      throw new ValidationError('Chỉ có thể xóa khuyến mãi ở trạng thái đã hủy');
     }
 
     const updated = await prisma.promotion.update({
@@ -544,6 +597,142 @@ class PromotionService {
     logActivity('delete', userId, 'promotions', { id, code: updated.promotionCode });
 
     return updated;
+  }
+
+  // Bulk delete promotions (soft delete)
+  async bulkDelete(ids: number[], userId: number) {
+    // Filter out promotions that can't be deleted (not pending or cancelled)
+    const validPromotions = await prisma.promotion.findMany({
+      where: {
+        id: { in: ids },
+        status: 'cancelled',
+        deletedAt: null
+      },
+    });
+
+    const validIds = validPromotions.map(p => p.id);
+
+    if (validIds.length === 0) {
+      throw new ValidationError('Không có khuyến mãi nào hợp lệ để xóa (phải ở trạng thái chờ duyệt hoặc đã hủy)');
+    }
+
+    const result = await prisma.promotion.updateMany({
+      where: {
+        id: { in: validIds }
+      },
+      data: {
+        deletedAt: new Date(),
+      },
+    });
+
+    // Log activity for each deleted promotion
+    validPromotions.forEach(promotion => {
+      logActivity('delete', userId, 'promotions', { id: promotion.id, code: promotion.promotionCode, bulk: true });
+    });
+
+    return { count: result.count, deletedIds: validIds };
+  }
+
+  // Bulk cancel promotions
+  async bulkCancel(ids: number[], reason: string, userId: number) {
+    const validPromotions = await prisma.promotion.findMany({
+      where: {
+        id: { in: ids },
+        status: { notIn: ['cancelled', 'expired'] },
+        deletedAt: null
+      },
+    });
+
+    const validIds = validPromotions.map(p => p.id);
+
+    if (validIds.length === 0) {
+      throw new ValidationError('Không có khuyến mãi nào hợp lệ để hủy');
+    }
+
+    const result = await prisma.promotion.updateMany({
+      where: {
+        id: { in: validIds }
+      },
+      data: {
+        status: 'cancelled',
+        cancelledBy: userId,
+        cancelledAt: new Date(),
+      },
+    });
+
+    validPromotions.forEach(promotion => {
+      logActivity('cancel', userId, 'promotions', { id: promotion.id, reason, code: promotion.promotionCode, bulk: true });
+    });
+
+    return { count: result.count, cancelledIds: validIds };
+  }
+
+  // Bulk restore promotions
+  async bulkRestore(ids: number[], userId: number) {
+    const validPromotions = await prisma.promotion.findMany({
+      where: {
+        id: { in: ids },
+        status: 'cancelled',
+        deletedAt: null
+      },
+    });
+
+    const validIds = validPromotions.map(p => p.id);
+
+    if (validIds.length === 0) {
+      throw new ValidationError('Không có khuyến mãi nào hợp lệ để khôi phục');
+    }
+
+    const result = await prisma.promotion.updateMany({
+      where: {
+        id: { in: validIds }
+      },
+      data: {
+        status: 'pending',
+        cancelledBy: null,
+        cancelledAt: null,
+      },
+    });
+
+    validPromotions.forEach(promotion => {
+      logActivity('update', userId, 'promotions', { id: promotion.id, action: 'restore', code: promotion.promotionCode, bulk: true });
+    });
+
+    return { count: result.count, restoredIds: validIds };
+  }
+
+  // Bulk approve promotions
+  async bulkApprove(ids: number[], notes: string, userId: number) {
+    const validPromotions = await prisma.promotion.findMany({
+      where: {
+        id: { in: ids },
+        status: 'pending',
+        deletedAt: null
+      },
+    });
+
+    const validIds = validPromotions.map(p => p.id);
+
+    if (validIds.length === 0) {
+      throw new ValidationError('Không có khuyến mãi nào hợp lệ để duyệt (phải ở trạng thái chờ duyệt)');
+    }
+
+    const result = await prisma.promotion.updateMany({
+      where: {
+        id: { in: validIds }
+      },
+      data: {
+        status: 'active',
+        approvedBy: userId,
+        approvedAt: new Date(),
+      },
+    });
+
+    validPromotions.forEach(promotion => {
+      logActivity('approve', userId, 'promotions', { id: promotion.id, code: promotion.promotionCode, notes, bulk: true });
+    });
+
+    return { count: result.count, approvedIds: validIds };
   }
 
   // Get active promotions
@@ -821,14 +1010,10 @@ class PromotionService {
       }
 
       case 'gift': {
-        if (!data.products || data.products.length === 0) {
+        if (!data.conditions) {
           throw new ValidationError('Khuyến mãi quà tặng yêu cầu ít nhất một sản phẩm');
         }
 
-        const hasGift = data.products.some((p) => p.giftProductId && p.giftQuantity);
-        if (!hasGift) {
-          throw new ValidationError('Khuyến mãi quà tặng yêu cầu giftProductId và giftQuantity');
-        }
         break;
       }
     }

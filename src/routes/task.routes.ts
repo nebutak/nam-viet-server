@@ -19,7 +19,7 @@ router.use(authentication);
 // GET /api/tasks - Get all tasks (with filtering)
 router.get(
   '/',
-  authorize('view_tasks'),
+  authorize('GET_TASK'),
   validate(queryTasksSchema, 'query'),
   asyncHandler(taskController.getAllTasks.bind(taskController))
 );
@@ -27,14 +27,14 @@ router.get(
 // GET /api/tasks/:id - Get task by ID
 router.get(
   '/:id',
-  authorize('view_tasks'),
+  authorize('GET_TASK'),
   asyncHandler(taskController.getTaskById.bind(taskController))
 );
 
 // POST /api/tasks - Create new task
 router.post(
   '/',
-  authorize('create_task'),
+  authorize('CREATE_TASK'),
   validate(createTaskSchema),
   logActivityMiddleware('create', 'task'),
   asyncHandler(taskController.createTask.bind(taskController))
@@ -43,7 +43,16 @@ router.post(
 // PUT /api/tasks/:id - Update task
 router.put(
   '/:id',
-  authorize('update_task'),
+  authorize('UPDATE_TASK'),
+  validate(updateTaskSchema),
+  logActivityMiddleware('update', 'task'),
+  asyncHandler(taskController.updateTask.bind(taskController))
+);
+
+// PATCH /api/tasks/:id - Update task
+router.patch(
+  '/:id',
+  authorize('UPDATE_TASK'),
   validate(updateTaskSchema),
   logActivityMiddleware('update', 'task'),
   asyncHandler(taskController.updateTask.bind(taskController))
@@ -52,7 +61,7 @@ router.put(
 // DELETE /api/tasks/:id - Delete task
 router.delete(
   '/:id',
-  authorize('delete_task'),
+  authorize('DELETE_TASK'),
   logActivityMiddleware('delete', 'task'),
   asyncHandler(taskController.deleteTask.bind(taskController))
 );

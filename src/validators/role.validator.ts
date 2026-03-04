@@ -35,8 +35,8 @@ export const deleteRoleSchema = z.object({
 export const assignPermissionsSchema = z.object({
   permissionIds: z
     .array(z.number().int().positive('Permission ID phải là một số nguyên dương.'))
-    .min(1, 'Có ít nhất một quyền là yêu cầu.')
-    .max(100, 'Tối đa 100 quyền được cho phép.'),
+    .min(0, 'Danh sách quyền không hợp lệ.')
+    .max(500, 'Tối đa 500 quyền được cho phép.'),
 });
 
 export const queryRolesSchema = z.object({

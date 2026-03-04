@@ -110,6 +110,7 @@ class PromotionController {
       const id = parseInt(req.params.id);
       const data = req.body as UpdatePromotionInput;
       const userId = req.user!.id;
+      console.log('[CONTROLLER UPDATE] id:', id, 'body:', JSON.stringify(req.body, null, 2));
 
       const promotion = await promotionService.update(id, data, userId);
 
@@ -130,6 +131,7 @@ class PromotionController {
       });
     }
   }
+
 
   // PUT /api/promotions/:id/approve - Approve promotion
   async approve(req: AuthRequest, res: Response): Promise<void> {
@@ -184,6 +186,32 @@ class PromotionController {
     }
   }
 
+  // PUT /api/promotions/:id/restore - Restore cancelled promotion to pending
+  async restore(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = req.user!.id;
+
+      const promotion = await promotionService.restore(id, userId);
+
+      res.json({
+        success: true,
+        data: promotion,
+        message: 'Hoàn trả trạng thái ưu đãi thành công',
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({
+        success: false,
+        error: {
+          code: error.code || 'INTERNAL_ERROR',
+          message: error.message,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
+  }
+
   // DELETE /api/promotions/:id/delete - Delete promotion
   async delete(req: AuthRequest, res: Response): Promise<void> {
     try {
@@ -196,6 +224,158 @@ class PromotionController {
         success: true,
         data: promotion,
         message: 'Xóa khuyến mãi thành công',
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({
+        success: false,
+        error: {
+          code: error.code || 'INTERNAL_ERROR',
+          message: error.message,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
+  }
+
+  // POST /api/promotions/bulk-delete - Bulk delete promotions
+  async bulkDelete(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const { ids } = req.body;
+      const userId = req.user!.id;
+
+      if (!Array.isArray(ids) || ids.length === 0) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Danh sách ID khuyến mãi không hợp lệ',
+            timestamp: new Date().toISOString(),
+          },
+        });
+        return;
+      }
+
+      const result = await promotionService.bulkDelete(ids, userId);
+
+      res.json({
+        success: true,
+        data: result,
+        message: `Đã xóa thành công ${result.count} khuyến mãi`,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({
+        success: false,
+        error: {
+          code: error.code || 'INTERNAL_ERROR',
+          message: error.message,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
+  }
+
+  // POST /api/promotions/bulk-cancel - Bulk cancel promotions
+  async bulkCancel(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const { ids, reason } = req.body;
+      const userId = req.user!.id;
+
+      if (!Array.isArray(ids) || ids.length === 0) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Danh sách ID khuyến mãi không hợp lệ',
+            timestamp: new Date().toISOString(),
+          },
+        });
+        return;
+      }
+
+      const result = await promotionService.bulkCancel(ids, reason, userId);
+
+      res.json({
+        success: true,
+        data: result,
+        message: `Đã hủy thành công ${result.count} khuyến mãi`,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({
+        success: false,
+        error: {
+          code: error.code || 'INTERNAL_ERROR',
+          message: error.message,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
+  }
+
+  // POST /api/promotions/bulk-restore - Bulk restore promotions
+  async bulkRestore(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const { ids } = req.body;
+      const userId = req.user!.id;
+
+      if (!Array.isArray(ids) || ids.length === 0) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Danh sách ID khuyến mãi không hợp lệ',
+            timestamp: new Date().toISOString(),
+          },
+        });
+        return;
+      }
+
+      const result = await promotionService.bulkRestore(ids, userId);
+
+      res.json({
+        success: true,
+        data: result,
+        message: `Đã khôi phục thành công ${result.count} khuyến mãi`,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({
+        success: false,
+        error: {
+          code: error.code || 'INTERNAL_ERROR',
+          message: error.message,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
+  }
+
+  // POST /api/promotions/bulk-approve - Bulk approve promotions
+  async bulkApprove(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const { ids, notes } = req.body;
+      const userId = req.user!.id;
+
+      if (!Array.isArray(ids) || ids.length === 0) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Danh sách ID khuyến mãi không hợp lệ',
+            timestamp: new Date().toISOString(),
+          },
+        });
+        return;
+      }
+
+      const result = await promotionService.bulkApprove(ids, notes, userId);
+
+      res.json({
+        success: true,
+        data: result,
+        message: `Đã duyệt thành công ${result.count} khuyến mãi`,
         timestamp: new Date().toISOString(),
       });
     } catch (error: any) {

@@ -19,7 +19,7 @@ router.use(authentication);
 // GET /api/tickets - Get all tickets (with filtering)
 router.get(
   '/',
-  authorize('view_tickets'),
+  authorize('GET_CUSTOMER_CARE'),
   validate(queryTicketsSchema, 'query'),
   asyncHandler(ticketController.getAllTickets.bind(ticketController))
 );
@@ -27,14 +27,14 @@ router.get(
 // GET /api/tickets/:id - Get ticket by ID
 router.get(
   '/:id',
-  authorize('view_tickets'),
+  authorize('GET_CUSTOMER_CARE'),
   asyncHandler(ticketController.getTicketById.bind(ticketController))
 );
 
 // POST /api/tickets - Create new ticket
 router.post(
   '/',
-  authorize('create_ticket'),
+  authorize('CREATE_CUSTOMER_CARE'),
   validate(createTicketSchema),
   logActivityMiddleware('create', 'ticket'),
   asyncHandler(ticketController.createTicket.bind(ticketController))
@@ -43,7 +43,16 @@ router.post(
 // PUT /api/tickets/:id - Update ticket
 router.put(
   '/:id',
-  authorize('update_ticket'),
+  authorize('UPDATE_CUSTOMER_CARE'),
+  validate(updateTicketSchema),
+  logActivityMiddleware('update', 'ticket'),
+  asyncHandler(ticketController.updateTicket.bind(ticketController))
+);
+
+// PATCH /api/tickets/:id - Update ticket
+router.patch(
+  '/:id',
+  authorize('UPDATE_CUSTOMER_CARE'),
   validate(updateTicketSchema),
   logActivityMiddleware('update', 'ticket'),
   asyncHandler(ticketController.updateTicket.bind(ticketController))
@@ -52,7 +61,7 @@ router.put(
 // DELETE /api/tickets/:id - Delete ticket
 router.delete(
   '/:id',
-  authorize('delete_ticket'),
+  authorize('DELETE_CUSTOMER_CARE'),
   logActivityMiddleware('delete', 'ticket'),
   asyncHandler(ticketController.deleteTicket.bind(ticketController))
 );

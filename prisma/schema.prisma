@@ -37,6 +37,7 @@ model Permission {
   permissionName String    @map("permission_name") @db.VarChar(200)
   description    String?   @db.Text
   module         String?   @db.VarChar(100)
+  moduleLabel    String?   @map("module_label") @db.VarChar(200)
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
   deletedAt      DateTime? @map("deleted_at")
@@ -1619,6 +1620,7 @@ enum ApplicableTo {
   product_group
   specific_product
   customer_group
+  specific_customer
 }
 
 enum PromotionStatus {
