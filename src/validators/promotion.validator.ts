@@ -30,6 +30,7 @@ export const conditionsSchema = z.object({
   gift_product_id: z.number().optional(),
   gift_quantity: z.number().optional(),
   customer_id: z.number().optional(),
+  unit: z.string().optional(),
 });
 
 // Query Schema

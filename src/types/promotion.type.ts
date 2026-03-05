@@ -10,6 +10,7 @@ export interface PromotionConditions {
   gift_product_id?: number;
   gift_quantity?: number;
   customer_id?: number;
+  unit?: string;
 }
 
 export interface ApplyPromotionResult {

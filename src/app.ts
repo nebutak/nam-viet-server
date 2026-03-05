@@ -75,6 +75,9 @@ import newsCategoryRoutes from '@routes/news-category.routes';
 // Contact routes
 import contactRoutes from '@routes/contact.routes';
 
+// Material Routes
+import materialRoutes from '@routes/material.routes';
+
 // CRM Routes
 import ticketRoutes from '@routes/ticket.routes';
 import taskRoutes from '@routes/task.routes';
@@ -82,6 +85,9 @@ import activityLogRoutes from '@routes/activity-log.routes';
 
 // Import notification scheduler
 import notificationScheduler from '@schedulers/notification.scheduler';
+
+// Import promotion service for auto-status transitions
+import promotionService from '@services/promotion.service';
 
 dotenv.config();
 
@@ -227,7 +233,7 @@ app.use('/api/payment-receipts', paymentReceiptRoutes);
 app.use('/api/payment-vouchers', paymentVoucherRoutes);
 // app.use('/api/debt-reconciliation', debtReconciliationRoutes);
 app.use('/api/cash-fund', cashFundRoutes);
-app.use('/api/promotions', promotionRoutes);
+app.use('/api/promotion', promotionRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/salary', salaryRoutes);
 app.use('/api/overtime', overtimeRoutes);
@@ -258,6 +264,9 @@ app.use('/api/news', newsRoutes);
 // News routes
 app.use('/api/news', newsRoutes);
 app.use('/api/news-categories', newsCategoryRoutes);
+
+// Material Routes
+app.use('/api/materials', materialRoutes);
 
 // CRM Routes
 app.use('/api/tickets', ticketRoutes);
@@ -295,6 +304,18 @@ httpServer.listen(PORT, async () => {
   } else {
     console.log('⚠️  Notification scheduler disabled (set ENABLE_SCHEDULER=true to enable)');
   }
+
+  // Initialize promotion status transition scheduler (always enabled)
+  // Run immediately on startup, then every 60 seconds
+  promotionService.runStatusTransitions().catch(err =>
+    console.error('❌ Initial promotion status transition failed:', err)
+  );
+  setInterval(() => {
+    promotionService.runStatusTransitions().catch(err =>
+      console.error('❌ Promotion status transition failed:', err)
+    );
+  }, 10 * 1000); // every 10 seconds
+  console.log('✅ Promotion status transition scheduler started (every 10s)');
 
   console.log(`
 ╔═══════════════════════════════════════════════════════════╗

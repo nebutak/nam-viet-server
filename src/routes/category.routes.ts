@@ -23,7 +23,7 @@ router.use(authentication);
  */
 router.get(
   '/',
-  authorize('view_categories'),
+  authorize('GET_CATEGORY'),
   validate(queryCategoriesSchema, 'query'),
   asyncHandler(categoryController.getAllCategories.bind(categoryController))
 );

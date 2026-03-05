@@ -264,6 +264,7 @@ model Category {
   parent   Category?  @relation("CategoryParent", fields: [parentId], references: [id], onDelete: SetNull)
   children Category[] @relation("CategoryParent")
   products Product[]
+  materials Material[]
 
   @@index([parentId])
   @@index([status])
@@ -303,6 +304,7 @@ model Supplier {
   paymentVouchers PaymentVoucher[]
   // debtReconciliations DebtReconciliation[]
   debtPeriods     DebtPeriod[]
+  materials       Material[]
 
   @@index([supplierCode])
   @@index([status])
@@ -402,6 +404,7 @@ model Product {
   salesOrderDetails        SalesOrderDetail[]
   promotionProducts        PromotionProduct[]
   promotionGifts           PromotionProduct[]        @relation("GiftProduct")
+  materials                ProductMaterial[]
 
   @@index([sku])
   @@index([categoryId])
@@ -1567,6 +1570,7 @@ enum ApplicableTo {
 
 enum PromotionStatus {
   pending
+  waiting
   active
   expired
   cancelled
@@ -1900,4 +1904,45 @@ enum TaskType {
   email
   meeting
   other
+}
+
+model Material {
+  id            Int       @id @default(autoincrement())
+  materialCode  String    @unique @map("material_code") @db.VarChar(50)
+  name          String    @db.VarChar(200)
+  cost          Decimal   @db.Decimal(15, 2)
+  supplierId    Int?      @map("supplier_id")
+  categoryId    Int?      @map("category_id")
+  unit          String?   @db.VarChar(50)
+  materialType  String?   @map("material_type") @db.VarChar(100)
+  priority      Int       @default(0)
+  purchaseDate  DateTime? @map("purchase_date") @db.Date
+  effectiveDate DateTime? @map("effective_date") @db.Date
+  imageUrl      String?   @map("image_url") @db.VarChar(500)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  supplier Supplier?         @relation(fields: [supplierId], references: [id])
+  category Category?         @relation(fields: [categoryId], references: [id])
+  products ProductMaterial[]
+
+  @@index([supplierId])
+  @@index([categoryId])
+  @@index([materialCode])
+  @@map("materials")
+}
+
+model ProductMaterial {
+  productId  Int      @map("product_id")
+  materialId Int      @map("material_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  material Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@id([productId, materialId])
+  @@index([productId])
+  @@index([materialId])
+  @@map("product_materials")
 }

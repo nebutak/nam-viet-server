@@ -19,7 +19,7 @@ router.use(authentication);
 // GET /api/suppliers
 router.get(
   '/',
-  authorize('view_suppliers'),
+  authorize('GET_SUPPLIER'),
   validate(querySuppliersSchema, 'query'),
   asyncHandler(supplierController.getAllSuppliers.bind(supplierController))
 );

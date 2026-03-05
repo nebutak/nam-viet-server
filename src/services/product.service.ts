@@ -57,7 +57,6 @@ class ProductService {
       sortOrder = 'desc',
     } = params;
 
-    console.log('productType', productType);
 
     const offset = (page - 1) * limit;
 
@@ -542,12 +541,12 @@ class ProductService {
         category: true,
         inventory: warehouseId
           ? {
-              where: { warehouseId },
-              include: { warehouse: true },
-            }
+            where: { warehouseId },
+            include: { warehouse: true },
+          }
           : {
-              include: { warehouse: true },
-            },
+            include: { warehouse: true },
+          },
       },
     });
 
