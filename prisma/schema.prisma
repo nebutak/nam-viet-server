@@ -188,6 +188,8 @@ model User {
   expiries                Expiry[]           @relation("ExpiryUser")
   createdExpiries         Expiry[]           @relation("ExpiryCreator")
   updatedExpiries         Expiry[]           @relation("ExpiryUpdater")
+  createdUnits            Unit[]             @relation("UnitCreator")
+  updatedUnits            Unit[]             @relation("UnitUpdater")
 
   @@index([roleId, status])
   @@map("users")
@@ -368,7 +370,7 @@ model Product {
   packagingType         PackagingType? @default(other) @map("packaging_type")
   categoryId            Int?           @map("category_id")
   supplierId            Int?           @map("supplier_id")
-  unit                  String         @db.VarChar(50)
+  unitId                Int?           @map("unit_id")
   barcode               String?        @db.VarChar(100)
   weight                Decimal?       @db.Decimal(15, 2)
   dimensions            String?        @db.VarChar(100)
@@ -390,6 +392,7 @@ model Product {
 
   category Category? @relation(fields: [categoryId], references: [id])
   supplier Supplier? @relation(fields: [supplierId], references: [id])
+  unit     Unit?     @relation(fields: [unitId], references: [id])
   creator  User?     @relation("ProductCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   updater  User?     @relation("ProductUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
 
@@ -411,6 +414,7 @@ model Product {
   @@index([sku])
   @@index([categoryId])
   @@index([supplierId])
+  @@index([unitId])
   @@index([productType])
   @@index([status])
   @@index([productName])
@@ -1954,4 +1958,34 @@ enum TaskType {
   email
   meeting
   other
+}
+
+// =====================================================
+// 14. UNIT MANAGEMENT
+// =====================================================
+
+model Unit {
+  id          Int        @id @default(autoincrement())
+  unitCode    String     @unique @map("unit_code") @db.VarChar(50)
+  unitName    String     @map("unit_name") @db.VarChar(100)
+  description String?    @db.VarChar(255)
+  status      UnitStatus @default(active)
+  createdBy   Int?       @map("created_by")
+  updatedBy   Int?       @map("updated_by")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  deletedAt   DateTime?  @map("deleted_at")
+
+  creator  User?     @relation("UnitCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  updater  User?     @relation("UnitUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
+  products Product[]
+
+  @@index([unitCode])
+  @@index([status])
+  @@map("units")
+}
+
+enum UnitStatus {
+  active
+  inactive
 }

@@ -7,15 +7,42 @@ export async function main() {
 
   await prisma.product.deleteMany({});
 
-  // Lấy các category và supplier ID để map
+  // Lấy categories, suppliers, units để map
   const categories = await prisma.category.findMany();
   const suppliers = await prisma.supplier.findMany();
 
-  // Helper để tìm category
   const findCategory = (code: string) => categories.find((c) => c.categoryCode === code)?.id;
-
-  // Helper để tìm supplier
   const findSupplier = (code: string) => suppliers.find((s) => s.supplierCode === code)?.id;
+  // Tạo sẵn các unit nếu chưa có
+  const unitDefs = [
+    { unitCode: 'CHAI', unitName: 'Chai', description: 'Đơn vị đựng dạng lỏng' },
+    { unitCode: 'GOI', unitName: 'Gói', description: 'Bao, gói dạng bột' },
+    { unitCode: 'BAO', unitName: 'Bao', description: 'Bao 25kg-50kg' },
+    { unitCode: 'CAN', unitName: 'Can', description: 'Can dung tích lớn' },
+    { unitCode: 'BO', unitName: 'Bộ', description: 'Combo nhiều sản phẩm' },
+    { unitCode: 'CAI', unitName: 'Cái', description: 'Đơn chiếc (bao bì)' },
+    { unitCode: 'TO', unitName: 'Tờ', description: 'Tem, nhãn, decal' },
+    { unitCode: 'CUON', unitName: 'Cuộn', description: 'Cuộn băng keo' },
+    { unitCode: 'HOP', unitName: 'Hộp', description: 'Hộp đóng sản phẩm' },
+    { unitCode: 'KG', unitName: 'Kg', description: 'Kilogram' },
+    { unitCode: 'LIT', unitName: 'Lít', description: 'Lít chất lỏng' },
+  ];
+
+  for (const u of unitDefs) {
+    await prisma.unit.upsert({
+      where: { unitCode: u.unitCode },
+      update: { unitName: u.unitName },
+      create: { ...u, status: 'active' },
+    });
+  }
+
+  // Reload units sau khi tạo
+  const freshUnits = await prisma.unit.findMany();
+  const getUnitId = (name: string) =>
+    freshUnits.find(
+      (u) => u.unitName.toLowerCase() === name.toLowerCase() ||
+        u.unitCode.toLowerCase() === name.toLowerCase()
+    )?.id ?? null;
 
   const products = [
     // ================================================================
@@ -30,17 +57,16 @@ export async function main() {
       productType: ProductType.finished_product,
       packagingType: PackagingType.bottle,
       categoryId: findCategory('TP-KICH-THICH'),
-      supplierId: null, // Tự sản xuất
-      unit: 'Chai',
+      supplierId: null,
+      unitId: getUnitId('Chai'),
       barcode: '8936124567801',
-      weight: 0.55, // kg (bao gồm chai)
+      weight: 0.55,
       dimensions: '7x7x20cm',
-      description:
-        'Kích thích ra hoa, đậu trái đều. Chứa Amino acid + Hormon tự nhiên. Dùng cho cây ăn trái, rau màu.',
-      purchasePrice: 28000, // Chi phí sản xuất 1 chai
-      sellingPriceRetail: 65000, // Giá bán lẻ cho nông dân
-      sellingPriceWholesale: 52000, // Giá bán buôn cho đại lý
-      sellingPriceVip: 48000, // Giá cho đại lý VIP
+      description: 'Kích thích ra hoa, đậu trái đều. Chứa Amino acid + Hormon tự nhiên. Dùng cho cây ăn trái, rau màu.',
+      purchasePrice: 28000,
+      sellingPriceRetail: 65000,
+      sellingPriceWholesale: 52000,
+      sellingPriceVip: 48000,
       taxRate: 5.0,
       minStockLevel: 200,
       expiryDate: new Date('2026-12-31'),
@@ -54,7 +80,7 @@ export async function main() {
       packagingType: PackagingType.bottle,
       categoryId: findCategory('TP-KICH-THICH'),
       supplierId: null,
-      unit: 'Chai',
+      unitId: getUnitId('Chai'),
       barcode: '8936124567802',
       weight: 1.1,
       dimensions: '9x9x25cm',
@@ -78,12 +104,11 @@ export async function main() {
       packagingType: PackagingType.bag,
       categoryId: findCategory('TP-DINH-DUONG'),
       supplierId: null,
-      unit: 'Gói',
+      unitId: getUnitId('Gói'),
       barcode: '8936124567803',
       weight: 1.05,
       dimensions: '15x20x5cm',
-      description:
-        'Phân bón lá NPK cân đối 17-17-17. Giúp trái phát triển đều, tăng năng suất. Hòa tan hoàn toàn.',
+      description: 'Phân bón lá NPK cân đối 17-17-17. Giúp trái phát triển đều, tăng năng suất. Hòa tan hoàn toàn.',
       purchasePrice: 38000,
       sellingPriceRetail: 85000,
       sellingPriceWholesale: 72000,
@@ -101,12 +126,11 @@ export async function main() {
       packagingType: PackagingType.bottle,
       categoryId: findCategory('TP-DINH-DUONG'),
       supplierId: null,
-      unit: 'Chai',
+      unitId: getUnitId('Chai'),
       barcode: '8936124567804',
       weight: 0.58,
       dimensions: '7x7x20cm',
-      description:
-        'Bổ sung Canxi + Bo cho cây ớt. Chống đọt non, chống nứt trái, tăng độ cứng quả.',
+      description: 'Bổ sung Canxi + Bo cho cây ớt. Chống đọt non, chống nứt trái, tăng độ cứng quả.',
       purchasePrice: 26000,
       sellingPriceRetail: 62000,
       sellingPriceWholesale: 50000,
@@ -124,12 +148,11 @@ export async function main() {
       packagingType: PackagingType.bottle,
       categoryId: findCategory('TP-DINH-DUONG'),
       supplierId: null,
-      unit: 'Chai',
+      unitId: getUnitId('Chai'),
       barcode: '8936124567805',
       weight: 1.15,
       dimensions: '9x9x26cm',
-      description:
-        'Amino acid tổng hợp giúp cây phục hồi sau stress (hạn, úng, sâu bệnh). Kích thích sinh trưởng mạnh.',
+      description: 'Amino acid tổng hợp giúp cây phục hồi sau stress. Kích thích sinh trưởng mạnh.',
       purchasePrice: 55000,
       sellingPriceRetail: 135000,
       sellingPriceWholesale: 115000,
@@ -149,23 +172,22 @@ export async function main() {
       packagingType: PackagingType.bag,
       categoryId: findCategory('TP-VI-SINH'),
       supplierId: null,
-      unit: 'Gói',
+      unitId: getUnitId('Gói'),
       barcode: '8936124567806',
       weight: 0.52,
       dimensions: '12x18x4cm',
-      description:
-        'Chế phẩm vi sinh Trichoderma 10^8 bào tử/g. Phòng trừ nấm bệnh thán thư, héo xanh, thối rễ.',
+      description: 'Chế phẩm vi sinh Trichoderma 10^8 bào tử/g. Phòng trừ nấm bệnh thán thư, héo xanh, thối rễ.',
       purchasePrice: 42000,
       sellingPriceRetail: 95000,
       sellingPriceWholesale: 80000,
       sellingPriceVip: 75000,
       taxRate: 5.0,
       minStockLevel: 100,
-      expiryDate: new Date('2025-12-31'), // Vi sinh hết hạn nhanh hơn
+      expiryDate: new Date('2025-12-31'),
       status: ProductStatus.active,
     },
 
-    // --- Chuyên dùng cho cây ăn trái ---
+    // --- Cây ăn trái ---
     {
       sku: 'TP-AT-DOCTOR-MANGO-SET',
       slug: 'doctor-mango-bo-3-chai',
@@ -174,12 +196,11 @@ export async function main() {
       packagingType: PackagingType.box,
       categoryId: findCategory('TP-CAY-AN-TRAI'),
       supplierId: null,
-      unit: 'Bộ',
+      unitId: getUnitId('Bộ'),
       barcode: '8936124567807',
       weight: 1.8,
       dimensions: '25x20x10cm',
-      description:
-        'Bộ 3 sản phẩm chuyên cho xoài: 1) Ra đọt, 2) Kích hoa, 3) Lớn trái. Đủ chu trình chăm sóc.',
+      description: 'Bộ 3 sản phẩm chuyên cho xoài: 1) Ra đọt, 2) Kích hoa, 3) Lớn trái. Đủ chu trình chăm sóc.',
       purchasePrice: 135000,
       sellingPriceRetail: 320000,
       sellingPriceWholesale: 280000,
@@ -197,12 +218,11 @@ export async function main() {
       packagingType: PackagingType.bottle,
       categoryId: findCategory('TP-CAY-AN-TRAI'),
       supplierId: null,
-      unit: 'Chai',
+      unitId: getUnitId('Chai'),
       barcode: '8936124567808',
       weight: 0.56,
       dimensions: '7x7x20cm',
-      description:
-        'Chuyên trị rụng hoa, rụng trái non cho cây Mắc ca. Chứa Kali + Bo + Hormon sinh trưởng.',
+      description: 'Chuyên trị rụng hoa, rụng trái non cho cây Mắc ca. Chứa Kali + Bo + Hormon sinh trưởng.',
       purchasePrice: 48000,
       sellingPriceRetail: 115000,
       sellingPriceWholesale: 98000,
@@ -213,7 +233,7 @@ export async function main() {
       status: ProductStatus.active,
     },
 
-    // --- Chuyên dùng cho Rau màu & Hoa ---
+    // --- Rau màu ---
     {
       sku: 'TP-RAU-AMINCHO-RAUMAU-1L',
       slug: 'acid-amin-cho-rau-mau-1l',
@@ -222,12 +242,11 @@ export async function main() {
       packagingType: PackagingType.bottle,
       categoryId: findCategory('TP-RAU-MAU'),
       supplierId: null,
-      unit: 'Chai',
+      unitId: getUnitId('Chai'),
       barcode: '8936124567809',
       weight: 1.12,
       dimensions: '9x9x25cm',
-      description:
-        'Amino acid đặc chế cho rau ăn lá, rau củ. Tăng trọng nhanh, giảm độc hại, xanh tự nhiên.',
+      description: 'Amino acid đặc chế cho rau ăn lá, rau củ. Tăng trọng nhanh, giảm độc hại, xanh tự nhiên.',
       purchasePrice: 48000,
       sellingPriceRetail: 118000,
       sellingPriceWholesale: 100000,
@@ -238,7 +257,7 @@ export async function main() {
       status: ProductStatus.active,
     },
 
-    // --- Chuyên dùng cho Cây công nghiệp ---
+    // --- Cây công nghiệp ---
     {
       sku: 'TP-CN-DOCTOR-TIEU-1L',
       slug: 'doctor-tieu-1l',
@@ -247,7 +266,7 @@ export async function main() {
       packagingType: PackagingType.bottle,
       categoryId: findCategory('TP-CAY-CN'),
       supplierId: null,
-      unit: 'Chai',
+      unitId: getUnitId('Chai'),
       barcode: '8936124567810',
       weight: 1.14,
       dimensions: '9x9x26cm',
@@ -266,7 +285,6 @@ export async function main() {
     // NHÓM 2: NGUYÊN LIỆU - HÓA CHẤT SẢN XUẤT (RAW MATERIALS)
     // ================================================================
 
-    // --- Hóa chất Đa lượng ---
     {
       sku: 'NL-DL-UREA-46N-25KG',
       slug: 'urea-46n-25kg',
@@ -275,18 +293,18 @@ export async function main() {
       packagingType: PackagingType.bag,
       categoryId: findCategory('NL-DA-LUONG'),
       supplierId: findSupplier('NCC-DAM-CAMAU'),
-      unit: 'Bao',
+      unitId: getUnitId('Bao'),
       barcode: null,
       weight: 25.0,
       dimensions: '50x80x15cm',
       description: 'Đạm Urea hạt đục 46%N - Cà Mau. Nguồn Nitơ chính để pha chế phân bón.',
       purchasePrice: 285000,
-      sellingPriceRetail: null, // Nguyên liệu không bán lẻ
+      sellingPriceRetail: null,
       sellingPriceWholesale: null,
       sellingPriceVip: null,
       taxRate: 5.0,
-      minStockLevel: 100, // 2.5 tấn
-      expiryDate: null, // Hóa chất không hết hạn nhanh
+      minStockLevel: 100,
+      expiryDate: null,
       status: ProductStatus.active,
     },
     {
@@ -297,7 +315,7 @@ export async function main() {
       packagingType: PackagingType.bag,
       categoryId: findCategory('NL-DA-LUONG'),
       supplierId: findSupplier('NCC-HOACHAT-DUCGIANG'),
-      unit: 'Bao',
+      unitId: getUnitId('Bao'),
       barcode: null,
       weight: 25.0,
       dimensions: '50x80x15cm',
@@ -319,7 +337,7 @@ export async function main() {
       packagingType: PackagingType.bag,
       categoryId: findCategory('NL-DA-LUONG'),
       supplierId: findSupplier('NCC-HAIFA-ISRAEL'),
-      unit: 'Bao',
+      unitId: getUnitId('Bao'),
       barcode: null,
       weight: 25.0,
       dimensions: '50x80x15cm',
@@ -333,8 +351,6 @@ export async function main() {
       expiryDate: null,
       status: ProductStatus.active,
     },
-
-    // --- Hóa chất Vi lượng ---
     {
       sku: 'NL-VL-BORAX-1KG',
       slug: 'borax-bo-1kg',
@@ -343,7 +359,7 @@ export async function main() {
       packagingType: PackagingType.bag,
       categoryId: findCategory('NL-VI-LUONG'),
       supplierId: findSupplier('NCC-XNK-VINACHEM'),
-      unit: 'Gói',
+      unitId: getUnitId('Gói'),
       barcode: null,
       weight: 1.05,
       dimensions: '15x20x5cm',
@@ -365,7 +381,7 @@ export async function main() {
       packagingType: PackagingType.bag,
       categoryId: findCategory('NL-VI-LUONG'),
       supplierId: findSupplier('NCC-XNK-VINACHEM'),
-      unit: 'Gói',
+      unitId: getUnitId('Gói'),
       barcode: null,
       weight: 1.02,
       dimensions: '15x20x5cm',
@@ -379,8 +395,6 @@ export async function main() {
       expiryDate: null,
       status: ProductStatus.active,
     },
-
-    // --- Nguyên liệu Hữu cơ & Sinh học ---
     {
       sku: 'NL-HC-AMINO-THUY-PHAN-20L',
       slug: 'amino-thuy-phan-long-20l',
@@ -389,7 +403,7 @@ export async function main() {
       packagingType: PackagingType.other,
       categoryId: findCategory('NL-HUU-CO'),
       supplierId: findSupplier('NCC-AMINO-FRANCE'),
-      unit: 'Can',
+      unitId: getUnitId('Can'),
       barcode: null,
       weight: 22.0,
       dimensions: '30x30x40cm',
@@ -400,7 +414,7 @@ export async function main() {
       sellingPriceVip: null,
       taxRate: 5.0,
       minStockLevel: 20,
-      expiryDate: new Date('2026-06-30'), // Nguyên liệu sinh học có hạn
+      expiryDate: new Date('2026-06-30'),
       status: ProductStatus.active,
     },
     {
@@ -411,7 +425,7 @@ export async function main() {
       packagingType: PackagingType.bag,
       categoryId: findCategory('NL-HUU-CO'),
       supplierId: findSupplier('NCC-XNK-VINACHEM'),
-      unit: 'Bao',
+      unitId: getUnitId('Bao'),
       barcode: null,
       weight: 25.0,
       dimensions: '50x80x15cm',
@@ -425,8 +439,6 @@ export async function main() {
       expiryDate: null,
       status: ProductStatus.active,
     },
-
-    // --- Phụ gia & Dung môi ---
     {
       sku: 'NL-PG-SILICON-BAMDDINH-5L',
       slug: 'chat-bam-dinh-silicon-5l',
@@ -435,7 +447,7 @@ export async function main() {
       packagingType: PackagingType.other,
       categoryId: findCategory('NL-PHU-GIA'),
       supplierId: findSupplier('NCC-XNK-VINACHEM'),
-      unit: 'Can',
+      unitId: getUnitId('Can'),
       barcode: null,
       weight: 5.5,
       dimensions: '20x20x30cm',
@@ -454,7 +466,6 @@ export async function main() {
     // NHÓM 3: BAO BÌ - VẬT LIỆU ĐÓNG GÓI (PACKAGING)
     // ================================================================
 
-    // --- Chai & Can nhựa ---
     {
       sku: 'BB-CHAI-HDPE-500ML',
       slug: 'chai-nhua-hdpe-500ml',
@@ -463,7 +474,7 @@ export async function main() {
       packagingType: PackagingType.bottle,
       categoryId: findCategory('BB-CHAI-CAN'),
       supplierId: findSupplier('NCC-NHUA-DUYTAN'),
-      unit: 'Cái',
+      unitId: getUnitId('Cái'),
       barcode: null,
       weight: 0.035,
       dimensions: '7x7x20cm',
@@ -485,7 +496,7 @@ export async function main() {
       packagingType: PackagingType.bottle,
       categoryId: findCategory('BB-CHAI-CAN'),
       supplierId: findSupplier('NCC-NHUA-DUYTAN'),
-      unit: 'Cái',
+      unitId: getUnitId('Cái'),
       barcode: null,
       weight: 0.055,
       dimensions: '9x9x26cm',
@@ -507,7 +518,7 @@ export async function main() {
       packagingType: PackagingType.bottle,
       categoryId: findCategory('BB-CHAI-CAN'),
       supplierId: findSupplier('NCC-NHUA-DUYTAN'),
-      unit: 'Cái',
+      unitId: getUnitId('Cái'),
       barcode: null,
       weight: 0.18,
       dimensions: '18x18x30cm',
@@ -521,8 +532,6 @@ export async function main() {
       expiryDate: null,
       status: ProductStatus.active,
     },
-
-    // --- Bao bì màng ghép ---
     {
       sku: 'BB-MG-TUI-NHOM-1KG',
       slug: 'tui-mang-ghep-1kg',
@@ -531,10 +540,10 @@ export async function main() {
       packagingType: PackagingType.bag,
       categoryId: findCategory('BB-MANG-GHEP'),
       supplierId: findSupplier('NCC-IN-LIKSIN'),
-      unit: 'Cái',
+      unitId: getUnitId('Cái'),
       barcode: null,
       weight: 0.015,
-      dimensions: '15x22cm (phẳng)',
+      dimensions: '15x22cm',
       description: 'Túi màng ghép phức hợp 3 lớp, in offset 2 mặt. Dùng đóng phân bón dạng bột.',
       purchasePrice: 2200,
       sellingPriceRetail: null,
@@ -545,8 +554,6 @@ export async function main() {
       expiryDate: null,
       status: ProductStatus.active,
     },
-
-    // --- Tem, Nhãn, Decal ---
     {
       sku: 'BB-TEM-DECAL-500ML',
       slug: 'tem-nhan-chai-500ml',
@@ -555,7 +562,7 @@ export async function main() {
       packagingType: PackagingType.label,
       categoryId: findCategory('BB-TEM-NHAN'),
       supplierId: findSupplier('NCC-IN-LIKSIN'),
-      unit: 'Tờ',
+      unitId: getUnitId('Tờ'),
       barcode: null,
       weight: 0.002,
       dimensions: '12x7cm',
@@ -577,7 +584,7 @@ export async function main() {
       packagingType: PackagingType.label,
       categoryId: findCategory('BB-TEM-NHAN'),
       supplierId: findSupplier('NCC-IN-LIKSIN'),
-      unit: 'Tờ',
+      unitId: getUnitId('Tờ'),
       barcode: null,
       weight: 0.001,
       dimensions: '10x15cm',
@@ -591,8 +598,6 @@ export async function main() {
       expiryDate: null,
       status: ProductStatus.active,
     },
-
-    // --- Thùng Carton & Đóng gói ngoài ---
     {
       sku: 'BB-CARTON-20CHAI-500ML',
       slug: 'thung-carton-20-chai-500ml',
@@ -601,7 +606,7 @@ export async function main() {
       packagingType: PackagingType.box,
       categoryId: findCategory('BB-NGOAI'),
       supplierId: findSupplier('NCC-BAOBI-TANTHANH'),
-      unit: 'Cái',
+      unitId: getUnitId('Cái'),
       barcode: null,
       weight: 0.35,
       dimensions: '40x30x25cm',
@@ -623,7 +628,7 @@ export async function main() {
       packagingType: PackagingType.box,
       categoryId: findCategory('BB-NGOAI'),
       supplierId: findSupplier('NCC-BAOBI-TANTHANH'),
-      unit: 'Cái',
+      unitId: getUnitId('Cái'),
       barcode: null,
       weight: 0.42,
       dimensions: '45x35x30cm',
@@ -645,7 +650,7 @@ export async function main() {
       packagingType: PackagingType.other,
       categoryId: findCategory('BB-NGOAI'),
       supplierId: findSupplier('NCC-BAOBI-TANTHANH'),
-      unit: 'Cuộn',
+      unitId: getUnitId('Cuộn'),
       barcode: null,
       weight: 0.52,
       dimensions: '10x10x5cm',
@@ -665,14 +670,14 @@ export async function main() {
   for (const product of products) {
     await prisma.product.upsert({
       where: { sku: product.sku },
-      update: product,
-      create: product,
+      update: product as any,
+      create: product as any,
     });
   }
 
   console.log(`✅ Đã seed xong ${products.length} sản phẩm!`);
-  console.log(`   - Thành phẩm: 10 sản phẩm`);
-  console.log(`   - Nguyên liệu: 9 loại hóa chất`);
+  console.log(`   - Thành phẩm: 9 sản phẩm`);
+  console.log(`   - Nguyên liệu: 8 loại hóa chất`);
   console.log(`   - Bao bì: 10 loại (chai, nhãn, thùng...)`);
 }
 

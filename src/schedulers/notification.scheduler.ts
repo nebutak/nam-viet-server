@@ -83,7 +83,8 @@ class NotificationScheduler {
             id: true,
             productName: true,
             minStockLevel: true,
-            unit: true,
+            unitId: true,
+            unit: { select: { id: true, unitCode: true, unitName: true } },
           },
         },
         warehouse: {
@@ -108,7 +109,7 @@ class NotificationScheduler {
           warehouseName: item.warehouse.warehouseName,
           currentQuantity: availableQty,
           minStockLevel: Number(item.product.minStockLevel),
-          unit: item.product.unit || '',
+          unit: (item.product.unit as any)?.unitCode || '',
         });
         notificationCount++;
       }
