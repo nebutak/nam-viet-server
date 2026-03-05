@@ -43,6 +43,8 @@ class StockTransactionService {
       search = '',
       transactionType,
       warehouseId,
+      referenceType,
+      referenceId,
       status,
       fromDate,
       toDate,
@@ -64,6 +66,8 @@ class StockTransactionService {
       ...(transactionType && { transactionType: transactionType as any }),
       ...(status && { status: status as any }),
       ...(warehouseId && { warehouseId: parseInt(warehouseId) }),
+      ...(referenceType && { referenceType }),
+      ...(referenceId && { referenceId: parseInt(referenceId) }),
       ...(fromDate &&
         toDate && {
         createdAt: {
