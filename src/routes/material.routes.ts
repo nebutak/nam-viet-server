@@ -22,6 +22,13 @@ router.get(
     asyncHandler(materialController.getAllMaterials.bind(materialController))
 );
 
+// POST /api/materials/bulk-delete
+router.post(
+    '/bulk-delete',
+    logActivityMiddleware('delete', 'material'),
+    asyncHandler(materialController.bulkDeleteMaterials.bind(materialController))
+);
+
 // GET /api/materials/:id
 router.get(
     '/:id',

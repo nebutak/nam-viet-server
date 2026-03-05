@@ -78,6 +78,21 @@ class MaterialController {
 
         res.status(200).json(response);
     }
+
+    // POST /api/materials/bulk-delete
+    async bulkDeleteMaterials(req: AuthRequest, res: Response) {
+        const userId = req.user!.id;
+        const { ids } = req.body;
+        const result = await materialService.deleteMultipleMaterials(ids, userId);
+
+        const response: ApiResponse = {
+            success: true,
+            data: result,
+            timestamp: new Date().toISOString(),
+        };
+
+        res.status(200).json(response);
+    }
 }
 
 export default new MaterialController();

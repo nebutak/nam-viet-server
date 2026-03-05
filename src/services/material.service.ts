@@ -343,6 +343,41 @@ class MaterialService {
 
         return { message: 'Xóa nguyên liệu thành công' };
     }
+
+    async deleteMultipleMaterials(ids: number[], deletedBy: number) {
+        const materials = await prisma.material.findMany({
+            where: { id: { in: ids }, deletedAt: null },
+            include: {
+                _count: {
+                    select: { products: true },
+                },
+            },
+        });
+
+        if (materials.length === 0) {
+            throw new NotFoundError('Không tìm thấy nguyên liệu nào để xóa');
+        }
+
+        const linkedMaterials = materials.filter((m) => m._count.products > 0);
+        if (linkedMaterials.length > 0) {
+            const names = linkedMaterials.map((m) => m.name).join(', ');
+            throw new ValidationError(
+                `Không thể xóa các nguyên liệu đang liên kết với sản phẩm: ${names}`
+            );
+        }
+
+        await prisma.material.updateMany({
+            where: { id: { in: ids }, deletedAt: null },
+            data: { deletedAt: new Date() },
+        });
+
+        logActivity('delete', deletedBy, 'materials', {
+            recordId: ids,
+            oldValue: materials,
+        });
+
+        return { message: `Xóa ${materials.length} nguyên liệu thành công` };
+    }
 }
 
 export default new MaterialService();
