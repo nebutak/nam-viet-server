@@ -89,7 +89,7 @@ router.get(
 // GET /api/reports/revenue - Revenue report with grouping
 router.get(
   '/revenue',
-  authorize('view_reports'),
+  authorize('GET_REVENUE_REPORT'),
   validate(revenueReportSchema, 'query'),
   asyncHandler(reportController.getRevenueReport.bind(reportController))
 );
@@ -97,7 +97,7 @@ router.get(
 // GET /api/reports/revenue/by-channel - Revenue by sales channel
 router.get(
   '/revenue/by-channel',
-  authorize('view_reports'),
+  authorize('GET_REVENUE_REPORT'),
   validate(dateRangeSchema, 'query'),
   asyncHandler(reportController.getRevenueByChannel.bind(reportController))
 );
@@ -105,7 +105,7 @@ router.get(
 // GET /api/reports/revenue/by-region - Revenue by region
 router.get(
   '/revenue/by-region',
-  authorize('view_reports'),
+  authorize('GET_REVENUE_REPORT'),
   validate(dateRangeSchema, 'query'),
   asyncHandler(reportController.getRevenueByRegion.bind(reportController))
 );

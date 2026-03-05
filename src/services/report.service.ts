@@ -733,9 +733,9 @@ class ReportService {
       totalTax: totalTax,
       averageOrderValue: averageOrderValue,
       paidAmount: totalPaid,
-      debtAmount: 0,
+      debtAmount: totalRevenue - totalPaid,  // ✅ FIX: Calculate actual debt
       shippingFee: totalShipping,
-      growth: 0,
+      growth: 0,  // TODO: Compare with previous period
     };
 
     // Prepare trend data expected by frontend
