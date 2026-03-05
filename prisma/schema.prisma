@@ -190,6 +190,10 @@ model User {
   updatedExpiries         Expiry[]           @relation("ExpiryUpdater")
   createdUnits            Unit[]             @relation("UnitCreator")
   updatedUnits            Unit[]             @relation("UnitUpdater")
+  createdTaxes            Tax[]              @relation("TaxCreator")
+  updatedTaxes            Tax[]              @relation("TaxUpdater")
+  createdAttributes       Attribute[]        @relation("AttributeCreator")
+  updatedAttributes       Attribute[]        @relation("AttributeUpdater")
 
   @@index([roleId, status])
   @@map("users")
@@ -410,6 +414,7 @@ model Product {
   promotionProducts        PromotionProduct[]
   promotionGifts           PromotionProduct[]        @relation("GiftProduct")
   expiries                 Expiry[]
+  productHasAttributes     ProductHasAttribute[]
 
   @@index([sku])
   @@index([categoryId])
@@ -1988,4 +1993,67 @@ model Unit {
 enum UnitStatus {
   active
   inactive
+}
+
+// =====================================================
+// 15. TAX MANAGEMENT
+// =====================================================
+
+model Tax {
+  id         Int       @id @default(autoincrement())
+  title      String    @db.VarChar(100)
+  percentage Decimal   @db.Decimal(5, 2)
+  priority   Int?      @default(0)
+  status     String    @default("active") @db.VarChar(20)
+  createdBy  Int?      @map("created_by")
+  updatedBy  Int?      @map("updated_by")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
+
+  creator User? @relation("TaxCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  updater User? @relation("TaxUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@map("taxes")
+}
+
+// =====================================================
+// 16. ATTRIBUTE MANAGEMENT
+// =====================================================
+
+model Attribute {
+  id          Int       @id @default(autoincrement())
+  name        String    @db.VarChar(100)
+  code        String?   @db.VarChar(50)
+  dataType    String?   @map("data_type") @db.VarChar(50)
+  unit        String?   @db.VarChar(50)
+  description String?   @db.VarChar(255)
+  status      String    @default("active") @db.VarChar(20)
+  createdBy   Int?      @map("created_by")
+  updatedBy   Int?      @map("updated_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  creator              User?                 @relation("AttributeCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  updater              User?                 @relation("AttributeUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
+  productHasAttributes ProductHasAttribute[]
+
+  @@index([status])
+  @@map("attributes")
+}
+
+model ProductHasAttribute {
+  id          Int     @id @default(autoincrement())
+  productId   Int     @map("product_id")
+  attributeId Int     @map("attribute_id")
+  value       String? @db.VarChar(255)
+
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  attribute Attribute @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([attributeId])
+  @@map("product_has_attributes")
 }

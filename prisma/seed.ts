@@ -345,6 +345,12 @@ async function main() {
     { key: "SYSTEM_SETTING", name: "Cài đặt hệ thống", module: "setting", moduleLabel: "Cài đặt" },
     { key: "GET_STORAGE_SIZE_SETTING", name: "Xem dung lượng lưu trữ", module: "setting", moduleLabel: "Cài đặt" },
 
+    // Báo cáo
+    { key: "GET_REVENUE_REPORT", name: "Xem doanh thu", module: "report", moduleLabel: "Báo cáo" },
+    { key: "GET_INVENTORY_REPORT", name: "Xem tồn kho", module: "report", moduleLabel: "Báo cáo" },
+    { key: "GET_SALES_REPORT", name: "Xem bán hàng", module: "report", moduleLabel: "Báo cáo" },
+    { key: "GET_FINANCIAL_REPORT", name: "Xem tài chính", module: "report", moduleLabel: "Báo cáo" },
+
     // Khác
     { key: "GET_PERMISSION", name: "Xem quyền", module: "permission", moduleLabel: "Quyền hạn" },
     { key: "GET_AUDIT_LOG", name: "Xem nhật ký hệ thống", module: "audit_log", moduleLabel: "Nhật ký hệ thống" }

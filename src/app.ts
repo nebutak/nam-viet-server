@@ -57,6 +57,8 @@ import securityRoutes from '@routes/security.routes';
 import generalSettingRoutes from '@routes/general-setting.routes';
 import loginHistoryRoutes from '@routes/login-history.routes';
 import unitRoutes from '@routes/unit.routes';
+import taxRoutes from '@routes/tax.routes';
+import attributeRoutes from '@routes/attribute.routes';
 
 import smartDebtRoutes from '@routes/smart-debt.routes';
 import cs_authRoutes from '@routes/cs-auth.routes';
@@ -244,6 +246,8 @@ app.use('/api/security', securityRoutes);
 app.use('/api/settings/general', generalSettingRoutes);
 app.use('/api/settings/login-history', loginHistoryRoutes);
 app.use('/api/units', unitRoutes);
+app.use('/api/taxes', taxRoutes);
+app.use('/api/attributes', attributeRoutes);
 
 // Smart Debt routes
 app.use('/api/smart-debt', smartDebtRoutes);
