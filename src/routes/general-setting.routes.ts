@@ -8,17 +8,24 @@ const router = Router();
 
 router.use(authentication);
 
+// Get system information (OS, CPU, memory, dependencies)
+router.get(
+  '/system-info',
+  authorize('GET_SETTING'),
+  asyncHandler(generalSettingController.getSystemInfo.bind(generalSettingController))
+);
+
 // Get general settings
 router.get(
   '/',
-  authorize('manage_settings'),
+  authorize('GET_SETTING'),
   asyncHandler(generalSettingController.getGeneralSetting.bind(generalSettingController))
 );
 
 // Update general settings
 router.put(
   '/',
-  authorize('manage_settings'),
+  authorize('GENERAL_SETTING'),
   asyncHandler(generalSettingController.updateGeneralSetting.bind(generalSettingController))
 );
 
