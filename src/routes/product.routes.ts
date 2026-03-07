@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import productController from '@controllers/product.controller';
 import { authentication } from '@middlewares/auth';
-import { authorize } from '@middlewares/authorize';
+import { authorize, authorizeAny } from '@middlewares/authorize';
 import { validate, validateMultiple } from '@middlewares/validate';
 import { asyncHandler } from '@middlewares/errorHandler';
 import uploadService from '@services/upload.service';
@@ -51,14 +51,14 @@ router.get(
 // GET /api/products/low-stock
 router.get(
   '/low-stock',
-  authorize('view_inventory', 'GET_PRODUCT'),
+  authorizeAny('GET_PRODUCT', 'GET_INVENTORY', 'STOCK_MANAGEMENT'),
   asyncHandler(productController.getLowStock.bind(productController))
 );
 
 // GET /api/products/expiring-soon
 router.get(
   '/expiring-soon',
-  authorize('view_inventory', 'GET_PRODUCT'),
+  authorizeAny('GET_PRODUCT', 'GET_INVENTORY', 'STOCK_MANAGEMENT'),
   asyncHandler(productController.getExpiringSoon.bind(productController))
 );
 
@@ -88,7 +88,7 @@ router.post(
 );
 
 router.put(
-  '/banner-status', 
+  '/banner-status',
   authorize('UPDATE_PRODUCT'),
   validate(updateFeaturedSchema, 'body'), // Validate Action & ProductIds
   asyncHandler(productController.updateBannerStatus.bind(productController))

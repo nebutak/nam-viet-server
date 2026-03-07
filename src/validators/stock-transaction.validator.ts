@@ -88,6 +88,8 @@ export const transactionQuerySchema = z.object({
   search: z.string().trim().optional(),
   transactionType: z.enum(['import', 'export', 'transfer', 'disposal', 'stocktake']).optional(),
   warehouseId: z.string().optional(),
+  referenceType: z.string().max(50).optional(),
+  referenceId: z.string().regex(/^\d+$/).optional(),
   status: z.enum(['draft', 'pending', 'approved', 'completed', 'cancelled']).optional(),
   fromDate: z.string().optional(),
   toDate: z.string().optional(),

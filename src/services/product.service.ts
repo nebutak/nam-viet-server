@@ -126,6 +126,13 @@ class ProductService {
           select: {
             quantity: true,
             reservedQuantity: true,
+            warehouseId: true,
+            warehouse: {
+              select: {
+                id: true,
+                warehouseName: true,
+              }
+            }
           },
         },
         creator: {

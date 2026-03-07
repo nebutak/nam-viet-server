@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import unitController from '@controllers/unit.controller';
 import { authentication } from '@middlewares/auth';
-import { authorize } from '@middlewares/authorize';
+import { authorizeAny } from '@middlewares/authorize';
 import { validate, validateMultiple } from '@middlewares/validate';
 import { asyncHandler } from '@middlewares/errorHandler';
 import {
@@ -20,35 +20,35 @@ router.use(authentication);
 
 router.get(
     '/',
-    authorize('GET_PRODUCT'), // Using GET_PRODUCT permission for now as units are closely tied to products
+    authorizeAny('GET_PRODUCT', 'GET_UNIT'),
     validate(unitQuerySchema, 'query'),
     asyncHandler(unitController.getAll.bind(unitController))
 );
 
 router.get(
     '/:id',
-    authorize('GET_PRODUCT'),
+    authorizeAny('GET_PRODUCT', 'GET_UNIT'),
     validate(unitIdSchema, 'params'),
     asyncHandler(unitController.getById.bind(unitController))
 );
 
 router.post(
     '/',
-    authorize('CREATE_PRODUCT'),
+    authorizeAny('CREATE_PRODUCT', 'CREATE_UNIT'),
     validate(createUnitSchema, 'body'),
     asyncHandler(unitController.create.bind(unitController))
 );
 
 router.post(
     '/bulk-delete',
-    authorize('DELETE_PRODUCT'),
+    authorizeAny('DELETE_PRODUCT', 'DELETE_UNIT'),
     validate(bulkDeleteUnitSchema, 'body'),
     asyncHandler(unitController.bulkDelete.bind(unitController))
 );
 
 router.put(
     '/:id',
-    authorize('UPDATE_PRODUCT'),
+    authorizeAny('UPDATE_PRODUCT', 'UPDATE_UNIT'),
     validateMultiple({
         params: unitIdSchema,
         body: updateUnitSchema,
@@ -58,7 +58,7 @@ router.put(
 
 router.patch(
     '/:id/status',
-    authorize('UPDATE_PRODUCT'),
+    authorizeAny('UPDATE_PRODUCT', 'UPDATE_UNIT'),
     validateMultiple({
         params: unitIdSchema,
         body: updateUnitStatusSchema,
@@ -68,7 +68,7 @@ router.patch(
 
 router.delete(
     '/:id',
-    authorize('DELETE_PRODUCT'),
+    authorizeAny('DELETE_PRODUCT', 'DELETE_UNIT'),
     validate(unitIdSchema, 'params'),
     asyncHandler(unitController.delete.bind(unitController))
 );

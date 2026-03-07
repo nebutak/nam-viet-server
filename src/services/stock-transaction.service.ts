@@ -20,19 +20,45 @@ class StockTransactionService {
 
     const prefix = prefixes[type] || 'STK';
     const date = new Date();
-    const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
+    // Use local time for date string to avoid timezone shift at midnight UTC
+    const dateStr = [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0')
+    ].join('');
 
-    const count = await prisma.stockTransaction.count({
+    const startOfDay = new Date(date.setHours(0, 0, 0, 0));
+    const endOfDay = new Date(date.setHours(23, 59, 59, 999));
+
+    // Get the latest transaction of this type today
+    const latestTx = await prisma.stockTransaction.findFirst({
       where: {
         transactionType: type as any,
         createdAt: {
-          gte: new Date(date.setHours(0, 0, 0, 0)),
-          lt: new Date(date.setHours(23, 59, 59, 999)),
+          gte: startOfDay,
+          lt: endOfDay,
         },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      select: {
+        transactionCode: true,
       },
     });
 
-    const sequence = (count + 1).toString().padStart(3, '0');
+    let nextSequence = 1;
+    if (latestTx && latestTx.transactionCode.includes(dateStr)) {
+      const parts = latestTx.transactionCode.split('-');
+      if (parts.length === 3) {
+        const lastSeq = parseInt(parts[2], 10);
+        if (!isNaN(lastSeq)) {
+          nextSequence = lastSeq + 1;
+        }
+      }
+    }
+
+    const sequence = nextSequence.toString().padStart(3, '0');
     return `${prefix}-${dateStr}-${sequence}`;
   }
 
@@ -43,6 +69,8 @@ class StockTransactionService {
       search = '',
       transactionType,
       warehouseId,
+      referenceType,
+      referenceId,
       status,
       fromDate,
       toDate,
@@ -64,6 +92,8 @@ class StockTransactionService {
       ...(transactionType && { transactionType: transactionType as any }),
       ...(status && { status: status as any }),
       ...(warehouseId && { warehouseId: parseInt(warehouseId) }),
+      ...(referenceType && { referenceType }),
+      ...(referenceId && { referenceId: parseInt(referenceId) }),
       ...(fromDate &&
         toDate && {
         createdAt: {
@@ -216,47 +246,65 @@ class StockTransactionService {
       }
     }
 
-    const transactionCode = await this.generateTransactionCode('import');
-
     const totalValue = data.details.reduce(
       (sum, item) => sum + (item.unitPrice || 0) * item.quantity,
       0
     );
 
-    const transaction = await prisma.stockTransaction.create({
-      data: {
-        transactionCode,
-        transactionType: 'import',
-        warehouseId: data.warehouseId,
-        referenceType: data.referenceType,
-        referenceId: data.referenceId,
-        totalValue,
-        reason: data.reason,
-        notes: data.notes,
-        status: 'pending',
-        createdBy: userId,
-        details: {
-          create: data.details.map((item) => ({
-            productId: item.productId,
+    let transactionCode = await this.generateTransactionCode('import');
+    let transaction;
+    let retries = 3;
+
+    while (retries > 0) {
+      try {
+        transaction = await prisma.stockTransaction.create({
+          data: {
+            transactionCode,
+            transactionType: 'import',
             warehouseId: data.warehouseId,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            batchNumber: item.batchNumber,
-            expiryDate: item.expiryDate ? new Date(item.expiryDate) : null,
-            notes: item.notes,
-          })),
-        },
-      },
-      include: {
-        details: {
-          include: {
-            product: true,
+            referenceType: data.referenceType,
+            referenceId: data.referenceId,
+            totalValue,
+            reason: data.reason,
+            notes: data.notes,
+            status: 'pending',
+            createdBy: userId,
+            details: {
+              create: data.details.map((item) => ({
+                productId: item.productId,
+                warehouseId: data.warehouseId,
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                batchNumber: item.batchNumber,
+                expiryDate: item.expiryDate ? new Date(item.expiryDate) : null,
+                notes: item.notes,
+              })),
+            },
           },
-        },
-        warehouse: true,
-        creator: true,
-      },
-    });
+          include: {
+            details: {
+              include: {
+                product: true,
+              },
+            },
+            warehouse: true,
+            creator: true,
+          },
+        });
+        break; // Sucesss
+      } catch (error: any) {
+        if (error.code === 'P2002' && error.meta?.target === 'stock_transactions_transaction_code_key') {
+          retries--;
+          if (retries === 0) throw error;
+          // Generate an entirely new random string tail instead to ensure uniqueness if concurrent
+          transactionCode = `${transactionCode}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+        } else {
+          throw error;
+        }
+      }
+    }
+
+    if (!transaction) throw new Error("Failed to create transaction");
 
     logActivity('create', userId, 'stock_transactions', {
       recordId: transaction.id,
@@ -636,9 +684,12 @@ class StockTransactionService {
   }
 
   private async processImport(tx: any, transaction: any, userId: number) {
-    const purchaseOrder = await tx.purchaseOrder.findUnique({
-      where: { id: transaction.referenceId },
-    });
+    let purchaseOrder = null;
+    if (transaction.referenceType === 'purchase_order' && transaction.referenceId) {
+      purchaseOrder = await tx.purchaseOrder.findUnique({
+        where: { id: transaction.referenceId },
+      });
+    }
 
     for (const detail of transaction.details) {
       const current = await tx.inventory.findUnique({
