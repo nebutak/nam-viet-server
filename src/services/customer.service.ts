@@ -72,7 +72,7 @@ class CustomerService {
           },
           _count: {
             select: {
-              salesOrders: true,
+              invoices: true,
             },
           },
         },
@@ -155,7 +155,7 @@ class CustomerService {
             email: true,
           },
         },
-        salesOrders: {
+        invoices: {
           select: {
             id: true,
             orderCode: true,
@@ -255,7 +255,7 @@ class CustomerService {
         rewardPoints: data.rewardPoints || 0,
         rewardCode: data.rewardCode || null,
         notes: data.notes,
-        status: 'active',
+        status: data.status || 'active',
         createdBy: userId,
       },
       include: {
@@ -343,6 +343,7 @@ class CustomerService {
         ...(data.notes !== undefined && { notes: data.notes }),
         ...(data.rewardPoints !== undefined && { rewardPoints: data.rewardPoints }),
         ...(data.rewardCode !== undefined && { rewardCode: data.rewardCode || null }),
+        ...(data.status !== undefined && { status: data.status }),
         updatedBy: userId,
       },
       include: {
@@ -444,7 +445,7 @@ class CustomerService {
         creditLimit: true,
         currentDebt: true,
         debtUpdatedAt: true,
-        salesOrders: {
+        invoices: {
           where: {
             orderStatus: {
               in: ['pending', 'preparing', 'delivering', 'completed'],
@@ -470,14 +471,14 @@ class CustomerService {
       throw new NotFoundError('Không tìm thấy khách hàng');
     }
 
-    const unpaidOrders = customer.salesOrders.map((order) => ({
+    const unpaidOrders = customer.invoices.map((order) => ({
       ...order,
       debtAmount: Number(order.totalAmount) - Number(order.paidAmount),
     }));
 
     // Calculate total revenue and paid amounts
-    const totalRevenue = customer.salesOrders.reduce((sum, order) => sum + Number(order.totalAmount), 0);
-    const totalPaid = customer.salesOrders.reduce((sum, order) => sum + Number(order.paidAmount), 0);
+    const totalRevenue = customer.invoices.reduce((sum, order) => sum + Number(order.totalAmount), 0);
+    const totalPaid = customer.invoices.reduce((sum, order) => sum + Number(order.paidAmount), 0);
 
     const debtPercentage =
       Number(customer.creditLimit) > 0
@@ -500,7 +501,7 @@ class CustomerService {
       unpaidOrders,
       totalUnpaidOrders: unpaidOrders.length,
       totalRevenue,
-      totalOrders: customer.salesOrders.length,
+      totalOrders: customer.invoices.length,
       totalPaid,
     };
   }
@@ -521,7 +522,7 @@ class CustomerService {
         currentDebt: true,
         creditLimit: true,
         debtUpdatedAt: true,
-        salesOrders: {
+        invoices: {
           where: {
             orderStatus: {
               in: ['pending', 'preparing', 'delivering', 'completed'],
@@ -556,7 +557,7 @@ class CustomerService {
         creditLimit: Number(customer.creditLimit),
         debtPercentage: Math.round(debtPercentage * 100) / 100,
         isOverLimit: Number(customer.currentDebt) > Number(customer.creditLimit),
-        unpaidOrdersCount: customer.salesOrders.length,
+        unpaidOrdersCount: customer.invoices.length,
         debtUpdatedAt: customer.debtUpdatedAt,
       };
     });
@@ -574,7 +575,7 @@ class CustomerService {
     const offset = (page - 1) * limit;
 
     const [orders, total] = await Promise.all([
-      prisma.salesOrder.findMany({
+      prisma.invoice.findMany({
         where: { customerId: id },
         select: {
           id: true,
@@ -596,7 +597,7 @@ class CustomerService {
         take: limit,
         orderBy: { orderDate: 'desc' },
       }),
-      prisma.salesOrder.count({ where: { customerId: id } }),
+      prisma.invoice.count({ where: { customerId: id } }),
     ]);
 
     return {
@@ -619,7 +620,7 @@ class CustomerService {
     const customer = await prisma.customer.findUnique({
       where: { id },
       include: {
-        salesOrders: true,
+        invoices: true,
       },
     });
 
@@ -631,7 +632,7 @@ class CustomerService {
       throw new ValidationError('Không thể xóa khách hàng khi còn công nợ');
     }
 
-    if (customer.salesOrders.length > 0) {
+    if (customer.invoices.length > 0) {
       throw new ValidationError(
         'Không thể xóa khách hàng có lịch sử đơn hàng. Hãy thay đổi trạng thái thành không hoạt động.'
       );
@@ -651,6 +652,370 @@ class CustomerService {
     });
 
     return { message: 'Xóa khách hàng thành công' };
+  }
+
+  async getCustomerInvoices(query: any) {
+    const { customerId, page = 1, limit = 10, dateFrom, dateTo, status, order } = query;
+    const where: Prisma.InvoiceWhereInput = {
+      customerId: Number(customerId),
+      deletedAt: null,
+      ...(dateFrom || dateTo
+        ? {
+            orderDate: {
+              ...(dateFrom && { gte: new Date(dateFrom) }),
+              ...(dateTo && { lte: new Date(dateTo) }),
+            },
+          }
+        : {}),
+      ...(status && { paymentStatus: status as any }),
+    };
+
+    const offset = (Number(page) - 1) * Number(limit);
+    let orderByConfig: any = { createdAt: 'desc' };
+    try {
+      if (order && typeof order === 'string') {
+        const parsedOrder = JSON.parse(order);
+        if (Array.isArray(parsedOrder) && parsedOrder[0]) {
+          orderByConfig = { [parsedOrder[0][0]]: parsedOrder[0][1].toLowerCase() };
+        }
+      } else if (order) {
+        orderByConfig = { [order[0][0]]: order[0][1].toLowerCase() };
+      }
+    } catch (e) {}
+
+    const [orders, total, allOrdersForSummary] = await Promise.all([
+      prisma.invoice.findMany({
+        where,
+        skip: offset,
+        take: Number(limit),
+        orderBy: orderByConfig,
+      }),
+      prisma.invoice.count({ where }),
+      prisma.invoice.findMany({
+        where,
+        select: { totalAmount: true, paidAmount: true, paymentStatus: true, taxAmount: true, discountAmount: true },
+      }),
+    ]);
+
+    const invoices = orders.map((o) => ({
+      id: o.id,
+      code: o.orderCode,
+      date: o.orderDate,
+      type: o.salesChannel,
+      status: o.paymentStatus,
+      subTotal: Number(o.totalAmount) - Number(o.taxAmount) + Number(o.discountAmount),
+      taxAmount: Number(o.taxAmount),
+      amount: Number(o.totalAmount),
+      note: o.notes,
+    }));
+
+    const summary = allOrdersForSummary.reduce(
+      (acc, curr) => {
+        acc.subTotal += Number(curr.totalAmount);
+        acc.amount += Number(curr.paidAmount);
+        if (curr.paymentStatus === 'unpaid' || curr.paymentStatus === 'partial') {
+          acc.pendingSubtotal += Number(curr.totalAmount) - Number(curr.paidAmount);
+        }
+        return acc;
+      },
+      { subTotal: 0, amount: 0, pendingSubtotal: 0 }
+    );
+
+    return { invoices, total, summary };
+  }
+
+  async getCustomerPurchasedProducts(query: any) {
+    const customerId = Number(query.customerId);
+    const details = await prisma.invoiceDetail.groupBy({
+      by: ['productId'],
+      where: {
+        order: {
+          customerId,
+          deletedAt: null,
+          orderStatus: { not: 'cancelled' },
+        },
+      },
+      _sum: {
+        quantity: true,
+      },
+    });
+
+    const productIds = details.map((d) => d.productId);
+    const products = await prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, productName: true },
+    });
+
+    const productMap = new Map(products.map((p) => [p.id, p]));
+
+    return details.map((d) => ({
+      productId: d.productId,
+      productName: productMap.get(d.productId)?.productName || `SP #${d.productId}`,
+      totalQuantity: Number(d._sum.quantity || 0),
+    }));
+  }
+
+  async getCustomerOverview(customerId: number) {
+    const customer = await prisma.customer.findUnique({
+      where: { id: customerId }
+    });
+    
+    if (!customer) throw new NotFoundError('Không tìm thấy khách hàng');
+
+    const [ticketStats, taskStats, lastTask] = await Promise.all([
+      prisma.ticket.groupBy({
+        by: ['status'],
+        where: { customerId: customer.id, deletedAt: null },
+        _count: true
+      }),
+      prisma.crmTask.groupBy({
+        by: ['status'],
+        where: { customerId: customer.id, deletedAt: null },
+        _count: true
+      }),
+      prisma.crmTask.findFirst({
+        where: { customerId: customer.id, deletedAt: null },
+        orderBy: { updatedAt: 'desc' }
+      })
+    ]);
+
+    const ticketSummary = {
+      total: ticketStats.reduce((sum, stat) => sum + stat._count, 0),
+      byStatus: ticketStats.reduce((acc: any, stat) => {
+        acc[stat.status] = stat._count;
+        return acc;
+      }, { open: 0, in_progress: 0, resolved: 0, closed: 0 })
+    };
+
+    const taskSummary = {
+      total: taskStats.reduce((sum, stat) => sum + stat._count, 0),
+      byStatus: taskStats.reduce((acc: any, stat) => {
+        acc[stat.status] = stat._count;
+        return acc;
+      }, { pending: 0, in_progress: 0, completed: 0, cancelled: 0 })
+    };
+
+    const openTickets = ticketSummary.byStatus.open + ticketSummary.byStatus.in_progress;
+    const pendingTasks = taskSummary.byStatus.pending + taskSummary.byStatus.in_progress;
+    let lastCare = null;
+
+    if (lastTask) {
+      lastCare = {
+        at: lastTask.updatedAt || lastTask.dueDate || lastTask.createdAt,
+        sourceType: 'task',
+        sourceId: lastTask.id
+      };
+    }
+
+    return {
+      customerId: customer.id,
+      openTickets,
+      pendingTasks,
+      lastCare,
+      ticketSummary,
+      taskSummary
+    };
+  }
+
+  async getCustomerTimeline(customerId: number, query: any) {
+    const customer = await prisma.customer.findUnique({
+      where: { id: customerId }
+    });
+    
+    if (!customer) throw new NotFoundError('Không tìm thấy khách hàng');
+
+    const { page = 1, limit = 20, type = 'ALL' } = query;
+    const pageNum = Number(page);
+    const limitNum = Number(limit);
+    const offset = (pageNum - 1) * limitNum;
+
+    let activities: any[] = [];
+    let total = 0;
+
+    // Fetch tickets
+    if (type === 'ALL' || type === 'SUPPORT') {
+      const tickets = await prisma.ticket.findMany({
+        where: { customerId },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          priority: true,
+          createdAt: true,
+          assignedTo: { select: { fullName: true } }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+      const ticketActivities = tickets.map(t => ({
+        id: `ticket_${t.id}`,
+        type: 'SUPPORT',
+        title: `Hỗ trợ: ${t.title}`,
+        description: `Trạng thái: ${t.status}, Mức độ: ${t.priority}`,
+        date: t.createdAt,
+        user: t.assignedTo?.fullName || 'Hệ thống'
+      }));
+      activities = [...activities, ...ticketActivities];
+    }
+
+    // Fetch tasks
+    if (type === 'ALL' || type === 'INTERACTION') {
+      const tasks = await prisma.crmTask.findMany({
+        where: { customerId },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          type: true,
+          createdAt: true,
+          assignedTo: { select: { fullName: true } }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+      const taskActivities = tasks.map(t => ({
+        id: `task_${t.id}`,
+        type: t.type === 'meeting' ? 'MEETING' : (t.type === 'call' ? 'CALL' : t.type.toUpperCase()),
+        title: `Nhiệm vụ: ${t.title}`,
+        description: `Loại: ${t.type}, Trạng thái: ${t.status}`,
+        date: t.createdAt,
+        user: t.assignedTo?.fullName || 'Hệ thống'
+      }));
+      activities = [...activities, ...taskActivities];
+    }
+
+    // Sort by date desc
+    activities.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    total = activities.length;
+    const paginatedActivities = activities.slice(offset, offset + limitNum);
+
+    return {
+      activities: paginatedActivities,
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum)
+    };
+  }
+
+  async importCustomers(items: any[], userId: number) {
+    const errorItems: any[] = [];
+    const operations: any[] = [];
+    let currentMaxSequence = 0;
+
+    // generate prefix KH + yyyyMMdd
+    const today = new Date();
+    const dateStr = today.getFullYear().toString() +
+      (today.getMonth() + 1).toString().padStart(2, '0') +
+      today.getDate().toString().padStart(2, '0');
+    const prefix = `KH${dateStr}`;
+
+    const lastCustomer = await prisma.customer.findFirst({
+      where: { customerCode: { startsWith: prefix } },
+      orderBy: { customerCode: 'desc' },
+    });
+
+    if (lastCustomer && lastCustomer.customerCode) {
+      const lastSequenceStr = lastCustomer.customerCode.slice(-3);
+      if (!isNaN(Number(lastSequenceStr))) {
+        currentMaxSequence = parseInt(lastSequenceStr, 10);
+      }
+    }
+
+    for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const row = i + 2;
+
+        const phone = item.phone?.trim() || null;
+        const email = item.email?.trim() || null;
+        const cccd = item.identityCard?.trim() || null;
+        
+        // Find existing to UPSERT
+        let existingCustomer = null;
+        if (cccd) {
+            existingCustomer = await prisma.customer.findFirst({ where: { cccd } });
+        }
+        if (!existingCustomer && phone) {
+            existingCustomer = await prisma.customer.findFirst({ where: { phone } });
+            if (existingCustomer && existingCustomer.cccd && cccd && existingCustomer.cccd !== cccd) {
+                errorItems.push({ row, errors: [{ field: 'CMND/CCCD', message: `Số điện thoại "${phone}" đã thuộc về khách hàng khác có CCCD: ${existingCustomer.cccd}.` }] });
+                continue;
+            }
+        }
+
+        const customerData = {
+            customerType: item.customerType || 'individual',
+            customerName: item.name.trim(),
+            phone,
+            email,
+            address: item.address?.trim() || null,
+            contactPerson: item.represent?.trim() || null,
+            taxCode: item.taxCode?.trim() || null,
+            cccd,
+            issuedAt: item.identityDate ? new Date(item.identityDate) : null,
+            issuedBy: item.identityPlace?.trim() || null,
+            notes: item.note?.trim() || null,
+            classification: item.classification?.trim() || 'retail',
+            gender: item.gender || null,
+            status: item.status || 'active',
+            creditLimit: item.creditLimit ? new Prisma.Decimal(item.creditLimit) : new Prisma.Decimal(0),
+        };
+
+        if (existingCustomer) {
+            if (phone && phone !== existingCustomer.phone) {
+                const phoneConflict = await prisma.customer.findFirst({ where: { phone, id: { not: existingCustomer.id } } });
+                if (phoneConflict) {
+                    errorItems.push({ row, errors: [{ field: 'Số điện thoại', message: 'Số điện thoại đã được sử dụng bởi khách hàng khác.' }] });
+                    continue;
+                }
+            }
+            if (email && email !== existingCustomer.email) {
+                const emailConflict = await prisma.customer.findFirst({ where: { email, id: { not: existingCustomer.id } } });
+                if (emailConflict) {
+                    errorItems.push({ row, errors: [{ field: 'Email', message: 'Email đã được sử dụng bởi khách hàng khác.' }] });
+                    continue;
+                }
+            }
+            operations.push({ type: 'update', data: { ...customerData, updatedBy: userId }, id: existingCustomer.id, row });
+        } else {
+            if (phone) {
+                const phoneExists = await prisma.customer.findFirst({ where: { phone } });
+                if (phoneExists) {
+                    errorItems.push({ row, errors: [{ field: 'Số điện thoại', message: 'Số điện thoại đã tồn tại.' }] });
+                    continue;
+                }
+            }
+            if (email) {
+                const emailExists = await prisma.customer.findFirst({ where: { email } });
+                if (emailExists) {
+                    errorItems.push({ row, errors: [{ field: 'Email', message: 'Email đã tồn tại.' }] });
+                    continue;
+                }
+            }
+
+            currentMaxSequence++;
+            const code = `${prefix}${currentMaxSequence.toString().padStart(3, '0')}`;
+            operations.push({ type: 'create', data: { ...customerData, customerCode: code, createdBy: userId, updatedBy: userId }, row });
+        }
+    }
+
+    if (errorItems.length > 0) {
+      const error = new Error('Validation failed') as any;
+      error.importErrors = errorItems;
+      throw error;
+    }
+
+    // Execute in transaction
+    await prisma.$transaction(async (tx) => {
+      for (const op of operations) {
+        if (op.type === 'create') {
+          await tx.customer.create({ data: op.data });
+        } else {
+          await tx.customer.update({ where: { id: op.id }, data: op.data });
+        }
+      }
+    });
+
+    return { imported: operations.length };
   }
 }
 

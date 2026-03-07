@@ -1,3 +1,5 @@
+import path from 'path';
+import fs from 'fs';
 import { Response } from 'express';
 import { AuthRequest } from '@custom-types/common.type';
 import customerService from '@services/customer.service';
@@ -143,6 +145,113 @@ class CustomerController {
       message: result.message,
       timestamp: new Date().toISOString(),
     });
+  }
+  // GET /api/customers/invoices
+  async getCustomerInvoices(req: AuthRequest, res: Response) {
+    const result = await customerService.getCustomerInvoices(req.query);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // GET /api/customers/purchased-products
+  async getCustomerPurchasedProducts(req: AuthRequest, res: Response) {
+    const products = await customerService.getCustomerPurchasedProducts(req.query);
+
+    res.status(200).json({
+      success: true,
+      data: products,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // GET /api/crm/customers/:id/overview
+  async getCustomerOverview(req: AuthRequest, res: Response) {
+    const id = parseInt(req.params.id);
+    const result = await customerService.getCustomerOverview(id);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // GET /api/crm/customers/:id/timeline
+  async getCustomerTimeline(req: AuthRequest, res: Response) {
+    const id = parseInt(req.params.id);
+    const result = await customerService.getCustomerTimeline(id, req.query);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // POST /api/customers/import
+  async import(req: AuthRequest, res: Response) {
+    const userId = req.user!.id;
+    const items = req.body.items;
+
+    if (!items || !Array.isArray(items)) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Dữ liệu không hợp lệ',
+        }
+      });
+      return;
+    }
+
+    try {
+      const result = await customerService.importCustomers(items, userId);
+      res.status(200).json({
+        success: true,
+        data: result,
+        message: 'Customers imported successfully',
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      if (error.importErrors) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Import failed with validation errors',
+            importErrors: error.importErrors,
+            timestamp: new Date().toISOString(),
+          }
+        });
+        return;
+      }
+      throw error;
+    }
+  }
+
+  // GET /api/customers/import-template
+  async downloadTemplate(req: AuthRequest, res: Response) {
+    const { type } = req.query;
+    const extension = type === 'excel' ? 'xlsx' : 'csv';
+    const filename = `customer_import_template.${extension}`;
+    const filePath = path.join(process.cwd(), 'public/templates', filename);
+
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: `File mẫu (${filename}) chưa được tải lên hệ thống`
+        }
+      });
+      return;
+    }
+
+    res.download(filePath, filename);
   }
 }
 

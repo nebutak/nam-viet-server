@@ -63,14 +63,14 @@ router.delete(
 // GET /api/roles/:id/permissions - Get role permissions
 router.get(
   '/:id/permissions',
-  authorize('ROLE_MANAGEMENT'),
+  authorize('GET_ROLE'),
   asyncHandler(roleController.getRolePermissions.bind(roleController))
 );
 
 // PUT /api/roles/:id/permissions - Assign permissions to role (admin only)
 router.put(
   '/:id/permissions',
-  authorize('ROLE_MANAGEMENT'),
+  authorize('UPDATE_ROLE'),
   validate(assignPermissionsSchema),
   logActivityMiddleware('assign', 'permission'),
   asyncHandler(roleController.assignPermissions.bind(roleController))

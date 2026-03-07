@@ -33,11 +33,53 @@ router.get(
   asyncHandler(customerController.getAll.bind(customerController))
 );
 
+// GET /api/customers/import-template
+router.get(
+  '/import-template',
+  authorize('CREATE_CUSTOMER'),
+  asyncHandler(customerController.downloadTemplate.bind(customerController))
+);
+
+// GET /api/customers/invoices
+router.get(
+  '/invoices',
+  authorize('GET_CUSTOMER'),
+  asyncHandler(customerController.getCustomerInvoices.bind(customerController))
+);
+
+// GET /api/customers/purchased-products
+router.get(
+  '/purchased-products',
+  authorize('GET_CUSTOMER'),
+  asyncHandler(customerController.getCustomerPurchasedProducts.bind(customerController))
+);
+
+// GET /api/customers/:id/overview
+router.get(
+  '/:id/overview',
+  authorize('GET_CUSTOMER'),
+  asyncHandler(customerController.getCustomerOverview.bind(customerController))
+);
+
+// GET /api/customers/:id/timeline
+router.get(
+  '/:id/timeline',
+  authorize('GET_CUSTOMER'),
+  asyncHandler(customerController.getCustomerTimeline.bind(customerController))
+);
+
 // GET /api/customers/:id - Get customer by ID
 router.get(
   '/:id',
   authorize('GET_CUSTOMER'),
   asyncHandler(customerController.getById.bind(customerController))
+);
+
+// POST /api/customers/import - Import customers
+router.post(
+  '/import',
+  authorize('CREATE_CUSTOMER'),
+  asyncHandler(customerController.import.bind(customerController))
 );
 
 // POST /api/customers - Create new customer

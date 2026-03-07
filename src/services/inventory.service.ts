@@ -80,7 +80,8 @@ class InventoryService {
               sku: true,
               productName: true,
               expiryDate: true,
-              unit: true,
+              unitId: true,
+              unit: { select: { unitCode: true, unitName: true } },
               minStockLevel: true,
               purchasePrice: true,
             },
@@ -188,7 +189,8 @@ class InventoryService {
           sku: true,
           productName: true,
           productType: true,
-          unit: true,
+          unitId: true,
+          unit: { select: { unitCode: true, unitName: true } },
           minStockLevel: true,
           category: {
             select: {
@@ -346,7 +348,7 @@ class InventoryService {
         sku: product.sku,
         productName: product.productName,
         productType: product.productType,
-        unit: product.unit,
+        unitId: product.unitId,
         minStockLevel: product.minStockLevel,
       },
       warehouses: inventory.map((inv) => ({
@@ -388,7 +390,7 @@ class InventoryService {
               id: true,
               sku: true,
               productName: true,
-              unit: true,
+              unitId: true,
             },
           },
           warehouse: {
@@ -737,7 +739,8 @@ class InventoryService {
             sku: true,
             productName: true,
             productType: true,
-            unit: true,
+            unitId: true,
+            unit: { select: { unitCode: true, unitName: true } },
             purchasePrice: true,
             sellingPriceRetail: true,
           },

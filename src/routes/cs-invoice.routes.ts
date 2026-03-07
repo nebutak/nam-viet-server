@@ -5,15 +5,15 @@ import { validateNested } from '@middlewares/validate';
 import { customerAuthentication } from '@middlewares/authCustomer'; 
 
 // Import Controller (đã export default new Controller)
-import customerSalesOrderController from '@controllers/cs-sales_order.controller'; 
+import customerInvoiceController from '@controllers/cs-invoice.controller'; 
 
 // Import Validators
 import { 
-    createCustomerSalesOrderSchema1,
+    createCustomerInvoiceSchema1,
     // initiateCustomerPaymentSchema,
     customerCancelOrderSchema,
-    // customerSalesOrderQuerySchema // Import thêm cái này từ bước trước
-} from '@validators/cs-sales_order.validator'; 
+    // customerInvoiceQuerySchema // Import thêm cái này từ bước trước
+} from '@validators/cs-invoice.validator'; 
 
 const router = Router();
 
@@ -35,9 +35,9 @@ router.use(customerAuthentication);
 router.post(
     '/',
     // Validate BODY
-    validateNested(createCustomerSalesOrderSchema1), 
+    validateNested(createCustomerInvoiceSchema1), 
     // Dùng asyncHandler và .bind()
-    asyncHandler(customerSalesOrderController.createOrder.bind(customerSalesOrderController))
+    asyncHandler(customerInvoiceController.createOrder.bind(customerInvoiceController))
 );
 
 /**
@@ -47,8 +47,8 @@ router.post(
 router.get(
     '/',
     // Validate QUERY params (page, limit, status...)
-    // validateNested(customerSalesOrderQuerySchema), 
-    asyncHandler(customerSalesOrderController.getMyOrders.bind(customerSalesOrderController))
+    // validateNested(customerInvoiceQuerySchema), 
+    asyncHandler(customerInvoiceController.getMyOrders.bind(customerInvoiceController))
 );
 
 /**
@@ -58,7 +58,7 @@ router.get(
 router.get(
     '/:id',
     // (Optional) Có thể validate params id là số ở đây nếu muốn
-    asyncHandler(customerSalesOrderController.getMyOrderDetail.bind(customerSalesOrderController))
+    asyncHandler(customerInvoiceController.getMyOrderDetail.bind(customerInvoiceController))
 );
 
 /**
@@ -69,7 +69,7 @@ router.get(
 // router.post(
 //     '/:id/payment',
 //     validateNested(initiateCustomerPaymentSchema),
-//     asyncHandler(customerSalesOrderController.initiatePayment.bind(customerSalesOrderController))
+//     asyncHandler(customerInvoiceController.initiatePayment.bind(customerInvoiceController))
 // );
 
 // /**
@@ -79,7 +79,7 @@ router.get(
 router.put(
     '/:id/cancel',
     validateNested(customerCancelOrderSchema),
-    asyncHandler(customerSalesOrderController.cancelOrder.bind(customerSalesOrderController))
+    asyncHandler(customerInvoiceController.cancelOrder.bind(customerInvoiceController))
 );
 
 export default router;

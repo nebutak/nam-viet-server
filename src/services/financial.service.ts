@@ -138,7 +138,7 @@ class FinancialService {
     prevEndDate: Date
   ): Promise<any> {
     // Revenue from sales orders - use totalAmount instead of finalAmount
-    const currentRevenue = await prisma.salesOrder.aggregate({
+    const currentRevenue = await prisma.invoice.aggregate({
       _sum: { totalAmount: true },
       where: {
         orderDate: {
@@ -149,7 +149,7 @@ class FinancialService {
       },
     });
 
-    const prevRevenue = await prisma.salesOrder.aggregate({
+    const prevRevenue = await prisma.invoice.aggregate({
       _sum: { totalAmount: true },
       where: {
         orderDate: {
@@ -164,7 +164,7 @@ class FinancialService {
     const prevTotalRevenue = Number(prevRevenue._sum.totalAmount || 0);
 
     // Discounts
-    const currentDiscounts = await prisma.salesOrder.aggregate({
+    const currentDiscounts = await prisma.invoice.aggregate({
       _sum: { discountAmount: true },
       where: {
         orderDate: {
@@ -174,7 +174,7 @@ class FinancialService {
       },
     });
 
-    const prevDiscounts = await prisma.salesOrder.aggregate({
+    const prevDiscounts = await prisma.invoice.aggregate({
       _sum: { discountAmount: true },
       where: {
         orderDate: {
@@ -481,7 +481,7 @@ class FinancialService {
 
     for (const customer of customers) {
       // Get transactions in period
-      const sales = await prisma.salesOrder.aggregate({
+      const sales = await prisma.invoice.aggregate({
         _sum: { totalAmount: true },
         where: {
           customerId: customer.id,

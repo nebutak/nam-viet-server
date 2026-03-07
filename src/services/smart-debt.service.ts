@@ -13,6 +13,7 @@ export interface DebtQueryParams {
 
   assignedUserId?: number; // Lọc theo nhân viên phụ trách
   type?: 'customer' | 'supplier';
+  address?: string;        // Lọc theo địa chỉ
 }
 
 // ==========================================
@@ -61,7 +62,7 @@ class SmartDebtService {
   // =========================================================================
   async getAll(params: DebtQueryParams) {
 
-    const { page = 1, limit = 20, search, status, year, assignedUserId, type } = params;
+    const { page = 1, limit = 20, search, status, year, assignedUserId, type, address } = params;
     const skip = (Number(page) - 1) * Number(limit);
     const targetYearStr = year ? String(year) : String(new Date().getFullYear());
 
@@ -84,6 +85,7 @@ class SmartDebtService {
         ];
       }
       if (assignedUserId) where.assignedUserId = Number(assignedUserId);
+      if (address) where.address = { contains: address };
 
       if (status) {
         const debtCondition = { periodName: targetYearStr };
@@ -129,6 +131,7 @@ class SmartDebtService {
       }
 
       if (assignedUserId) where.assignedUserId = Number(assignedUserId);
+      if (address) where.address = { contains: address };
 
       if (status) {
         const debtCondition = { periodName: targetYearStr };
@@ -171,6 +174,7 @@ class SmartDebtService {
         ];
       }
       if (assignedUserId) customerWhere.assignedUserId = Number(assignedUserId);
+      if (address) customerWhere.address = { contains: address };
 
       // 2. Tạo điều kiện lọc cho Nhà cung cấp
       const supplierWhere: any = { status: 'active' };
@@ -181,6 +185,7 @@ class SmartDebtService {
         ];
       }
       if (assignedUserId) supplierWhere.assignedUserId = Number(assignedUserId);
+      if (address) supplierWhere.address = { contains: address };
 
       // 3. Query song song cả 2 bảng
       const [customers, suppliers] = await Promise.all([
@@ -363,7 +368,7 @@ class SmartDebtService {
         where: { customerId_periodName: { customerId: Number(id), periodName } }
       });
 
-      orders = await prisma.salesOrder.findMany({
+      orders = await prisma.invoice.findMany({
         where: {
           customerId: Number(id),
           orderDate: { gte: startOfYear, lte: endOfYear },
@@ -620,7 +625,7 @@ class SmartDebtService {
       let startYear = targetYear;
 
       if (customerId) {
-        const firstOrder = await tx.salesOrder.findFirst({
+        const firstOrder = await tx.invoice.findFirst({
           where: { customerId: Number(customerId) },
           orderBy: { orderDate: 'asc' }, select: { orderDate: true }
         });
@@ -658,7 +663,7 @@ class SmartDebtService {
 
       if (customerId) {
         // A. Tăng (Mua hàng quá khứ)
-        const prevOrders = await tx.salesOrder.aggregate({
+        const prevOrders = await tx.invoice.aggregate({
           where: { customerId: Number(customerId), orderDate: { lt: startOfStartYear }, orderStatus: { not: 'cancelled' } },
           _sum: { totalAmount: true }
         });
@@ -672,7 +677,7 @@ class SmartDebtService {
         // C. Giảm (Trả hàng quá khứ) - ✅ LOGIC MỚI
         let prevReturnAmount = 0;
         // B1: Lấy danh sách đơn hàng cũ
-        const pastOrders = await tx.salesOrder.findMany({
+        const pastOrders = await tx.invoice.findMany({
           where: { customerId: Number(customerId), orderDate: { lt: startOfStartYear } },
           select: { id: true }
         });
@@ -819,7 +824,7 @@ class SmartDebtService {
         const startOfStartYear = startOfYear;
 
         if (customerId) {
-          const prevOrders = await tx.salesOrder.aggregate({
+          const prevOrders = await tx.invoice.aggregate({
             where: { customerId: Number(customerId), orderDate: { lt: startOfStartYear }, orderStatus: { not: 'cancelled' } },
             _sum: { totalAmount: true }
           });
@@ -851,7 +856,7 @@ class SmartDebtService {
 
       if (customerId) {
         // A. Tăng: Đơn hàng
-        const currOrders = await tx.salesOrder.aggregate({
+        const currOrders = await tx.invoice.aggregate({
           where: { customerId: Number(customerId), orderDate: { gte: startOfYear, lte: endOfYear }, orderStatus: { not: 'cancelled' } },
           _sum: { totalAmount: true }
         });
@@ -865,7 +870,7 @@ class SmartDebtService {
         paymentAmount = Number(currReceipts._sum.amount || 0);
 
         // C. Giảm 2: Trả hàng (Stock Import - sale_refunds) - ✅ LOGIC MỚI
-        const orderList = await tx.salesOrder.findMany({
+        const orderList = await tx.invoice.findMany({
           where: { customerId: Number(customerId), orderDate: { gte: startOfYear, lte: endOfYear } },
           select: { id: true }
         });
@@ -1501,7 +1506,7 @@ class SmartDebtService {
 
     if (customerId) {
       // 1. Tăng: Đơn hàng
-      const orders = await tx.salesOrder.aggregate({
+      const orders = await tx.invoice.aggregate({
         where: { customerId, orderDate: { gte: startOfYear, lte: endOfYear }, orderStatus: { not: 'cancelled' } },
         _sum: { totalAmount: true }
       });
@@ -1516,7 +1521,7 @@ class SmartDebtService {
 
       // 3. Giảm: Trả hàng (Sale Refunds) - ✅ Logic Mới
       // B1: Tìm các đơn hàng trong kỳ
-      const orderList = await tx.salesOrder.findMany({
+      const orderList = await tx.invoice.findMany({
         where: { customerId, orderDate: { gte: startOfYear, lte: endOfYear } },
         select: { id: true }
       });
@@ -1629,7 +1634,7 @@ class SmartDebtService {
     const endOfYear = new Date(year, 11, 31, 23, 59, 59);
 
     // 1. Khách có đơn hàng (Mua)
-    const orders = await prisma.salesOrder.findMany({
+    const orders = await prisma.invoice.findMany({
       where: { orderDate: { gte: startOfYear, lte: endOfYear }, orderStatus: { not: 'cancelled' } },
       select: { customerId: true },
       distinct: ['customerId']
@@ -1658,7 +1663,7 @@ class SmartDebtService {
     if (stockReturns.length > 0) {
       const orderIds = stockReturns.map(s => s.referenceId).filter(id => id !== null) as number[];
       if (orderIds.length > 0) {
-        const ordersFromReturns = await prisma.salesOrder.findMany({
+        const ordersFromReturns = await prisma.invoice.findMany({
           where: { id: { in: orderIds } },
           select: { customerId: true },
           distinct: ['customerId']

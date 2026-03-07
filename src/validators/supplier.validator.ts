@@ -74,6 +74,10 @@ export const updateSupplierSchema = z.object({
   status: z.enum(['active', 'inactive']).optional(),
 });
 
+export const updateSupplierStatusSchema = z.object({
+  status: z.enum(['active', 'inactive']),
+});
+
 export const querySuppliersSchema = z.object({
   page: z.string().regex(/^\d+$/, 'Số trang phải là số nguyên dương').optional().default('1'),
   limit: z.string().regex(/^\d+$/, 'Số bản ghi phải là số nguyên dương').optional().default('20'),
@@ -89,4 +93,5 @@ export const querySuppliersSchema = z.object({
 
 export type CreateSupplierInput = z.infer<typeof createSupplierSchema>;
 export type UpdateSupplierInput = z.infer<typeof updateSupplierSchema>;
+export type UpdateSupplierStatusInput = z.infer<typeof updateSupplierStatusSchema>;
 export type QuerySuppliersInput = z.infer<typeof querySuppliersSchema>;

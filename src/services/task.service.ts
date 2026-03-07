@@ -3,6 +3,7 @@ import { CreateTaskInput, UpdateTaskInput, TaskQueryInput } from '../validators/
 import { NotFoundError } from '../utils/errors';
 import { Prisma } from '@prisma/client';
 import notificationService from './notification.service';
+import ticketService from './ticket.service';
 import { logActivity } from '@utils/logger';
 
 class TaskService {
@@ -29,13 +30,13 @@ class TaskService {
 
     // Notify assigned
     if (task.assignedToId) {
-        notificationService.notifyTaskAssigned({
-            taskId: task.id,
-            title: task.title,
-            assigneeId: task.assignedToId,
-            assignerName: task.creator?.fullName || 'Hệ thống',
-            dueDate: task.dueDate
-        }).catch(console.error);
+      notificationService.notifyTaskAssigned({
+        taskId: task.id,
+        title: task.title,
+        assigneeId: task.assignedToId,
+        assignerName: task.creator?.fullName || 'Hệ thống',
+        dueDate: task.dueDate
+      }).catch(console.error);
     }
 
     // Log activity
@@ -73,15 +74,15 @@ class TaskService {
     }
 
     if (type) {
-        where.type = type;
+      where.type = type;
     }
 
     if (customerId) {
-        where.customerId = customerId;
+      where.customerId = customerId;
     }
 
     if (assignedToId) {
-        where.assignedToId = assignedToId;
+      where.assignedToId = assignedToId;
     }
 
     const [tasks, total] = await Promise.all([
@@ -149,22 +150,48 @@ class TaskService {
 
     // Notify Assignee Change
     if (updatedTask.assignedToId && updatedTask.assignedToId !== oldTask.assignedToId) {
-        notificationService.notifyTaskAssigned({
-            taskId: updatedTask.id,
-            title: updatedTask.title,
-            assigneeId: updatedTask.assignedToId,
-            assignerName: 'Hệ thống',
-            dueDate: updatedTask.dueDate
-        }).catch(console.error);
+      notificationService.notifyTaskAssigned({
+        taskId: updatedTask.id,
+        title: updatedTask.title,
+        assigneeId: updatedTask.assignedToId,
+        assignerName: 'Hệ thống',
+        dueDate: updatedTask.dueDate
+      }).catch(console.error);
     }
 
     // Log activity
     if (updatedBy) {
-        logActivity('update', updatedBy, 'tasks', {
-            recordId: id,
-            oldValue: oldTask,
-            newValue: updatedTask,
-        });
+      logActivity('update', updatedBy, 'tasks', {
+        recordId: id,
+        oldValue: oldTask,
+        newValue: updatedTask,
+      });
+    }
+
+    // Synchronize ticket status based on task status
+    if (updatedTask.relatedTicketId && data.status) {
+      let newTicketStatus: any = null;
+      if (data.status === 'completed') {
+        newTicketStatus = 'resolved';
+      } else if (data.status === 'cancelled') {
+        newTicketStatus = 'closed';
+      }
+
+      if (newTicketStatus) {
+        try {
+          const ticket = await ticketService.getTicketById(updatedTask.relatedTicketId);
+          // Only update if the ticket is not already in that status
+          if (ticket.status !== newTicketStatus) {
+            await ticketService.updateTicket(
+              updatedTask.relatedTicketId,
+              { status: newTicketStatus },
+              updatedBy || 1 // fallback to system user 1 if updatedBy is not available
+            );
+          }
+        } catch (error) {
+          console.error("Failed to sync ticket status from task", error);
+        }
+      }
     }
 
     return updatedTask;
@@ -173,7 +200,7 @@ class TaskService {
   // Delete task (Soft Delete)
   async deleteTask(id: number, deletedBy?: number) {
     const task = await this.getTaskById(id);
-    
+
     // Soft delete
     await prisma.crmTask.update({
       where: { id },
@@ -182,10 +209,10 @@ class TaskService {
 
     // Log activity
     if (deletedBy) {
-        logActivity('delete', deletedBy, 'tasks', {
-            recordId: id,
-            oldValue: task,
-        });
+      logActivity('delete', deletedBy, 'tasks', {
+        recordId: id,
+        oldValue: task,
+      });
     }
 
     return { message: 'Xóa nhiệm vụ thành công' };

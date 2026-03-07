@@ -61,6 +61,12 @@ export const queryWarehousesSchema = z.object({
   sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
 });
 
+export const updateWarehouseStatusSchema = z.object({
+  status: z.enum(['active', 'inactive'], {
+    message: 'Trạng thái không hợp lệ',
+  }),
+});
+
 export type CreateWarehouseInput = z.infer<typeof createWarehouseSchema>;
 export type UpdateWarehouseInput = z.infer<typeof updateWarehouseSchema>;
 export type QueryWarehousesInput = z.infer<typeof queryWarehousesSchema>;

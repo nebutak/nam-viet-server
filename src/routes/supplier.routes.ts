@@ -7,6 +7,7 @@ import { asyncHandler } from '@middlewares/errorHandler';
 import {
   createSupplierSchema,
   updateSupplierSchema,
+  updateSupplierStatusSchema,
   querySuppliersSchema,
 } from '@validators/supplier.validator';
 import { logActivityMiddleware } from '@middlewares/logger';
@@ -24,17 +25,21 @@ router.get(
   asyncHandler(supplierController.getAllSuppliers.bind(supplierController))
 );
 
+// Import/Export (must be before /:id)
+router.post('/import', asyncHandler(supplierController.import.bind(supplierController)));
+router.get('/import-template', asyncHandler(supplierController.downloadTemplate.bind(supplierController)));
+
 // GET /api/suppliers/:id
 router.get(
   '/:id',
-  authorize('view_suppliers'),
+  authorize('GET_SUPPLIER'),
   asyncHandler(supplierController.getSupplierById.bind(supplierController))
 );
 
 // POST /api/suppliers
 router.post(
   '/',
-  authorize('create_supplier'),
+  authorize('CREATE_SUPPLIER'),
   validate(createSupplierSchema),
   logActivityMiddleware('create', 'supplier'),
   asyncHandler(supplierController.createSupplier.bind(supplierController))
@@ -43,18 +48,26 @@ router.post(
 // PUT /api/suppliers/:id
 router.put(
   '/:id',
-  authorize('update_supplier'),
+  authorize('UPDATE_SUPPLIER'),
   validate(updateSupplierSchema),
   logActivityMiddleware('update', 'supplier'),
   asyncHandler(supplierController.updateSupplier.bind(supplierController))
 );
 
+// PATCH /api/suppliers/:id/status
+router.patch(
+  '/:id/status',
+  authorize('UPDATE_SUPPLIER'),
+  validate(updateSupplierStatusSchema),
+  logActivityMiddleware('update', 'supplier'),
+  asyncHandler(supplierController.updateSupplierStatus.bind(supplierController))
+);
+
 // SOFT DELETE /api/suppliers/:id
 router.delete(
   '/:id',
-  authorize('delete_supplier'),
-  logActivityMiddleware('delete', 'supplier'),
-  asyncHandler(supplierController.deleteSupplier.bind(supplierController))
+  authorize('DELETE_SUPPLIER'),
+  asyncHandler(supplierController.delete.bind(supplierController))
 );
 
 export default router;

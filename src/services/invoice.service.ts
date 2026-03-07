@@ -4,22 +4,22 @@ import { logActivity } from '@utils/logger';
 import customerService from './customer.service';
 import notificationService from './notification.service';
 import {
-  CreateSalesOrderInput,
-  UpdateSalesOrderInput,
+  CreateInvoiceInput,
+  UpdateInvoiceInput,
   ApproveOrderInput,
   CancelOrderInput,
   ProcessPaymentInput,
-  SalesOrderQueryInput,
-} from '@validators/sales-order.validator';
+  InvoiceQueryInput,
+} from '@validators/invoice.validator';
 
 const prisma = new PrismaClient();
 
-class SalesOrderService {
+class InvoiceService {
   private async generateOrderCode(): Promise<string> {
     const date = new Date();
     const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
 
-    const count = await prisma.salesOrder.count({
+    const count = await prisma.invoice.count({
       where: {
         createdAt: {
           gte: new Date(date.setHours(0, 0, 0, 0)),
@@ -49,7 +49,7 @@ class SalesOrderService {
     return `GH-${dateStr}-${sequence}`;
   }
 
-  async getAll(query: SalesOrderQueryInput) {
+  async getAll(query: InvoiceQueryInput) {
     const {
       page = '1',
       limit = '20',
@@ -108,10 +108,10 @@ class SalesOrderService {
             lte: new Date(toDate),
           },
         }),
-    } as Prisma.SalesOrderWhereInput;
+    } as Prisma.InvoiceWhereInput;
 
     const [orders, total] = await Promise.all([
-      prisma.salesOrder.findMany({
+      prisma.invoice.findMany({
         where,
         include: {
           customer: {
@@ -147,7 +147,7 @@ class SalesOrderService {
         take: limitNum,
         orderBy: { [sortBy]: sortOrder },
       }),
-      prisma.salesOrder.count({ where }),
+      prisma.invoice.count({ where }),
     ]);
 
     const ordersWithRemaining = orders.map((order) => ({
@@ -156,7 +156,7 @@ class SalesOrderService {
     }));
 
     // Stat Cards - Calculate statistics for all orders matching the filters
-    const allOrders = await prisma.salesOrder.findMany({
+    const allOrders = await prisma.invoice.findMany({
       where,
       select: {
         id: true,
@@ -224,7 +224,7 @@ class SalesOrderService {
 
   async getById(id: number) {
 
-    const order = await prisma.salesOrder.findUnique({
+    const order = await prisma.invoice.findUnique({
       where: { id },
       include: {
         customer: {
@@ -314,7 +314,7 @@ class SalesOrderService {
     return result;
   }
 
-  async create(data: CreateSalesOrderInput, userId: number) {
+  async create(data: CreateInvoiceInput, userId: number) {
     // Validate customer
     const customer = await customerService.getById(data.customerId);
     if (customer.status !== 'active') {
@@ -467,7 +467,7 @@ class SalesOrderService {
   }
 
   private async createPickupOrder(
-    data: CreateSalesOrderInput,
+    data: CreateInvoiceInput,
     itemsWithCalculations: any[],
     orderCode: string,
     totalAmount: number,
@@ -484,7 +484,7 @@ class SalesOrderService {
 
     const result = await prisma.$transaction(async (tx) => {
       // 1. Create order with completed status
-      const order = await tx.salesOrder.create({
+      const order = await tx.invoice.create({
         data: {
           orderCode,
           customerId: data.customerId,
@@ -557,7 +557,7 @@ class SalesOrderService {
             transactionCode: `EX-${orderCode}`,
             transactionType: 'export', // Enum
             warehouseId: data.warehouseId,
-            referenceType: 'sales_order',
+            referenceType: 'invoice',
             referenceId: order.id,
             status: 'completed', // Xuất xong luôn
             totalValue: totalAmount, // Giá trị phiếu xuất
@@ -620,7 +620,7 @@ class SalesOrderService {
       return order;
     });
 
-    logActivity('create', userId, 'sales_orders', {
+    logActivity('create', userId, 'invoices', {
       recordId: result.id,
       orderCode: result.orderCode,
     });
@@ -629,7 +629,7 @@ class SalesOrderService {
   }
 
   private async createDeliveryOrder(
-    data: CreateSalesOrderInput,
+    data: CreateInvoiceInput,
     itemsWithCalculations: any[],
     orderCode: string,
     totalAmount: number,
@@ -640,7 +640,7 @@ class SalesOrderService {
     const result = await prisma.$transaction(async (tx) => {
       // Giai đoạn 1: Tạo đơn hàng (Hàng vẫn ở trong kho, chỉ dán tem "Đã bán")
       // 1. Create order with pending status
-      const order = await tx.salesOrder.create({
+      const order = await tx.invoice.create({
         data: {
           orderCode,
           customerId: data.customerId,
@@ -771,7 +771,7 @@ class SalesOrderService {
       return order;
     });
 
-    logActivity('create', userId, 'sales_orders', {
+    logActivity('create', userId, 'invoices', {
       recordId: result.id,
       orderCode: result.orderCode,
     });
@@ -782,8 +782,8 @@ class SalesOrderService {
     };
   }
 
-  async update(id: number, data: UpdateSalesOrderInput, userId: number) {
-    const order = await prisma.salesOrder.findUnique({
+  async update(id: number, data: UpdateInvoiceInput, userId: number) {
+    const order = await prisma.invoice.findUnique({
       where: { id },
     });
 
@@ -795,7 +795,7 @@ class SalesOrderService {
       throw new ValidationError('Chỉ có thể cập nhật đơn hàng ở trạng thái chờ xử lý');
     }
 
-    const updatedOrder = await prisma.salesOrder.update({
+    const updatedOrder = await prisma.invoice.update({
       where: { id },
       data: {
         ...(data.orderDate && { orderDate: new Date(data.orderDate) }),
@@ -815,7 +815,7 @@ class SalesOrderService {
       },
     });
 
-    logActivity('update', userId, 'sales_orders', {
+    logActivity('update', userId, 'invoices', {
       recordId: id,
       orderCode: order.orderCode,
       changes: data,
@@ -825,7 +825,7 @@ class SalesOrderService {
   }
 
   async approve(id: number, userId: number, data?: ApproveOrderInput) {
-    const order = await prisma.salesOrder.findUnique({
+    const order = await prisma.invoice.findUnique({
       where: { id },
       include: {
         details: true,
@@ -840,7 +840,7 @@ class SalesOrderService {
       throw new ValidationError('Chỉ có thể phê duyệt đơn hàng ở trạng thái chờ xử lý');
     }
 
-    const updatedOrder = await prisma.salesOrder.update({
+    const updatedOrder = await prisma.invoice.update({
       where: { id },
       data: {
         orderStatus: 'preparing',
@@ -858,7 +858,7 @@ class SalesOrderService {
       },
     });
 
-    logActivity('update', userId, 'sales_orders', {
+    logActivity('update', userId, 'invoices', {
       recordId: id,
       action: 'approve_order',
       orderCode: order.orderCode,
@@ -870,7 +870,7 @@ class SalesOrderService {
   // Giai đoạn 2: Xuất kho giao Shipper (pending/preparing -> delivering)
   // Lúc này thủ kho đưa hàng cho Shipper. Hàng thực sự mất đi.
   async updateDeliveryStatus(id: number, userId: number, newStatus: 'preparing' | 'delivering') {
-    const order = await prisma.salesOrder.findUnique({
+    const order = await prisma.invoice.findUnique({
       where: { id },
       include: {
         details: true,
@@ -936,7 +936,7 @@ class SalesOrderService {
               transactionCode: `EX-${order.orderCode}`,
               transactionType: 'export',
               warehouseId: order.warehouseId,
-              referenceType: 'sales_order',
+              referenceType: 'invoice',
               referenceId: order.id,
               status: 'completed',
               totalValue: Number(order.totalAmount),
@@ -965,7 +965,7 @@ class SalesOrderService {
         }
       }
 
-      const updatedOrder = await tx.salesOrder.update({
+      const updatedOrder = await tx.invoice.update({
         where: { id },
         data: {
           orderStatus: newStatus,
@@ -984,7 +984,7 @@ class SalesOrderService {
       return updatedOrder;
     });
 
-    logActivity('update', userId, 'sales_orders', {
+    logActivity('update', userId, 'invoices', {
       recordId: id,
       action: `update_delivery_status_${newStatus}`,
       orderCode: order.orderCode,
@@ -994,7 +994,7 @@ class SalesOrderService {
   }
 
   async complete(id: number, userId: number) {
-    const order = await prisma.salesOrder.findUnique({
+    const order = await prisma.invoice.findUnique({
       where: { id },
       include: {
         details: true,
@@ -1041,7 +1041,7 @@ class SalesOrderService {
         }
       }
 
-      const updatedOrder = await tx.salesOrder.update({
+      const updatedOrder = await tx.invoice.update({
         where: { id },
         data: {
           orderStatus: 'completed',
@@ -1071,7 +1071,7 @@ class SalesOrderService {
       return updatedOrder;
     });
 
-    logActivity('update', userId, 'sales_orders', {
+    logActivity('update', userId, 'invoices', {
       recordId: id,
       action: 'complete_order',
       orderCode: order.orderCode,
@@ -1081,7 +1081,7 @@ class SalesOrderService {
   }
 
   async cancel(id: number, userId: number, data: CancelOrderInput) {
-    const order = await prisma.salesOrder.findUnique({
+    const order = await prisma.invoice.findUnique({
       where: { id },
       include: {
         details: true,
@@ -1145,7 +1145,7 @@ class SalesOrderService {
         });
       }
 
-      const updatedOrder = await tx.salesOrder.update({
+      const updatedOrder = await tx.invoice.update({
         where: { id },
         data: {
           orderStatus: 'cancelled',
@@ -1166,7 +1166,7 @@ class SalesOrderService {
       return updatedOrder;
     });
 
-    logActivity('update', userId, 'sales_orders', {
+    logActivity('update', userId, 'invoices', {
       recordId: id,
       action: 'cancel_order',
       orderCode: order.orderCode,
@@ -1177,7 +1177,7 @@ class SalesOrderService {
   }
 
   async processPayment(id: number, userId: number, data: ProcessPaymentInput) {
-    const order = await prisma.salesOrder.findUnique({
+    const order = await prisma.invoice.findUnique({
       where: { id },
       include: {
         customer: true,
@@ -1215,7 +1215,7 @@ class SalesOrderService {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      const updatedOrder = await tx.salesOrder.update({
+      const updatedOrder = await tx.invoice.update({
         where: { id },
         data: {
           paidAmount: newPaidAmount,
@@ -1286,7 +1286,7 @@ class SalesOrderService {
       return updatedOrder;
     });
 
-    logActivity('update', userId, 'sales_orders', {
+    logActivity('update', userId, 'invoices', {
       recordId: id,
       action: 'process_payment',
       orderCode: order.orderCode,
@@ -1297,7 +1297,7 @@ class SalesOrderService {
   }
 
   async delete(id: number, userId: number) {
-    const order = await prisma.salesOrder.findUnique({
+    const order = await prisma.invoice.findUnique({
       where: { id },
       include: {
         details: true,
@@ -1336,12 +1336,12 @@ class SalesOrderService {
         }
       }
 
-      await tx.salesOrder.delete({
+      await tx.invoice.delete({
         where: { id },
       });
     });
 
-    logActivity('delete', userId, 'sales_orders', {
+    logActivity('delete', userId, 'invoices', {
       recordId: id,
       orderCode: order.orderCode,
     });
@@ -1351,4 +1351,4 @@ class SalesOrderService {
 
 }
 
-export default new SalesOrderService();
+export default new InvoiceService();

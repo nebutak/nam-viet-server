@@ -219,7 +219,7 @@
 
 //     const openingBalanceResult = await prisma.$queryRaw<Array<{ debt: number }>>`
 //       SELECT COALESCE(SUM(total_amount - paid_amount), 0) as debt
-//       FROM sales_orders
+//       FROM invoices
 //       WHERE customer_id = ${customerId}
 //         AND order_date < ${startDate}
 //         AND order_status != 'cancelled'
@@ -228,7 +228,7 @@
 
 //     const transactionsResult = await prisma.$queryRaw<Array<{ amount: number }>>`
 //       SELECT COALESCE(SUM(total_amount), 0) as amount
-//       FROM sales_orders
+//       FROM invoices
 //       WHERE customer_id = ${customerId}
 //         AND order_date >= ${startDate}
 //         AND order_date <= ${endDate}

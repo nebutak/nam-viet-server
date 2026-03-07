@@ -1,7 +1,8 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import { NotFoundError } from '@utils/errors';
-import { PublicProductDto,
-   PublicProductDetailDto
+import {
+  PublicProductDto,
+  PublicProductDetailDto
 } from '@custom-types/cs-product.type';
 import { PromotionInfo } from '@custom-types/cs-promotion.type';
 const prisma = new PrismaClient();
@@ -18,12 +19,12 @@ class StoreProductService {
     sortBy?: 'price_asc' | 'price_desc' | 'newest' | 'bestseller';
     packagingType?: 'bottle' | 'box' | 'bag' | 'label' | 'other';
   }) {
-    const { 
+    const {
       page = 1, limit = 20, search, categoryId, sortBy = 'newest',
       historySearch,
-      packagingType 
+      packagingType
     } = params;
-    
+
     const cleanedHistorySearch = historySearch?.map(h => this.normalizeText(h))
 
 
@@ -44,61 +45,61 @@ class StoreProductService {
     };
 
     let orderBy: Prisma.ProductOrderByWithRelationInput = { createdAt: 'desc' };
-    if (sortBy === 'price_asc') orderBy = { sellingPriceRetail: 'asc' }; 
+    if (sortBy === 'price_asc') orderBy = { sellingPriceRetail: 'asc' };
     if (sortBy === 'price_desc') orderBy = { sellingPriceRetail: 'desc' };
     if (sortBy === 'newest') orderBy = { createdAt: 'desc' };
 
     const products = await prisma.product.findMany({
-        where,
-        skip: offset,
-        take: limit,
-        orderBy,
-        select: {
-          id: true,
-          productName: true,
-          sku: true,
-          slug: true,
-          sellingPriceRetail: true,
-          unit: true,
-          images: {
-            where: { isPrimary: true },
-            take: 1,
-            select: { imageUrl: true, altText: true }
-          },
-          videos: {
-            where: { isPrimary: true },
-            take: 1,
-            select: {
-              videoUrl: true,
-              videoType: true,
+      where,
+      skip: offset,
+      take: limit,
+      orderBy,
+      select: {
+        id: true,
+        productName: true,
+        sku: true,
+        slug: true,
+        sellingPriceRetail: true,
+        unit: { select: { unitCode: true, unitName: true } },
+        images: {
+          where: { isPrimary: true },
+          take: 1,
+          select: { imageUrl: true, altText: true }
+        },
+        videos: {
+          where: { isPrimary: true },
+          take: 1,
+          select: {
+            videoUrl: true,
+            videoType: true,
+          }
+        },
+        category: { select: { id: true, categoryName: true, slug: true } },
+        inventory: { select: { quantity: true, reservedQuantity: true } },
+
+        promotionProducts: {
+          where: {
+            promotion: {
+              status: 'active',
+              startDate: { lte: new Date() },
+              endDate: { gte: new Date() },
             }
           },
-          category: { select: { id: true, categoryName: true, slug: true } },
-          inventory: { select: { quantity: true, reservedQuantity: true } },
-          
-          promotionProducts: {
-            where: {
-              promotion: {
-                status: 'active',
-                startDate: { lte: new Date() },
-                endDate: { gte: new Date() },
-              }
-            },
-            include: {
-              promotion: {
-                select: {
-                  id: true,
-                  promotionName: true,
-                  promotionType: true,
-                  discountValue: true,
-                  maxDiscountValue: true,
-                  endDate: true,
-                }
+          include: {
+            promotion: {
+              select: {
+                id: true,
+                promotionName: true,
+                promotionType: true,
+                discountValue: true,
+                maxDiscountValue: true,
+                endDate: true,
               }
             }
           }
         }
-      });
+      }
+    });
 
     const total = await prisma.product.count({ where });
 
@@ -125,14 +126,14 @@ class StoreProductService {
 
     const mappedProducts: PublicProductDto[] = pagedProducts.map((p: any) => {
       const basePrice = Number(p.sellingPriceRetail || 0);
-      
-      const totalStock = p.inventory 
+
+      const totalStock = p.inventory
         ? p.inventory.reduce((sum: number, inv: any) => {
-            const available = Number(inv.quantity) - Number(inv.reservedQuantity);
-            return sum + Math.max(0, available);
-          }, 0)
+          const available = Number(inv.quantity) - Number(inv.reservedQuantity);
+          return sum + Math.max(0, available);
+        }, 0)
         : 0;
-      
+
       const { salePrice, discountInfo } = this.calculateBestPrice(basePrice, p.promotionProducts);
 
       return {
@@ -143,12 +144,12 @@ class StoreProductService {
         image: (p.images && p.images.length > 0) ? p.images[0].imageUrl : '/placeholder.png',
         video: (p.videos && p.videos.length > 0) ? p.videos[0].videoUrl : '/placeholder-video.mp4',
         videoType: (p.videos && p.videos.length > 0) ? p.videos[0].videoType : 'review',
-        unit: p.unit,
+        unit: (p.unit as any)?.unitName || '',
         originalPrice: basePrice,
         salePrice: salePrice,
         discountPercentage: (discountInfo && discountInfo.type !== 'gift')
-            ? Math.round(((basePrice - salePrice) / basePrice) * 100) 
-            : 0,
+          ? Math.round(((basePrice - salePrice) / basePrice) * 100)
+          : 0,
         isFeatured: p.isFeatured,
         inStock: totalStock > 0,
         category: {
@@ -156,7 +157,7 @@ class StoreProductService {
           name: p.category?.categoryName,
           slug: p.category?.slug || ''
         },
-        promotion: discountInfo 
+        promotion: discountInfo
       };
     });
 
@@ -185,13 +186,13 @@ class StoreProductService {
         sellingPriceWholesale: true,
         sellingPriceVip: true,
         description: true,
-        unit: true,
+        unit: { select: { unitCode: true, unitName: true } },
         barcode: true,
         weight: true,
         dimensions: true,
         packagingType: true,
         // isFeatured: true,
-        
+
         category: { select: { id: true, categoryName: true, slug: true } },
         images: {
           orderBy: { displayOrder: 'asc' },
@@ -227,12 +228,12 @@ class StoreProductService {
     });
 
 
-    
+
 
     if (!product) throw new NotFoundError('Sản phẩm không tồn tại');
 
     const basePrice = Number(product.sellingPriceRetail);
-    const totalStock = product.inventory 
+    const totalStock = product.inventory
       ? product.inventory.reduce((sum: number, inv: any) => sum + Math.max(0, Number(inv.quantity) - Number(inv.reservedQuantity)), 0)
       : 0;
 
@@ -244,11 +245,11 @@ class StoreProductService {
       name: product.productName,
       sku: product.sku,
       slug: product.slug || '',
-      unit: product.unit,
+      unit: (product.unit as any)?.unitName || '',
       originalPrice: basePrice,
       salePrice: salePrice,
       discountPercentage: (discountInfo && discountInfo.type !== 'gift')
-          ? Math.round(((basePrice - salePrice) / basePrice) * 100) : 0,
+        ? Math.round(((basePrice - salePrice) / basePrice) * 100) : 0,
       // isFeatured: product.isFeatured,
       inStock: totalStock > 0,
       category: {
@@ -282,12 +283,12 @@ class StoreProductService {
 
   private normalizeText(text: string) {
     return text
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9\s]/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9\s]/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
   }
 
 
@@ -315,18 +316,18 @@ class StoreProductService {
     const allPromos: PromotionInfo[] = [];
 
     if (!activePromotions || activePromotions.length === 0) {
-        return { salePrice: originalPrice, discountInfo: null, allPromotions: [] };
+      return { salePrice: originalPrice, discountInfo: null, allPromotions: [] };
     }
-    
+
     for (const item of activePromotions) {
       const promo = item.promotion;
       let priceAfterDiscount = originalPrice;
       let promoInfo: PromotionInfo = {
-          id: promo.id,
-          name: promo.promotionName,
-          type: promo.promotionType,
-          endDate: promo.endDate,
-          giftName: undefined
+        id: promo.id,
+        name: promo.promotionName,
+        type: promo.promotionType,
+        endDate: promo.endDate,
+        giftName: undefined
       };
 
       if (promo.promotionType === 'percent_discount') {
@@ -335,7 +336,7 @@ class StoreProductService {
         if (promo.maxDiscountValue) discountAmount = Math.min(discountAmount, Number(promo.maxDiscountValue));
         priceAfterDiscount = originalPrice - discountAmount;
         promoInfo.value = discountAmount;
-      } 
+      }
       else if (promo.promotionType === 'fixed_discount') {
         const discountVal = item.discountValueOverride || promo.discountValue || 0;
         priceAfterDiscount = originalPrice - Number(discountVal);
@@ -343,7 +344,7 @@ class StoreProductService {
       }
       else if (promo.promotionType === 'gift') {
         priceAfterDiscount = originalPrice;
-        promoInfo.value = 0; 
+        promoInfo.value = 0;
       }
 
       priceAfterDiscount = Math.max(0, priceAfterDiscount);
@@ -351,23 +352,23 @@ class StoreProductService {
     }
 
     allPromos.sort((a: any, b: any) => {
-        if (a._tempPrice !== b._tempPrice) return a._tempPrice - b._tempPrice;
-        if (a.type !== 'gift' && b.type === 'gift') return -1;
-        if (a.type === 'gift' && b.type !== 'gift') return 1;
-        return 0;
+      if (a._tempPrice !== b._tempPrice) return a._tempPrice - b._tempPrice;
+      if (a.type !== 'gift' && b.type === 'gift') return -1;
+      if (a.type === 'gift' && b.type !== 'gift') return 1;
+      return 0;
     });
 
     if (allPromos.length > 0) {
-        const best = allPromos[0] as any;
-        bestPrice = best._tempPrice;
-        bestPromo = {
-            id: best.id,
-            name: best.name,
-            type: best.type,
-            value: best.value,
-            giftName: best.giftName,
-            endDate: best.endDate
-        };
+      const best = allPromos[0] as any;
+      bestPrice = best._tempPrice;
+      bestPromo = {
+        id: best.id,
+        name: best.name,
+        type: best.type,
+        value: best.value,
+        giftName: best.giftName,
+        endDate: best.endDate
+      };
     }
 
     const cleanList = allPromos.map(({ _tempPrice, ...rest }: any) => rest as PromotionInfo);

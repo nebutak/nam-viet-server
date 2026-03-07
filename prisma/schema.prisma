@@ -37,6 +37,7 @@ model Permission {
   permissionName String    @map("permission_name") @db.VarChar(200)
   description    String?   @db.Text
   module         String?   @db.VarChar(100)
+  moduleLabel    String?   @map("module_label") @db.VarChar(200)
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
   deletedAt      DateTime? @map("deleted_at")
@@ -72,8 +73,8 @@ model Warehouse {
   destinationTransfers    StockTransaction[]       @relation("DestinationWarehouse")
   fromStockTransfers      StockTransfer[]          @relation("FromWarehouse")
   toStockTransfers        StockTransfer[]          @relation("ToWarehouse")
-  salesOrders             SalesOrder[]
-  salesOrderDetails       SalesOrderDetail[]
+  invoices                Invoice[]
+  invoiceDetails          InvoiceDetail[]
   productionOrders        ProductionOrder[]
   stockTransactionDetails StockTransactionDetail[]
 
@@ -136,9 +137,9 @@ model User {
   productionOrdersCancelled  ProductionOrder[]  @relation("ProductionCanceller")
   customers                  Customer[]         @relation("CustomerCreator")
   customersUpdated           Customer[]         @relation("CustomerUpdater")
-  salesOrders                SalesOrder[]       @relation("SalesCreator")
-  salesOrdersApproved        SalesOrder[]       @relation("SalesApprover")
-  salesOrdersCancelled       SalesOrder[]       @relation("SalesCanceller")
+  invoices                   Invoice[]          @relation("SalesCreator")
+  invoicesApproved           Invoice[]          @relation("SalesApprover")
+  invoicesCancelled          Invoice[]          @relation("SalesCanceller")
   deliveries                 Delivery[]         @relation("DeliveryStaff")
   deliveriesSettled          Delivery[]         @relation("DeliverySettler")
   paymentReceipts            PaymentReceipt[]   @relation("ReceiptCreator")
@@ -184,6 +185,15 @@ model User {
   createdTickets          Ticket[]           @relation("TicketCreator")
   assignedTasks           CrmTask[]          @relation("TaskAssignee")
   createdTasks            CrmTask[]          @relation("TaskCreator")
+  expiries                Expiry[]           @relation("ExpiryUser")
+  createdExpiries         Expiry[]           @relation("ExpiryCreator")
+  updatedExpiries         Expiry[]           @relation("ExpiryUpdater")
+  createdUnits            Unit[]             @relation("UnitCreator")
+  updatedUnits            Unit[]             @relation("UnitUpdater")
+  createdTaxes            Tax[]              @relation("TaxCreator")
+  updatedTaxes            Tax[]              @relation("TaxUpdater")
+  createdAttributes       Attribute[]        @relation("AttributeCreator")
+  updatedAttributes       Attribute[]        @relation("AttributeUpdater")
 
   @@index([roleId, status])
   @@map("users")
@@ -261,9 +271,9 @@ model Category {
   updatedAt    DateTime       @updatedAt @map("updated_at")
   deletedAt    DateTime?      @map("deleted_at")
 
-  parent   Category?  @relation("CategoryParent", fields: [parentId], references: [id], onDelete: SetNull)
-  children Category[] @relation("CategoryParent")
-  products Product[]
+  parent    Category?  @relation("CategoryParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Category[] @relation("CategoryParent")
+  products  Product[]
   materials Material[]
 
   @@index([parentId])
@@ -366,7 +376,7 @@ model Product {
   packagingType         PackagingType? @default(other) @map("packaging_type")
   categoryId            Int?           @map("category_id")
   supplierId            Int?           @map("supplier_id")
-  unit                  String         @db.VarChar(50)
+  unitId                Int?           @map("unit_id")
   barcode               String?        @db.VarChar(100)
   weight                Decimal?       @db.Decimal(15, 2)
   dimensions            String?        @db.VarChar(100)
@@ -388,6 +398,7 @@ model Product {
 
   category Category? @relation(fields: [categoryId], references: [id])
   supplier Supplier? @relation(fields: [supplierId], references: [id])
+  unit     Unit?     @relation(fields: [unitId], references: [id])
   creator  User?     @relation("ProductCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   updater  User?     @relation("ProductUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
 
@@ -401,14 +412,17 @@ model Product {
   bomMaterials             BomMaterial[]
   productionOrders         ProductionOrder[]
   productionOrderMaterials ProductionOrderMaterial[]
-  salesOrderDetails        SalesOrderDetail[]
+  invoiceDetails           InvoiceDetail[]
   promotionProducts        PromotionProduct[]
   promotionGifts           PromotionProduct[]        @relation("GiftProduct")
   materials                ProductMaterial[]
+  expiries                 Expiry[]
+  productHasAttributes     ProductHasAttribute[]
 
   @@index([sku])
   @@index([categoryId])
   @@index([supplierId])
+  @@index([unitId])
   @@index([productType])
   @@index([status])
   @@index([productName])
@@ -733,13 +747,14 @@ model Customer {
   assignedUserId Int?  @map("assigned_user_id")
   assignedUser   User? @relation("CustomerManager", fields: [assignedUserId], references: [id], onDelete: SetNull)
 
-  salesOrders     SalesOrder[]
+  invoices        Invoice[]
   paymentReceipts PaymentReceipt[]
   // debtReconciliations DebtReconciliation[]
   debtPeriods     DebtPeriod[]
   customerAccount CustomerAccount?
   tickets         Ticket[]
   crmTasks        CrmTask[]
+  expiryAccounts  CustomerExpiryAccount[]
 
   @@index([customerCode])
   @@index([phone])
@@ -779,7 +794,54 @@ model CustomerAccount {
 // 5. SALES MANAGEMENT
 // =====================================================
 
-model SalesOrder {
+model CustomerExpiryAccount {
+  id               Int       @id @default(autoincrement())
+  customerId       Int       @map("customer_id")
+  accountName      String    @map("account_name") @db.VarChar(255)
+  accountCreatedAt DateTime? @map("account_created_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  expiries Expiry[]
+
+  @@index([customerId])
+  @@index([accountName])
+  @@map("customer_expiry_accounts")
+}
+
+model Expiry {
+  id            Int       @id @default(autoincrement())
+  accountId     Int       @map("account_id")
+  startDate     DateTime  @map("start_date")
+  endDate       DateTime  @map("end_date")
+  category      String?   @db.VarChar(100)
+  invoiceId     Int?      @map("invoice_id")
+  productId     Int?      @map("product_id")
+  alertDateStep Int?      @default(30) @map("alert_date_step")
+  options       Json?
+  note          String?   @db.VarChar(500)
+  userId        Int?      @map("user_id")
+  createdBy     Int?      @map("created_by")
+  updatedBy     Int?      @map("updated_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  account CustomerExpiryAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  product Product?              @relation(fields: [productId], references: [id], onDelete: SetNull)
+  invoice Invoice?              @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  user    User?                 @relation("ExpiryUser", fields: [userId], references: [id], onDelete: SetNull)
+  creator User?                 @relation("ExpiryCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  updater User?                 @relation("ExpiryUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([accountId])
+  @@index([endDate])
+  @@map("expiries")
+}
+
+model Invoice {
   id              Int           @id @default(autoincrement())
   orderCode       String        @unique @map("order_code") @db.VarChar(50)
   customerId      Int           @map("customer_id")
@@ -812,19 +874,20 @@ model SalesOrder {
   approver  User?      @relation("SalesApprover", fields: [approvedBy], references: [id])
   canceller User?      @relation("SalesCanceller", fields: [cancelledBy], references: [id])
 
-  details         SalesOrderDetail[]
+  details         InvoiceDetail[]
   deliveries      Delivery[]
   paymentReceipts PaymentReceipt[]
+  expiries        Expiry[]
 
   @@index([orderCode])
   @@index([orderDate])
   @@index([orderStatus])
   @@index([paymentStatus])
   @@index([customerId, orderDate])
-  @@map("sales_orders")
+  @@map("invoices")
 }
 
-model SalesOrderDetail {
+model InvoiceDetail {
   id              Int       @id @default(autoincrement())
   orderId         Int       @map("order_id")
   productId       Int       @map("product_id")
@@ -837,13 +900,13 @@ model SalesOrderDetail {
   expiryDate      DateTime? @map("expiry_date") @db.Date
   notes           String?   @db.VarChar(255)
 
-  order     SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order     Invoice    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product   Product    @relation(fields: [productId], references: [id])
   warehouse Warehouse? @relation(fields: [warehouseId], references: [id])
 
   @@index([orderId])
   @@index([productId])
-  @@map("sales_order_details")
+  @@map("invoice_details")
 }
 
 model Delivery {
@@ -869,9 +932,9 @@ model Delivery {
   updatedAt        DateTime         @updatedAt @map("updated_at")
   deletedAt        DateTime?        @map("deleted_at")
 
-  order         SalesOrder @relation(fields: [orderId], references: [id])
-  deliveryStaff User       @relation("DeliveryStaff", fields: [deliveryStaffId], references: [id])
-  settler       User?      @relation("DeliverySettler", fields: [settledBy], references: [id])
+  order         Invoice @relation(fields: [orderId], references: [id])
+  deliveryStaff User    @relation("DeliveryStaff", fields: [deliveryStaffId], references: [id])
+  settler       User?   @relation("DeliverySettler", fields: [settledBy], references: [id])
 
   @@index([deliveryCode])
   @@index([deliveryStatus])
@@ -902,10 +965,10 @@ model PaymentReceipt {
   createdAt            DateTime             @default(now()) @map("created_at")
   deletedAt            DateTime?            @map("deleted_at")
 
-  customer    SalesOrder? @relation(fields: [orderId], references: [id])
-  customerRef Customer    @relation(fields: [customerId], references: [id])
-  creator     User        @relation("ReceiptCreator", fields: [createdBy], references: [id])
-  approver    User?       @relation("ReceiptApprover", fields: [approvedBy], references: [id])
+  customer    Invoice? @relation(fields: [orderId], references: [id])
+  customerRef Customer @relation(fields: [customerId], references: [id])
+  creator     User     @relation("ReceiptCreator", fields: [createdBy], references: [id])
+  approver    User?    @relation("ReceiptApprover", fields: [approvedBy], references: [id])
 
   @@index([receiptCode])
   @@index([receiptDate])
@@ -1945,4 +2008,97 @@ model ProductMaterial {
   @@index([productId])
   @@index([materialId])
   @@map("product_materials")
+}
+
+// =====================================================
+// 14. UNIT MANAGEMENT
+// =====================================================
+
+model Unit {
+  id          Int        @id @default(autoincrement())
+  unitCode    String     @unique @map("unit_code") @db.VarChar(50)
+  unitName    String     @map("unit_name") @db.VarChar(100)
+  description String?    @db.VarChar(255)
+  status      UnitStatus @default(active)
+  createdBy   Int?       @map("created_by")
+  updatedBy   Int?       @map("updated_by")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  deletedAt   DateTime?  @map("deleted_at")
+
+  creator  User?     @relation("UnitCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  updater  User?     @relation("UnitUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
+  products Product[]
+
+  @@index([unitCode])
+  @@index([status])
+  @@map("units")
+}
+
+enum UnitStatus {
+  active
+  inactive
+}
+
+// =====================================================
+// 15. TAX MANAGEMENT
+// =====================================================
+
+model Tax {
+  id         Int       @id @default(autoincrement())
+  title      String    @db.VarChar(100)
+  percentage Decimal   @db.Decimal(5, 2)
+  priority   Int?      @default(0)
+  status     String    @default("active") @db.VarChar(20)
+  createdBy  Int?      @map("created_by")
+  updatedBy  Int?      @map("updated_by")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
+
+  creator User? @relation("TaxCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  updater User? @relation("TaxUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@map("taxes")
+}
+
+// =====================================================
+// 16. ATTRIBUTE MANAGEMENT
+// =====================================================
+
+model Attribute {
+  id          Int       @id @default(autoincrement())
+  name        String    @db.VarChar(100)
+  code        String?   @db.VarChar(50)
+  dataType    String?   @map("data_type") @db.VarChar(50)
+  unit        String?   @db.VarChar(50)
+  description String?   @db.VarChar(255)
+  status      String    @default("active") @db.VarChar(20)
+  createdBy   Int?      @map("created_by")
+  updatedBy   Int?      @map("updated_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  creator              User?                 @relation("AttributeCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  updater              User?                 @relation("AttributeUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
+  productHasAttributes ProductHasAttribute[]
+
+  @@index([status])
+  @@map("attributes")
+}
+
+model ProductHasAttribute {
+  id          Int     @id @default(autoincrement())
+  productId   Int     @map("product_id")
+  attributeId Int     @map("attribute_id")
+  value       String? @db.VarChar(255)
+
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  attribute Attribute @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([attributeId])
+  @@map("product_has_attributes")
 }

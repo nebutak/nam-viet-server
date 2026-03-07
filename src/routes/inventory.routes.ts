@@ -70,7 +70,7 @@ router.post(
 // POST /api/inventory/reserve - Reserve inventory (for orders)
 router.post(
   '/reserve',
-  authorize('manage_inventory', 'create_sales_orders', 'create_production_orders'),
+  authorize('manage_inventory', 'create_invoices', 'create_production_orders'),
   validate(reserveInventorySchema, 'body'),
   logActivityMiddleware('reserve', 'inventory'),
   asyncHandler(inventoryController.reserve.bind(inventoryController))
@@ -79,7 +79,7 @@ router.post(
 // POST /api/inventory/release-reserved - Release reserved inventory
 router.post(
   '/release-reserved',
-  authorize('manage_inventory', 'cancel_sales_orders', 'cancel_production_orders'),
+  authorize('manage_inventory', 'cancel_invoices', 'cancel_production_orders'),
   validate(releaseReservedSchema, 'body'),
   logActivityMiddleware('reserve reserved', 'inventory'),
   asyncHandler(inventoryController.releaseReserved.bind(inventoryController))

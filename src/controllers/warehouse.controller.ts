@@ -93,6 +93,74 @@ class WarehouseController {
 
     res.status(200).json(response);
   }
+
+  // PATCH /api/warehouses/:id/status
+  async updateWarehouseStatus(req: AuthRequest, res: Response) {
+    const id = parseInt(req.params.id);
+    const userId = req.user!.id;
+    const { status } = req.body;
+
+    const warehouse = await warehouseService.updateStatus(id, status, userId);
+
+    const response: ApiResponse = {
+      success: true,
+      data: warehouse,
+      message: 'Cập nhật trạng thái thành công',
+      timestamp: new Date().toISOString(),
+    };
+
+    res.status(200).json(response);
+  }
+
+  // POST /api/warehouses/bulk-delete
+  async bulkDelete(req: AuthRequest, res: Response) {
+    const userId = req.user!.id;
+    const { ids } = req.body;
+
+    const numIds = Array.isArray(ids) ? ids.map(id => Number(id)) : [];
+    const result = await warehouseService.bulkDelete(numIds, userId);
+
+    const response: ApiResponse = {
+      success: true,
+      message: result.message,
+      timestamp: new Date().toISOString(),
+    };
+
+    res.status(200).json(response);
+  }
+
+  // POST /api/warehouses/import
+  async importWarehouses(req: AuthRequest, res: Response) {
+    const userId = req.user!.id;
+    const { items } = req.body;
+
+    const result = await warehouseService.importWarehouses(items, userId);
+
+    const response: ApiResponse = {
+      success: true,
+      data: result,
+      message: 'Nhập dữ liệu kho thành công',
+      timestamp: new Date().toISOString(),
+    };
+
+    res.status(200).json(response);
+  }
+
+  // GET /api/warehouses/import-template
+  async getImportTemplate(_req: AuthRequest, res: Response) {
+    const buffer = await warehouseService.getImportTemplate();
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename=warehouse_import_template.xlsx'
+    );
+
+    res.send(buffer);
+  }
 }
 
 export default new WarehouseController();

@@ -104,6 +104,13 @@ class ProductService {
             supplierCode: true,
           },
         },
+        unit: {
+          select: {
+            id: true,
+            unitCode: true,
+            unitName: true,
+          },
+        },
         images: {
           orderBy: { displayOrder: 'asc' },
           select: {
@@ -171,6 +178,13 @@ class ProductService {
             supplierCode: true,
             phone: true,
             email: true,
+          },
+        },
+        unit: {
+          select: {
+            id: true,
+            unitCode: true,
+            unitName: true,
           },
         },
         images: {
@@ -275,7 +289,7 @@ class ProductService {
         packagingType: data.packagingType as any,
         categoryId: data.categoryId,
         supplierId: data.supplierId,
-        unit: data.unit,
+        unitId: data.unitId,
         barcode: data.barcode,
         weight: data.weight,
         dimensions: data.dimensions,
@@ -474,7 +488,7 @@ class ProductService {
         videos: true,
         inventory: true,
         purchaseOrderDetails: true,
-        salesOrderDetails: true,
+        invoiceDetails: true,
         bomMaterials: true,
         productionOrderMaterials: true,
       },
@@ -493,7 +507,7 @@ class ProductService {
       }
     }
 
-    if (product.purchaseOrderDetails.length > 0 || product.salesOrderDetails.length > 0) {
+    if (product.purchaseOrderDetails.length > 0 || product.invoiceDetails.length > 0) {
       throw new ValidationError(
         'Cannot delete product that has been used in orders. Consider marking it as discontinued instead.'
       );

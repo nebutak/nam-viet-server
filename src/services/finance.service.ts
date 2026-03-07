@@ -18,7 +18,7 @@ class FinanceService {
     const prevEnd = new Date(start.getTime() - 1);
 
     // 1. Doanh thu thuần (completed orders)
-    const currentRevenue = await prisma.salesOrder.aggregate({
+    const currentRevenue = await prisma.invoice.aggregate({
       _sum: { totalAmount: true },
       where: {
         orderDate: { gte: start, lte: end },
@@ -26,7 +26,7 @@ class FinanceService {
       },
     });
 
-    const prevRevenue = await prisma.salesOrder.aggregate({
+    const prevRevenue = await prisma.invoice.aggregate({
       _sum: { totalAmount: true },
       where: {
         orderDate: { gte: prevStart, lte: prevEnd },
@@ -66,7 +66,7 @@ class FinanceService {
       where: {
         createdAt: { gte: start, lte: end },
         transactionType: 'export',
-        referenceType: 'sales_order',
+        referenceType: 'invoice',
       },
     });
 
@@ -75,7 +75,7 @@ class FinanceService {
       where: {
         createdAt: { gte: prevStart, lte: prevEnd },
         transactionType: 'export',
-        referenceType: 'sales_order',
+        referenceType: 'invoice',
       },
     });
 
@@ -239,7 +239,7 @@ class FinanceService {
     const end = new Date(endDate);
 
     // Revenue
-    const revenueResult = await prisma.salesOrder.aggregate({
+    const revenueResult = await prisma.invoice.aggregate({
       _sum: { totalAmount: true },
       where: {
         orderDate: { gte: start, lte: end },
@@ -249,7 +249,7 @@ class FinanceService {
     const revenue = Number(revenueResult._sum?.totalAmount || 0);
 
     // Deductions (discount)
-    const deductionsResult = await prisma.salesOrder.aggregate({
+    const deductionsResult = await prisma.invoice.aggregate({
       _sum: { discountAmount: true },
       where: {
         orderDate: { gte: start, lte: end },
@@ -266,7 +266,7 @@ class FinanceService {
       where: {
         createdAt: { gte: start, lte: end },
         transactionType: 'export',
-        referenceType: 'sales_order',
+        referenceType: 'invoice',
       },
     });
     const cogs = Number(cogsResult._sum?.totalValue || 0);

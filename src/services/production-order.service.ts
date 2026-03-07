@@ -60,11 +60,11 @@ class ProductionOrderService {
       }),
       ...(fromDate &&
         toDate && {
-          startDate: {
-            gte: new Date(fromDate),
-            lte: new Date(toDate),
-          },
-        }),
+        startDate: {
+          gte: new Date(fromDate),
+          lte: new Date(toDate),
+        },
+      }),
     };
 
     const [orders, total] = await Promise.all([
@@ -87,7 +87,8 @@ class ProductionOrderService {
               id: true,
               sku: true,
               productName: true,
-              unit: true,
+              unitId: true,
+              unit: { select: { unitCode: true, unitName: true } },
             },
           },
           warehouse: {
@@ -117,7 +118,8 @@ class ProductionOrderService {
                 select: {
                   id: true,
                   productName: true,
-                  unit: true,
+                  unitId: true,
+                  unit: { select: { unitCode: true, unitName: true } },
                   inventory: {
                     select: {
                       warehouseId: true,
@@ -165,7 +167,7 @@ class ProductionOrderService {
           missingItems.push({
             materialId: item.materialId,
             materialName: item.material.productName,
-            unit: item.material.unit,
+            unit: (item.material.unit as any)?.unitCode || '',
             required: requiredQty,
             available: totalAvailable,
             missing: requiredQty - totalAvailable,
@@ -212,7 +214,8 @@ class ProductionOrderService {
                     sku: true,
                     productName: true,
                     productType: true,
-                    unit: true,
+                    unitId: true,
+                    unit: { select: { unitCode: true, unitName: true } },
                     purchasePrice: true,
                   },
                 },
@@ -226,7 +229,8 @@ class ProductionOrderService {
             sku: true,
             productName: true,
             productType: true,
-            unit: true,
+            unitId: true,
+            unit: { select: { unitCode: true, unitName: true } },
           },
         },
         warehouse: true,
@@ -436,7 +440,8 @@ class ProductionOrderService {
             sku: material.material.sku,
             productName: material.material.productName,
             productType: material.material.productType,
-            unit: material.material.unit,
+            unitId: (material.material as any).unitId,
+            unit: (material.material as any).unit,
             purchasePrice: material.material.purchasePrice,
             currentQuantity: totalAvailable,
           } as any,
@@ -562,12 +567,12 @@ class ProductionOrderService {
         const available = Math.max(
           0,
           (Number(totalAvailable._sum.quantity) || 0) -
-            (Number(totalAvailable._sum.reservedQuantity) || 0)
+          (Number(totalAvailable._sum.reservedQuantity) || 0)
         );
 
         throw new ValidationError(
           `Không đủ tồn kho cho nguyên liệu "${material.material.productName}". ` +
-            `Cần: ${Number(material.plannedQuantity)}, Có: ${available}`
+          `Cần: ${Number(material.plannedQuantity)}, Có: ${available}`
         );
       }
 
@@ -579,9 +584,8 @@ class ProductionOrderService {
       });
     }
 
-    const stockTransactionCode = `PXK-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${
-      Date.now() % 1000
-    }`;
+    const stockTransactionCode = `PXK-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Date.now() % 1000
+      }`;
 
     // BƯỚC 2, 3, 4: Thực hiện giao dịch
     const result = await prisma.$transaction(async (tx) => {
@@ -744,9 +748,8 @@ class ProductionOrderService {
       }
     }
 
-    const stockTransactionCode = `PNK-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${
-      Date.now() % 1000
-    }`;
+    const stockTransactionCode = `PNK-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Date.now() % 1000
+      }`;
 
     const result = await prisma.$transaction(async (tx) => {
       // BƯỚC 1: Tính tổng chi phí vật liệu dự kiến (trước khi update)
@@ -852,8 +855,8 @@ class ProductionOrderService {
             if (Number(inventoryRecord.quantity) < quantityDifference) {
               throw new ValidationError(
                 `Không đủ tồn kho để trừ thêm ${quantityDifference} ` +
-                  `cho nguyên liệu ID ${materialInput.materialId}. ` +
-                  `Hiện có: ${inventoryRecord.quantity}`
+                `cho nguyên liệu ID ${materialInput.materialId}. ` +
+                `Hiện có: ${inventoryRecord.quantity}`
               );
             }
 

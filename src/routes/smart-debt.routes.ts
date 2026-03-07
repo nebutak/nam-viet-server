@@ -21,13 +21,13 @@ router.use(authentication);
 // 1. Check Integrity (Kiểm tra sai lệch dữ liệu)
 router.get(
   '/check-integrity',
-  authorize('view_debt_reconciliation'),
+  authorize('VIEW_DEBT_RECONCILIATION'),
   asyncHandler(smartDebtController.checkIntegrity.bind(smartDebtController))
 );
 
 // 1b. Export List of Integrity Issues (Xuất file danh sách )
 router.get('/export-list', 
-  authorize('view_debt_reconciliation'),
+  authorize('VIEW_DEBT_RECONCILIATION'),
   asyncHandler(smartDebtController.exportList.bind(smartDebtController))
 );
 
@@ -35,7 +35,7 @@ router.get('/export-list',
 // ⚠️ Frontend cần gọi: /api/smart-debt/123/pdf?type=customer&year=2025
 router.get(
   '/:id/pdf',
-  authorize('view_debt_reconciliation'),
+  authorize('VIEW_DEBT_RECONCILIATION'),
   asyncHandler(smartDebtController.exportPdf.bind(smartDebtController))
 );
 
@@ -44,7 +44,7 @@ router.get(
 // (Phải đặt sau /:id/pdf để tránh nhầm lẫn "pdf" là một ID)
 router.get(
   '/:id',
-  authorize('view_debt_reconciliation'),
+  authorize('VIEW_DEBT_RECONCILIATION'),
   asyncHandler(smartDebtController.getById.bind(smartDebtController))
 );
 
@@ -52,7 +52,7 @@ router.get(
 // Query params: page, limit, search, status, type, year...
 router.get(
   '/',
-  authorize('view_debt_reconciliation'),
+  authorize('VIEW_DEBT_RECONCILIATION'),
   asyncHandler(smartDebtController.getAll.bind(smartDebtController))
 );
 
@@ -63,28 +63,28 @@ router.get(
 // Sync nhanh 1 khách (Snapshot)
 router.post(
   '/sync-snap',
-  authorize('create_debt_reconciliation'),
+  authorize('CREATE_DEBT_RECONCILIATION'),
   asyncHandler(smartDebtController.syncSnap.bind(smartDebtController))
 );
 
 // Sync sâu 1 khách (Full History)
 router.post(
   '/sync-full',
-  authorize('create_debt_reconciliation'),
+  authorize('CREATE_DEBT_RECONCILIATION'),
   asyncHandler(smartDebtController.syncFull.bind(smartDebtController))
 );
 
 // Sync nhanh TOÀN BỘ (Snapshot Batch)
 router.post(
   '/sync-snap-batch',
-  authorize('create_debt_reconciliation'),
+  authorize('CREATE_DEBT_RECONCILIATION'),
   asyncHandler(smartDebtController.syncSnapBatch.bind(smartDebtController))
 );
 
 // Sync sâu TOÀN BỘ (Full Batch - Bảo trì)
 router.post(
   '/sync-full-batch',
-  authorize('create_debt_reconciliation'),
+  authorize('CREATE_DEBT_RECONCILIATION'),
   asyncHandler(smartDebtController.syncFullBatch.bind(smartDebtController))
 );
 

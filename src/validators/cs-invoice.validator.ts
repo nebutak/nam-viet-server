@@ -3,7 +3,7 @@ import { z } from 'zod';
 // ==========================================
 // 1. CREATE SALES ORDER (CUSTOMER VERSION)
 // ==========================================
-export const createCustomerSalesOrderSchema = z.object({
+export const createCustomerInvoiceSchema = z.object({
         // warehouseId: Admin bắt buộc, nhưng Khách có thể optional (nếu logic tự chọn kho)
         warehouseId: z.number().int().positive('Warehouse ID must be positive').optional(),
 
@@ -48,7 +48,7 @@ export const createCustomerSalesOrderSchema = z.object({
             .min(1, 'Đơn hàng phải có ít nhất 1 sản phẩm.'),
 });
 
-export const createCustomerSalesOrderSchema1 = z.object({
+export const createCustomerInvoiceSchema1 = z.object({
     body: z.object({
         // warehouseId: Admin bắt buộc, nhưng Khách có thể optional (nếu logic tự chọn kho)
         warehouseId: z.number().int().positive('Warehouse ID must be positive').optional(),
@@ -127,9 +127,9 @@ export const customerCancelOrderSchema = z.object({
 
 // ==========================================
 // 4. QUERY ORDERS (Lấy danh sách đơn của tôi)
-// Dựa trên salesOrderQuerySchema của Admin nhưng bỏ các trường nhạy cảm
+// Dựa trên invoiceQuerySchema của Admin nhưng bỏ các trường nhạy cảm
 // ==========================================
-export const customerSalesOrderQuerySchema = z.object({
+export const customerInvoiceQuerySchema = z.object({
     query: z.object({
         page: z.string().regex(/^\d+$/).transform(Number).optional(),
         limit: z.string().regex(/^\d+$/).transform(Number).optional(),
@@ -155,7 +155,7 @@ export const customerSalesOrderQuerySchema = z.object({
 // ==========================================
 // TYPES
 // ==========================================
-export type CreateCustomerSalesOrderInput = z.infer<typeof createCustomerSalesOrderSchema>;
+export type CreateCustomerInvoiceInput = z.infer<typeof createCustomerInvoiceSchema>;
 export type InitiateCustomerPaymentInput = z.infer<typeof initiateCustomerPaymentSchema>['body'];
 export type CustomerCancelOrderInput = z.infer<typeof customerCancelOrderSchema>['body'];
-export type CustomerSalesOrderQueryInput = z.infer<typeof customerSalesOrderQuerySchema>['query'];
+export type CustomerInvoiceQueryInput = z.infer<typeof customerInvoiceQuerySchema>['query'];

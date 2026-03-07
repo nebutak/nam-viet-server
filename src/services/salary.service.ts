@@ -199,7 +199,7 @@ class SalaryService {
     const endDate = new Date(year, monthNum, 0);
 
     // Get sales orders created by this user
-    const orders = await prisma.salesOrder.findMany({
+    const orders = await prisma.invoice.findMany({
       where: {
         createdBy: userId,
         orderDate: {

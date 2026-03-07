@@ -28,8 +28,10 @@ export const errorHandler = (err: Error, req: Request, res: Response, _next: Nex
 
     switch (err.code) {
       case 'P2002':
-        message = 'Duplicate entry. Record already exists';
-        details = { field: err.meta?.target };
+        const field = err.meta?.target || 'unknown field';
+        message = `Dữ liệu bị trùng lặp. Đã tồn tại bản ghi với ${field} này.`;
+        details = { field };
+        console.log('PRISMA P2002 ERROR DETAILS:', details, 'TABLE/MODEL:', err.meta);
         code = ErrorCode.CONFLICT;
         statusCode = 409;
         break;

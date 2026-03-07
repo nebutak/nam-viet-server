@@ -25,12 +25,13 @@ export const createCustomerSchema = z.object({
     .or(z.literal('')),
   address: z.string().max(255, 'Địa chỉ tối đa 255 ký tự').optional(),
   taxCode: z.string().max(50, 'Mã số thuế tối đa 50 ký tự').optional(),
-  cccd: z.string().max(20, 'CCCD không được quá 20 ký tự').optional().or(z.literal('')),
+  cccd: z.string().min(1, 'CCCD không được để trống').max(20, 'CCCD không được quá 20 ký tự'),
   issuedAt: z.string().nullable().optional(),
   issuedBy: z.string().max(100, 'Nơi cấp không được quá 100 ký tự').optional().or(z.literal('')),
   creditLimit: z.number().min(0, 'Hạn mức tín dụng phải lớn hơn hoặc bằng 0').optional(),
   rewardPoints: z.number().int().min(0, 'Điểm thưởng phải lớn hơn hoặc bằng 0').optional(),
   rewardCode: z.string().max(50, 'Mã thưởng tối đa 50 ký tự').optional(),
+  status: z.enum(['active', 'inactive', 'blacklisted'], { message: 'Trạng thái không hợp lệ' }).optional(),
   notes: z.string().max(255, 'Ghi chú tối đa 255 ký tự').optional(),
 });
 
@@ -59,12 +60,13 @@ export const updateCustomerSchema = z.object({
     .or(z.literal('')),
   address: z.string().max(255, 'Địa chỉ tối đa 255 ký tự').optional(),
   taxCode: z.string().max(50, 'Mã số thuế tối đa 50 ký tự').optional(),
-  cccd: z.string().max(20, 'CCCD không được quá 20 ký tự').optional().or(z.literal('')),
+  cccd: z.string().min(1, 'CCCD không được để trống').max(20, 'CCCD không được quá 20 ký tự'),
   issuedAt: z.string().nullable().optional(),
   issuedBy: z.string().max(100, 'Nơi cấp không được quá 100 ký tự').optional().or(z.literal('')),
   creditLimit: z.number().min(0, 'Hạn mức tín dụng phải lớn hơn hoặc bằng 0').optional(),
   rewardPoints: z.number().int().min(0, 'Điểm thưởng phải lớn hơn hoặc bằng 0').optional(),
   rewardCode: z.string().max(50, 'Mã thưởng tối đa 50 ký tự').optional(),
+  status: z.enum(['active', 'inactive', 'blacklisted'], { message: 'Trạng thái không hợp lệ' }).optional(),
   notes: z.string().max(255, 'Ghi chú tối đa 255 ký tự').optional(),
 });
 

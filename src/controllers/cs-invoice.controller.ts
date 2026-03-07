@@ -1,14 +1,14 @@
 import { Response } from 'express';
 import { ApiResponse, AuthRequest } from '@custom-types/common.type';
-import salesOrderService from '@services/cs-sales_order.service';
+import invoiceService from '@services/cs-invoice.service';
 import { NotFoundError } from '@utils/errors';
 import type {
-    CreateCustomerSalesOrderInput,
+    CreateCustomerInvoiceInput,
     InitiateCustomerPaymentInput,
     CustomerCancelOrderInput
-} from '@validators/cs-sales_order.validator';
+} from '@validators/cs-invoice.validator';
 
-class CustomerSalesOrderController {
+class CustomerInvoiceController {
 
     private getCustomerId(req: AuthRequest): number {
         console.log("--- DEBUG AUTH ---");
@@ -27,10 +27,10 @@ class CustomerSalesOrderController {
     // ========================================================
     async createOrder(req: AuthRequest, res: Response) {
         const customerId = this.getCustomerId(req);
-        const data = req.body as CreateCustomerSalesOrderInput;
+        const data = req.body as CreateCustomerInvoiceInput;
 
         // Service đã xử lý Transaction, Check kho, và Validate giá
-        const result = await salesOrderService.createOrder(customerId, data);
+        const result = await invoiceService.createOrder(customerId, data);
 
         const response: ApiResponse = {
             success: true,
@@ -53,7 +53,7 @@ class CustomerSalesOrderController {
         // Gán customerId vào query để Service lọc chính chủ
         const query = { ...req.query, customerId } as any;
 
-        const result = await salesOrderService.getMyOrders(query);
+        const result = await invoiceService.getMyOrders(query);
 
         return res.status(200).json({
             success: true,
@@ -74,7 +74,7 @@ class CustomerSalesOrderController {
             return res.status(400).json({ success: false, message: 'Order ID invalid' });
         }
 
-        const order = await salesOrderService.getOrderDetail(customerId, orderId);
+        const order = await invoiceService.getOrderDetail(customerId, orderId);
 
         return res.status(200).json({
             success: true,
@@ -95,7 +95,7 @@ class CustomerSalesOrderController {
             return res.status(400).json({ success: false, message: 'Order ID invalid' });
         }
 
-        const paymentInfo = await salesOrderService.initiatePayment(customerId, orderId, data);
+        const paymentInfo = await invoiceService.initiatePayment(customerId, orderId, data);
 
         return res.status(200).json({
             success: true,
@@ -118,7 +118,7 @@ class CustomerSalesOrderController {
         }
 
         // Service trả về { message: string }
-        const result = await salesOrderService.customerCancelOrder(orderId, customerId, data);
+        const result = await invoiceService.customerCancelOrder(orderId, customerId, data);
 
         return res.status(200).json({
             success: true,
@@ -128,4 +128,4 @@ class CustomerSalesOrderController {
     }
 }
 
-export default new CustomerSalesOrderController();
+export default new CustomerInvoiceController();

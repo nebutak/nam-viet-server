@@ -306,16 +306,19 @@ class RoleService {
       throw new NotFoundError('Vai trò không tìm thấy');
     }
 
+    // Deduplicate permissionIds
+    const uniquePermissionIds = [...new Set(data.permissionIds)];
+
     // Verify all permission IDs exist
     const permissions = await prisma.permission.findMany({
       where: {
         id: {
-          in: data.permissionIds,
+          in: uniquePermissionIds,
         },
       },
     });
 
-    if (permissions.length !== data.permissionIds.length) {
+    if (permissions.length !== uniquePermissionIds.length) {
       throw new NotFoundError('Không tìm thấy một hoặc nhiều quyền.');
     }
 
@@ -334,7 +337,7 @@ class RoleService {
 
       // Create new permissions
       await tx.rolePermission.createMany({
-        data: data.permissionIds.map((permissionId) => ({
+        data: uniquePermissionIds.map((permissionId) => ({
           roleId,
           permissionId,
           assignedBy,

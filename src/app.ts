@@ -38,7 +38,7 @@ import stockTransferRoutes from '@routes/stock-transfer.routes';
 import bomRoutes from '@routes/bom.routes';
 import productionOrderRoutes from '@routes/production-order.routes';
 import customerRoutes from '@routes/customer.routes';
-import salesOrderRoutes from '@routes/sales-order.routes';
+import invoiceRoutes from '@routes/invoice.routes';
 import deliveryRoutes from '@routes/delivery.routes';
 import paymentReceiptRoutes from '@routes/payment-receipt.routes';
 import paymentVoucherRoutes from '@routes/payment-voucher.routes';
@@ -56,15 +56,19 @@ import performanceRoutes from '@routes/performance.routes';
 import securityRoutes from '@routes/security.routes';
 import generalSettingRoutes from '@routes/general-setting.routes';
 import loginHistoryRoutes from '@routes/login-history.routes';
+import unitRoutes from '@routes/unit.routes';
+import taxRoutes from '@routes/tax.routes';
+import attributeRoutes from '@routes/attribute.routes';
 
 import smartDebtRoutes from '@routes/smart-debt.routes';
 import cs_authRoutes from '@routes/cs-auth.routes';
 import cs_categoryRoutes from '@routes/cs-category.routes';
 import cs_productRoutes from '@routes/cs-product.routes';
 import cs_inventoryRoutes from '@routes/cs-inventory.routes';
+import expiryRoutes from '@routes/expiry.routes';
 import cs_customerRoutes from '@routes/cs-customer.routes';
 import cs_warehouseRoutes from '@routes/cs-warehouse.routes';
-import cs_salesOrderRoutes from '@routes/cs-sales-order.routes';
+import cs_invoiceRoutes from '@routes/cs-invoice.routes';
 import cs_product_Routes from '@routes/cs-product.routes';
 
 // News routes
@@ -227,7 +231,7 @@ app.use('/api/stock-transfers', stockTransferRoutes);
 app.use('/api/bom', bomRoutes);
 app.use('/api/production-orders', productionOrderRoutes);
 app.use('/api/customers', customerRoutes);
-app.use('/api/sales-orders', salesOrderRoutes);
+app.use('/api/invoices', invoiceRoutes);
 app.use('/api/deliveries', deliveryRoutes);
 app.use('/api/payment-receipts', paymentReceiptRoutes);
 app.use('/api/payment-vouchers', paymentVoucherRoutes);
@@ -240,12 +244,16 @@ app.use('/api/overtime', overtimeRoutes);
 app.use('/api/overtime', overtimeRoutes);
 app.use('/api/notification', notificationRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/expiry', expiryRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/reports', productionReportRoutes);
 app.use('/api/performance', performanceRoutes);
 app.use('/api/security', securityRoutes);
 app.use('/api/settings/general', generalSettingRoutes);
 app.use('/api/settings/login-history', loginHistoryRoutes);
+app.use('/api/units', unitRoutes);
+app.use('/api/taxes', taxRoutes);
+app.use('/api/attributes', attributeRoutes);
 
 // Smart Debt routes
 app.use('/api/smart-debt', smartDebtRoutes);
@@ -256,7 +264,7 @@ app.use('/api/cs/products', cs_productRoutes);
 app.use('/api/cs/inventory', cs_inventoryRoutes);
 app.use('/api/cs/customers', cs_customerRoutes);
 app.use('/api/cs/warehouses', cs_warehouseRoutes);
-app.use('/api/cs/sale-order', cs_salesOrderRoutes);
+app.use('/api/cs/invoices', cs_invoiceRoutes);
 app.use('/api/cs/products', cs_product_Routes);
 
 // News routes
@@ -272,6 +280,7 @@ app.use('/api/materials', materialRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/activity-logs', activityLogRoutes);
+app.use('/api/crm/customers', customerRoutes);
 
 // 404 handler
 app.use(notFoundHandler);
@@ -340,7 +349,7 @@ httpServer.listen(PORT, async () => {
 ║   📋 BOM API: http://localhost:${PORT}/api/bom           ║
 ║   🏭 Production Orders API: http://localhost:${PORT}/api/production-orders ║
 ║   👤 Customer API: http://localhost:${PORT}/api/customers ║
-║   🛒 Sales Orders API: http://localhost:${PORT}/api/sales-orders ║
+║   🛒 Sales Orders API: http://localhost:${PORT}/api/invoices ║
 ║   🚚 Deliveries API: http://localhost:${PORT}/api/deliveries ║
 ║   💰 Payment Receipts API: http://localhost:${PORT}/api/payment-receipts ║
 ║   💸 Payment Vouchers API: http://localhost:${PORT}/api/payment-vouchers ║

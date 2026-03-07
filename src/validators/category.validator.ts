@@ -59,11 +59,20 @@ export const queryCategoriesSchema = z.object({
   status: z.enum(['active', 'inactive']).optional(),
   sortBy: z
     .enum(['createdAt', 'updatedAt', 'categoryName', 'categoryCode'])
-    .optional()
     .default('createdAt'),
   sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
+});
+
+export const updateStatusSchema = z.object({
+  status: z.enum(['active', 'inactive'], { message: 'Trạng thái không hợp lệ' }),
+});
+
+export const bulkDeleteCategorySchema = z.object({
+  ids: z.array(z.number().int().positive(), { message: 'Danh sách ID không hợp lệ' }).min(1, 'Vui lòng chọn ít nhất một danh mục'),
 });
 
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
 export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
 export type QueryCategoriesInput = z.infer<typeof queryCategoriesSchema>;
+export type UpdateCategoryStatusInput = z.infer<typeof updateStatusSchema>;
+export type BulkDeleteCategoryInput = z.infer<typeof bulkDeleteCategorySchema>;
