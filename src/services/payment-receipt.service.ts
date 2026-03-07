@@ -274,7 +274,7 @@ class PaymentReceiptService {
     }
 
     if (data.orderId) {
-      const order = await prisma.salesOrder.findUnique({
+      const order = await prisma.invoice.findUnique({
         where: { id: data.orderId },
       });
 
@@ -600,7 +600,7 @@ class PaymentReceiptService {
 
     // Cập nhật Đơn hàng và Công nợ khách hàng
     if (receipt.orderId) {
-      const order = await prisma.salesOrder.findUnique({
+      const order = await prisma.invoice.findUnique({
         where: { id: receipt.orderId },
       });
 
@@ -616,7 +616,7 @@ class PaymentReceiptService {
           paymentStatus = 'unpaid';
         }
 
-        await prisma.salesOrder.update({
+        await prisma.invoice.update({
           where: { id: receipt.orderId },
           data: {
             paidAmount: newPaidAmount,
@@ -675,7 +675,7 @@ class PaymentReceiptService {
 
   //   // Đảo ngược Đơn hàng và Công nợ khách hàng
   //   if (receipt.orderId) {
-  //     const order = await prisma.salesOrder.findUnique({
+  //     const order = await prisma.invoice.findUnique({
   //       where: { id: receipt.orderId },
   //     });
 
@@ -691,7 +691,7 @@ class PaymentReceiptService {
   //         paymentStatus = 'unpaid';
   //       }
 
-  //       await prisma.salesOrder.update({
+  //       await prisma.invoice.update({
   //         where: { id: receipt.orderId },
   //         data: {
   //           paidAmount: newPaidAmount,

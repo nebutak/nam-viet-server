@@ -1,3 +1,9 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,30 +13,35 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// 1 USER MANAGEMENT & PERMISSIONS
+
 model Role {
-  id              Int              @id @default(autoincrement())
-  roleKey         String           @unique @map("role_key") @db.VarChar(50)
-  roleName        String           @map("role_name") @db.VarChar(100)
-  description     String?          @db.Text
-  status          RoleStatus       @default(active)
-  createdAt       DateTime         @default(now()) @map("created_at")
-  updatedAt       DateTime         @updatedAt @map("updated_at")
-  deletedAt       DateTime?        @map("deleted_at")
-  rolePermissions RolePermission[]
+  id          Int        @id @default(autoincrement())
+  roleKey     String     @unique @map("role_key") @db.VarChar(50)
+  roleName    String     @map("role_name") @db.VarChar(100)
+  description String?    @db.Text
+  status      RoleStatus @default(active)
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  deletedAt   DateTime?  @map("deleted_at")
+
   users           User[]
+  rolePermissions RolePermission[]
 
   @@map("roles")
 }
 
 model Permission {
-  id              Int              @id @default(autoincrement())
-  permissionKey   String           @unique @map("permission_key") @db.VarChar(100)
-  permissionName  String           @map("permission_name") @db.VarChar(200)
-  description     String?          @db.Text
-  module          String?          @db.VarChar(100)
-  createdAt       DateTime         @default(now()) @map("created_at")
-  updatedAt       DateTime         @updatedAt @map("updated_at")
-  deletedAt       DateTime?        @map("deleted_at")
+  id             Int       @id @default(autoincrement())
+  permissionKey  String    @unique @map("permission_key") @db.VarChar(100)
+  permissionName String    @map("permission_name") @db.VarChar(200)
+  description    String?   @db.Text
+  module         String?   @db.VarChar(100)
+  moduleLabel    String?   @map("module_label") @db.VarChar(200)
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
   rolePermissions RolePermission[]
   userPermissions UserPermission[]
 
@@ -38,160 +49,167 @@ model Permission {
 }
 
 model Warehouse {
-  id                      Int                      @id @default(autoincrement())
-  warehouseCode           String                   @unique @map("warehouse_code") @db.VarChar(50)
-  warehouseName           String                   @map("warehouse_name") @db.VarChar(200)
-  warehouseType           WarehouseType            @map("warehouse_type")
-  address                 String?                  @db.VarChar(255)
-  city                    String?                  @db.VarChar(100)
-  region                  String?                  @db.VarChar(100)
-  description             String?                  @db.VarChar(255)
-  managerId               Int?                     @map("manager_id")
-  capacity                Decimal?                 @db.Decimal(15, 2)
-  status                  WarehouseStatus          @default(active)
-  createdAt               DateTime                 @default(now()) @map("created_at")
-  updatedAt               DateTime                 @updatedAt @map("updated_at")
-  deletedAt               DateTime?                @map("deleted_at")
-  inventory               Inventory[]
-  productionOrders        ProductionOrder[]
+  id            Int             @id @default(autoincrement())
+  warehouseCode String          @unique @map("warehouse_code") @db.VarChar(50)
+  warehouseName String          @map("warehouse_name") @db.VarChar(200)
+  warehouseType WarehouseType   @map("warehouse_type")
+  address       String?         @db.VarChar(255)
+  city          String?         @db.VarChar(100)
+  region        String?         @db.VarChar(100)
+  description   String?         @db.VarChar(255)
+  managerId     Int?            @map("manager_id")
+  capacity      Decimal?        @db.Decimal(15, 2)
+  status        WarehouseStatus @default(active)
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+  deletedAt     DateTime?       @map("deleted_at")
+
+  manager                 User?                    @relation("WarehouseManager", fields: [managerId], references: [id], onDelete: SetNull)
+  users                   User[]                   @relation("UserWarehouse")
   purchaseOrders          PurchaseOrder[]
-  salesOrderDetails       SalesOrderDetail[]
-  salesOrders             SalesOrder[]
-  stockTransactionDetails StockTransactionDetail[]
-  destinationTransfers    StockTransaction[]       @relation("DestinationWarehouse")
-  sourceTransfers         StockTransaction[]       @relation("SourceWarehouse")
+  inventory               Inventory[]
   stockTransactions       StockTransaction[]
+  sourceTransfers         StockTransaction[]       @relation("SourceWarehouse")
+  destinationTransfers    StockTransaction[]       @relation("DestinationWarehouse")
   fromStockTransfers      StockTransfer[]          @relation("FromWarehouse")
   toStockTransfers        StockTransfer[]          @relation("ToWarehouse")
-  users                   User[]                   @relation("UserWarehouse")
-  manager                 User?                    @relation("WarehouseManager", fields: [managerId], references: [id])
+  invoices                Invoice[]
+  invoiceDetails          InvoiceDetail[]
+  productionOrders        ProductionOrder[]
+  stockTransactionDetails StockTransactionDetail[]
 
   @@index([warehouseType, status])
-  @@index([managerId], map: "warehouses_manager_id_fkey")
   @@map("warehouses")
 }
 
 model User {
-  id                         Int                @id @default(autoincrement())
-  employeeCode               String             @unique @map("employee_code") @db.VarChar(50)
-  email                      String             @unique @db.VarChar(100)
-  passwordHash               String             @map("password_hash") @db.VarChar(255)
-  fullName                   String             @map("full_name") @db.VarChar(200)
-  cccd                       String?            @unique @db.VarChar(20)
-  issuedAt                   DateTime?          @map("issued_at") @db.Date
-  issuedBy                   String?            @map("issued_by") @db.VarChar(100)
-  phone                      String?            @db.VarChar(20)
-  address                    String?            @db.VarChar(255)
-  gender                     Gender?
-  dateOfBirth                DateTime?          @map("date_of_birth") @db.Date
-  avatarUrl                  String?            @map("avatar_url") @db.VarChar(255)
-  roleId                     Int                @map("role_id")
-  warehouseId                Int?               @map("warehouse_id")
-  status                     UserStatus         @default(active)
-  canEditProfile             Boolean            @default(false) @map("can_edit_profile")
-  createdBy                  Int?               @map("created_by")
-  updatedBy                  Int?               @map("updated_by")
-  createdAt                  DateTime           @default(now()) @map("created_at")
-  updatedAt                  DateTime           @updatedAt @map("updated_at")
-  lastLogin                  DateTime?          @map("last_login")
-  deletedAt                  DateTime?          @map("deleted_at")
+  id             Int        @id @default(autoincrement())
+  employeeCode   String     @unique @map("employee_code") @db.VarChar(50)
+  email          String     @unique @db.VarChar(100)
+  passwordHash   String     @map("password_hash") @db.VarChar(255)
+  fullName       String     @map("full_name") @db.VarChar(200)
+  cccd           String?    @unique @db.VarChar(20)
+  issuedAt       DateTime?  @map("issued_at") @db.Date
+  issuedBy       String?    @map("issued_by") @db.VarChar(100)
+  phone          String?    @db.VarChar(20)
+  address        String?    @db.VarChar(255)
+  gender         Gender?
+  dateOfBirth    DateTime?  @map("date_of_birth") @db.Date
+  avatarUrl      String?    @map("avatar_url") @db.VarChar(255)
+  roleId         Int        @map("role_id")
+  warehouseId    Int?       @map("warehouse_id")
+  status         UserStatus @default(active)
+  canEditProfile Boolean    @default(false) @map("can_edit_profile")
+  createdBy      Int?       @map("created_by")
+  updatedBy      Int?       @map("updated_by")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+  lastLogin      DateTime?  @map("last_login")
+  deletedAt      DateTime?  @map("deleted_at")
+
+  role      Role       @relation(fields: [roleId], references: [id])
+  warehouse Warehouse? @relation("UserWarehouse", fields: [warehouseId], references: [id])
+  creator   User?      @relation("UserCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  updater   User?      @relation("UserUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  managedWarehouses          Warehouse[]        @relation("WarehouseManager")
+  createdUsers               User[]             @relation("UserCreator")
+  updatedUsers               User[]             @relation("UserUpdater")
   activityLogs               ActivityLog[]
-  attendanceApproved         Attendance[]       @relation("AttendanceApprover")
-  attendance                 Attendance[]
-  lockedAttendanceMonths     AttendanceMonth[]
-  qrCodesCreated             AttendanceQRCode[] @relation("QRCodeCreator")
-  qrScanLogs                 AttendanceQRLog[]
-  bomsApproved               Bom[]              @relation("BomApprover")
-  boms                       Bom[]              @relation("BomCreator")
-  cashFundsApproved          CashFund[]         @relation("CashFundApprover")
-  cashFunds                  CashFund[]         @relation("CashFundReconciler")
-  assignedTasks              CrmTask[]          @relation("TaskAssignee")
-  createdTasks               CrmTask[]          @relation("TaskCreator")
-  assignedCustomers          Customer[]         @relation("CustomerManager")
-  customers                  Customer[]         @relation("CustomerCreator")
-  customersUpdated           Customer[]         @relation("CustomerUpdater")
-  deliveries                 Delivery[]         @relation("DeliveryStaff")
-  deliveriesSettled          Delivery[]         @relation("DeliverySettler")
-  createdExpiries            Expiry[]           @relation("ExpiryCreator")
-  updatedExpiries            Expiry[]           @relation("ExpiryUpdater")
-  expiries                   Expiry[]           @relation("ExpiryUser")
-  generalSettingsUpdated     GeneralSetting[]
-  inventoryUpdates           Inventory[]
-  loginHistories             LoginHistory[]
-  newsAuthored               News[]             @relation("NewsAuthor")
-  newsCreated                News[]             @relation("NewsCreator")
-  newsUpdated                News[]             @relation("NewsUpdater")
-  notificationsSent          Notification[]     @relation("NotificationSender")
-  notifications              Notification[]
-  overtimeEntries            OvertimeEntry[]
-  overtimeSessionsCreated    OvertimeSession[]  @relation("OvertimeCreator")
-  paymentReceiptsApproved    PaymentReceipt[]   @relation("ReceiptApprover")
-  paymentReceipts            PaymentReceipt[]   @relation("ReceiptCreator")
-  paymentVouchersApproved    PaymentVoucher[]   @relation("VoucherApprover")
-  paymentVouchers            PaymentVoucher[]   @relation("VoucherCreator")
-  productImages              ProductImage[]
-  productVideos              ProductVideo[]
-  productionOrdersApproved   ProductionOrder[]  @relation("ProductionApprover")
-  productionOrdersCancelled  ProductionOrder[]  @relation("ProductionCanceller")
-  productionOrders           ProductionOrder[]  @relation("ProductionCreator")
-  products                   Product[]          @relation("ProductCreator")
-  productsUpdated            Product[]          @relation("ProductUpdater")
-  promotionsApproved         Promotion[]        @relation("PromotionApprover")
-  promotionsCancelled        Promotion[]        @relation("PromotionCanceller")
-  promotions                 Promotion[]        @relation("PromotionCreator")
-  purchaseOrdersApproved     PurchaseOrder[]    @relation("POApprover")
-  purchaseOrders             PurchaseOrder[]    @relation("POCreator")
   rolePermissionsAssigned    RolePermission[]   @relation("AssignedBy")
-  salariesApproved           Salary[]           @relation("SalaryApprover")
-  salariesCreated            Salary[]           @relation("SalaryCreator")
-  salariesPaid               Salary[]           @relation("SalaryPayer")
-  salaries                   Salary[]
-  salesOrdersApproved        SalesOrder[]       @relation("SalesApprover")
-  salesOrdersCancelled       SalesOrder[]       @relation("SalesCanceller")
-  salesOrders                SalesOrder[]       @relation("SalesCreator")
-  stockTransactionsApproved  StockTransaction[] @relation("TransactionApprover")
-  stockTransactionsCancelled StockTransaction[] @relation("TransactionCanceller")
-  stockTransactions          StockTransaction[] @relation("TransactionCreator")
-  stockTransfersApproved     StockTransfer[]    @relation("TransferApprover")
-  stockTransfersCancelled    StockTransfer[]    @relation("TransferCanceller")
-  stockTransfers             StockTransfer[]    @relation("TransferRequester")
-  assignedSuppliers          Supplier[]         @relation("SupplierManager")
   suppliers                  Supplier[]         @relation("SupplierCreator")
   suppliersUpdated           Supplier[]         @relation("SupplierUpdater")
-  assignedTickets            Ticket[]           @relation("TicketAssignee")
-  createdTickets             Ticket[]           @relation("TicketCreator")
-  createdUnits               Unit[]             @relation("UnitCreator")
-  updatedUnits               Unit[]             @relation("UnitUpdater")
-  userPermissions            UserPermission[]   @relation("PermissionAssignedBy")
-  userPermissionsAssigned    UserPermission[]
-  creator                    User?              @relation("UserCreator", fields: [createdBy], references: [id])
-  createdUsers               User[]             @relation("UserCreator")
-  role                       Role               @relation(fields: [roleId], references: [id])
-  updater                    User?              @relation("UserUpdater", fields: [updatedBy], references: [id])
-  updatedUsers               User[]             @relation("UserUpdater")
-  warehouse                  Warehouse?         @relation("UserWarehouse", fields: [warehouseId], references: [id])
-  verificationCodes          VerificationCode[]
-  managedWarehouses          Warehouse[]        @relation("WarehouseManager")
+  purchaseOrders             PurchaseOrder[]    @relation("POCreator")
+  purchaseOrdersApproved     PurchaseOrder[]    @relation("POApprover")
+  products                   Product[]          @relation("ProductCreator")
+  productsUpdated            Product[]          @relation("ProductUpdater")
+  productImages              ProductImage[]
+  stockTransactions          StockTransaction[] @relation("TransactionCreator")
+  stockTransactionsApproved  StockTransaction[] @relation("TransactionApprover")
+  stockTransactionsCancelled StockTransaction[] @relation("TransactionCanceller")
+  stockTransfers             StockTransfer[]    @relation("TransferRequester")
+  stockTransfersApproved     StockTransfer[]    @relation("TransferApprover")
+  stockTransfersCancelled    StockTransfer[]    @relation("TransferCanceller")
+  boms                       Bom[]              @relation("BomCreator")
+  bomsApproved               Bom[]              @relation("BomApprover")
+  productionOrders           ProductionOrder[]  @relation("ProductionCreator")
+  productionOrdersApproved   ProductionOrder[]  @relation("ProductionApprover")
+  productionOrdersCancelled  ProductionOrder[]  @relation("ProductionCanceller")
+  customers                  Customer[]         @relation("CustomerCreator")
+  customersUpdated           Customer[]         @relation("CustomerUpdater")
+  invoices                   Invoice[]          @relation("SalesCreator")
+  invoicesApproved           Invoice[]          @relation("SalesApprover")
+  invoicesCancelled          Invoice[]          @relation("SalesCanceller")
+  deliveries                 Delivery[]         @relation("DeliveryStaff")
+  deliveriesSettled          Delivery[]         @relation("DeliverySettler")
+  paymentReceipts            PaymentReceipt[]   @relation("ReceiptCreator")
+  paymentReceiptsApproved    PaymentReceipt[]   @relation("ReceiptApprover")
+  paymentVouchers            PaymentVoucher[]   @relation("VoucherCreator")
+  paymentVouchersApproved    PaymentVoucher[]   @relation("VoucherApprover")
+  // debtReconciliations         DebtReconciliation[] @relation("ReconciliationCreator")
+  // debtReconciliationsApproved DebtReconciliation[] @relation("ReconciliationApprover")
+
+  // ✅ THÊM 2 DÒNG NÀY:
+  assignedCustomers Customer[] @relation("CustomerManager")
+  assignedSuppliers Supplier[] @relation("SupplierManager")
+
+  cashFunds               CashFund[]         @relation("CashFundReconciler")
+  cashFundsApproved       CashFund[]         @relation("CashFundApprover")
+  promotions              Promotion[]        @relation("PromotionCreator")
+  promotionsApproved      Promotion[]        @relation("PromotionApprover")
+  promotionsCancelled     Promotion[]        @relation("PromotionCanceller")
+  attendance              Attendance[]
+  attendanceApproved      Attendance[]       @relation("AttendanceApprover")
+  lockedAttendanceMonths  AttendanceMonth[]
+  salaries                Salary[]
+  salariesCreated         Salary[]           @relation("SalaryCreator")
+  salariesApproved        Salary[]           @relation("SalaryApprover")
+  salariesPaid            Salary[]           @relation("SalaryPayer")
+  overtimeSessionsCreated OvertimeSession[]  @relation("OvertimeCreator")
+  overtimeEntries         OvertimeEntry[]
+  notifications           Notification[]
+  notificationsSent       Notification[]     @relation("NotificationSender")
+  inventoryUpdates        Inventory[]
+  verificationCodes       VerificationCode[]
+  productVideos           ProductVideo[]
+  newsAuthored            News[]             @relation("NewsAuthor")
+  newsCreated             News[]             @relation("NewsCreator")
+  newsUpdated             News[]             @relation("NewsUpdater")
+  generalSettingsUpdated  GeneralSetting[]
+  loginHistories          LoginHistory[]
+  qrCodesCreated          AttendanceQRCode[] @relation("QRCodeCreator")
+  qrScanLogs              AttendanceQRLog[]
+  userPermissions         UserPermission[]   @relation("PermissionAssignedBy")
+  userPermissionsAssigned UserPermission[]
+  assignedTickets         Ticket[]           @relation("TicketAssignee")
+  createdTickets          Ticket[]           @relation("TicketCreator")
+  assignedTasks           CrmTask[]          @relation("TaskAssignee")
+  createdTasks            CrmTask[]          @relation("TaskCreator")
+  expiries                Expiry[]           @relation("ExpiryUser")
+  createdExpiries         Expiry[]           @relation("ExpiryCreator")
+  updatedExpiries         Expiry[]           @relation("ExpiryUpdater")
+  createdUnits            Unit[]             @relation("UnitCreator")
+  updatedUnits            Unit[]             @relation("UnitUpdater")
+  createdTaxes            Tax[]              @relation("TaxCreator")
+  updatedTaxes            Tax[]              @relation("TaxUpdater")
+  createdAttributes       Attribute[]        @relation("AttributeCreator")
+  updatedAttributes       Attribute[]        @relation("AttributeUpdater")
 
   @@index([roleId, status])
-  @@index([createdBy], map: "users_created_by_fkey")
-  @@index([updatedBy], map: "users_updated_by_fkey")
-  @@index([warehouseId], map: "users_warehouse_id_fkey")
   @@map("users")
 }
 
 model RolePermission {
-  roleId       Int        @map("role_id")
-  permissionId Int        @map("permission_id")
-  assignedAt   DateTime   @default(now()) @map("assigned_at")
-  assignedBy   Int?       @map("assigned_by")
-  assigner     User?      @relation("AssignedBy", fields: [assignedBy], references: [id])
-  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  roleId       Int      @map("role_id")
+  permissionId Int      @map("permission_id")
+  assignedAt   DateTime @default(now()) @map("assigned_at")
+  assignedBy   Int?     @map("assigned_by")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  assigner   User?      @relation("AssignedBy", fields: [assignedBy], references: [id], onDelete: SetNull)
 
   @@id([roleId, permissionId])
-  @@index([assignedBy], map: "role_permissions_assigned_by_fkey")
-  @@index([permissionId], map: "role_permissions_permission_id_fkey")
   @@map("role_permissions")
 }
 
@@ -208,7 +226,8 @@ model ActivityLog {
   userAgent String?   @map("user_agent") @db.VarChar(255)
   status    LogStatus @default(success)
   createdAt DateTime  @default(now()) @map("created_at")
-  user      User      @relation(fields: [userId], references: [id])
+
+  user User @relation(fields: [userId], references: [id])
 
   @@index([userId, action])
   @@index([tableName, recordId])
@@ -228,13 +247,17 @@ model VerificationCode {
   createdAt DateTime             @default(now()) @map("created_at")
   usedAt    DateTime?            @map("used_at")
   ipAddress String?              @map("ip_address") @db.VarChar(45)
-  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([email, type, isUsed])
   @@index([code, expiresAt])
-  @@index([userId], map: "verification_codes_user_id_fkey")
   @@map("verification_codes")
 }
+
+// =====================================================
+// 2. WAREHOUSE MANAGEMENT
+// =====================================================
 
 model Category {
   id           Int            @id @default(autoincrement())
@@ -247,9 +270,11 @@ model Category {
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
   deletedAt    DateTime?      @map("deleted_at")
-  parent       Category?      @relation("CategoryParent", fields: [parentId], references: [id])
-  children     Category[]     @relation("CategoryParent")
-  products     Product[]
+
+  parent    Category?  @relation("CategoryParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Category[] @relation("CategoryParent")
+  products  Product[]
+  materials Material[]
 
   @@index([parentId])
   @@index([status])
@@ -257,81 +282,83 @@ model Category {
 }
 
 model Supplier {
-  id               Int              @id @default(autoincrement())
-  supplierCode     String           @unique @map("supplier_code") @db.VarChar(50)
-  supplierName     String           @map("supplier_name") @db.VarChar(200)
-  supplierType     SupplierType     @default(local) @map("supplier_type")
-  contactName      String?          @map("contact_name") @db.VarChar(100)
-  phone            String?          @db.VarChar(20)
-  email            String?          @db.VarChar(100)
-  address          String?          @db.VarChar(255)
-  taxCode          String?          @map("tax_code") @db.VarChar(50)
-  paymentTerms     String?          @map("payment_terms") @db.VarChar(255)
-  totalPayable     Decimal          @default(0.00) @map("total_payable") @db.Decimal(15, 2)
-  notes            String?          @db.VarChar(500)
-  status           SupplierStatus   @default(active)
-  createdBy        Int?             @map("created_by")
-  updatedBy        Int?             @map("updated_by")
-  payableUpdatedAt DateTime?        @map("payable_updated_at")
-  createdAt        DateTime         @default(now()) @map("created_at")
-  updatedAt        DateTime         @updatedAt @map("updated_at")
-  deletedAt        DateTime?        @map("deleted_at")
-  assignedUserId   Int?             @map("assigned_user_id")
-  debtPeriods      DebtPeriod[]
-  paymentVouchers  PaymentVoucher[]
-  products         Product[]
-  purchaseOrders   PurchaseOrder[]
-  assignedUser     User?            @relation("SupplierManager", fields: [assignedUserId], references: [id])
-  creator          User?            @relation("SupplierCreator", fields: [createdBy], references: [id])
-  updater          User?            @relation("SupplierUpdater", fields: [updatedBy], references: [id])
+  id               Int            @id @default(autoincrement())
+  supplierCode     String         @unique @map("supplier_code") @db.VarChar(50)
+  supplierName     String         @map("supplier_name") @db.VarChar(200)
+  supplierType     SupplierType   @default(local) @map("supplier_type")
+  contactName      String?        @map("contact_name") @db.VarChar(100)
+  phone            String?        @db.VarChar(20)
+  email            String?        @db.VarChar(100)
+  address          String?        @db.VarChar(255)
+  taxCode          String?        @map("tax_code") @db.VarChar(50)
+  paymentTerms     String?        @map("payment_terms") @db.VarChar(255)
+  totalPayable     Decimal        @default(0) @map("total_payable") @db.Decimal(15, 2)
+  notes            String?        @db.VarChar(500)
+  status           SupplierStatus @default(active)
+  createdBy        Int?           @map("created_by")
+  updatedBy        Int?           @map("updated_by")
+  payableUpdatedAt DateTime?      @map("payable_updated_at")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  deletedAt        DateTime?      @map("deleted_at")
+
+  creator User? @relation("SupplierCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  updater User? @relation("SupplierUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  // ✅ THÊM NGƯỜI PHỤ TRÁCH (MUA HÀNG)
+  assignedUserId Int?  @map("assigned_user_id")
+  assignedUser   User? @relation("SupplierManager", fields: [assignedUserId], references: [id], onDelete: SetNull)
+
+  purchaseOrders  PurchaseOrder[]
+  products        Product[]
+  paymentVouchers PaymentVoucher[]
+  // debtReconciliations DebtReconciliation[]
+  debtPeriods     DebtPeriod[]
+  materials       Material[]
 
   @@index([supplierCode])
   @@index([status])
-  @@index([assignedUserId], map: "suppliers_assigned_user_id_fkey")
-  @@index([createdBy], map: "suppliers_created_by_fkey")
-  @@index([updatedBy], map: "suppliers_updated_by_fkey")
   @@map("suppliers")
 }
 
 model PurchaseOrder {
-  id                   Int                   @id @default(autoincrement())
-  poCode               String                @unique @map("po_code") @db.VarChar(50)
-  supplierId           Int                   @map("supplier_id")
-  warehouseId          Int                   @map("warehouse_id")
-  orderDate            DateTime              @map("order_date") @db.Date
-  expectedDeliveryDate DateTime?             @map("expected_delivery_date") @db.Date
-  subTotal             Decimal               @default(0.00) @map("sub_total") @db.Decimal(15, 2)
-  taxRate              Decimal               @default(0.00) @map("tax_rate") @db.Decimal(5, 2)
-  totalAmount          Decimal               @default(0.00) @map("total_amount") @db.Decimal(15, 2)
-  status               PurchaseOrderStatus   @default(pending)
-  notes                String?               @db.VarChar(255)
-  sendNumber           Int?                  @map("send_number")
-  createdBy            Int                   @map("created_by")
-  approvedBy           Int?                  @map("approved_by")
-  createdAt            DateTime              @default(now()) @map("created_at")
-  deletedAt            DateTime?             @map("deleted_at")
-  details              PurchaseOrderDetail[]
-  approver             User?                 @relation("POApprover", fields: [approvedBy], references: [id])
-  creator              User                  @relation("POCreator", fields: [createdBy], references: [id])
-  supplier             Supplier              @relation(fields: [supplierId], references: [id])
-  warehouse            Warehouse             @relation(fields: [warehouseId], references: [id])
+  id                   Int                 @id @default(autoincrement())
+  poCode               String              @unique @map("po_code") @db.VarChar(50)
+  supplierId           Int                 @map("supplier_id")
+  warehouseId          Int                 @map("warehouse_id")
+  orderDate            DateTime            @map("order_date") @db.Date
+  expectedDeliveryDate DateTime?           @map("expected_delivery_date") @db.Date
+  subTotal             Decimal             @default(0) @map("sub_total") @db.Decimal(15, 2)
+  taxRate              Decimal             @default(0) @map("tax_rate") @db.Decimal(5, 2)
+  totalAmount          Decimal             @default(0) @map("total_amount") @db.Decimal(15, 2)
+  status               PurchaseOrderStatus @default(pending)
+  notes                String?             @db.VarChar(255)
+  sendNumber           Int?                @map("send_number")
+  createdBy            Int                 @map("created_by")
+  approvedBy           Int?                @map("approved_by")
+  createdAt            DateTime            @default(now()) @map("created_at")
+  deletedAt            DateTime?           @map("deleted_at")
+
+  supplier  Supplier              @relation(fields: [supplierId], references: [id])
+  warehouse Warehouse             @relation(fields: [warehouseId], references: [id])
+  creator   User                  @relation("POCreator", fields: [createdBy], references: [id])
+  approver  User?                 @relation("POApprover", fields: [approvedBy], references: [id])
+  details   PurchaseOrderDetail[]
 
   @@index([poCode])
   @@index([status])
   @@index([supplierId])
-  @@index([approvedBy], map: "purchase_orders_approved_by_fkey")
-  @@index([createdBy], map: "purchase_orders_created_by_fkey")
-  @@index([warehouseId], map: "purchase_orders_warehouse_id_fkey")
   @@map("purchase_orders")
 }
 
 model PurchaseOrderDetail {
-  id            Int           @id @default(autoincrement())
-  poId          Int           @map("po_id")
-  productId     Int           @map("product_id")
-  quantity      Decimal       @db.Decimal(15, 2)
-  unitPrice     Decimal       @map("unit_price") @db.Decimal(15, 2)
-  notes         String?       @db.VarChar(255)
+  id        Int     @id @default(autoincrement())
+  poId      Int     @map("po_id")
+  productId Int     @map("product_id")
+  quantity  Decimal @db.Decimal(15, 2)
+  unitPrice Decimal @map("unit_price") @db.Decimal(15, 2)
+  notes     String? @db.VarChar(255)
+
   purchaseOrder PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
   product       Product       @relation(fields: [productId], references: [id])
 
@@ -341,52 +368,56 @@ model PurchaseOrderDetail {
 }
 
 model Product {
-  id                       Int                       @id @default(autoincrement())
-  sku                      String                    @unique @db.VarChar(50)
-  slug                     String?                   @unique @db.VarChar(200)
-  productName              String                    @map("product_name") @db.VarChar(200)
-  productType              ProductType               @map("product_type")
-  packagingType            PackagingType?            @default(other) @map("packaging_type")
-  categoryId               Int?                      @map("category_id")
-  supplierId               Int?                      @map("supplier_id")
-  barcode                  String?                   @db.VarChar(100)
-  weight                   Decimal?                  @db.Decimal(15, 2)
-  dimensions               String?                   @db.VarChar(100)
-  description              String?                   @db.VarChar(500)
-  purchasePrice            Decimal?                  @map("purchase_price") @db.Decimal(15, 2)
-  sellingPriceRetail       Decimal?                  @map("selling_price_retail") @db.Decimal(15, 2)
-  sellingPriceWholesale    Decimal?                  @map("selling_price_wholesale") @db.Decimal(15, 2)
-  sellingPriceVip          Decimal?                  @map("selling_price_vip") @db.Decimal(15, 2)
-  taxRate                  Decimal                   @default(0.00) @map("tax_rate") @db.Decimal(5, 2)
-  minStockLevel            Decimal                   @default(0.00) @map("min_stock_level") @db.Decimal(15, 2)
-  expiryDate               DateTime?                 @map("expiry_date") @db.Date
-  status                   ProductStatus             @default(active)
-  createdBy                Int?                      @map("created_by")
-  isFeatured               Boolean                   @default(false) @map("is_featured")
-  updatedBy                Int?                      @map("updated_by")
-  createdAt                DateTime                  @default(now()) @map("created_at")
-  updatedAt                DateTime                  @updatedAt @map("updated_at")
-  deletedAt                DateTime?                 @map("deleted_at")
-  unitId                   Int?                      @map("unit_id")
-  boms                     Bom[]
-  bomMaterials             BomMaterial[]
-  expiries                 Expiry[]
-  inventory                Inventory[]
+  id                    Int            @id @default(autoincrement())
+  sku                   String         @unique @db.VarChar(50)
+  slug                  String?        @unique @db.VarChar(200)
+  productName           String         @map("product_name") @db.VarChar(200)
+  productType           ProductType    @map("product_type")
+  packagingType         PackagingType? @default(other) @map("packaging_type")
+  categoryId            Int?           @map("category_id")
+  supplierId            Int?           @map("supplier_id")
+  unitId                Int?           @map("unit_id")
+  barcode               String?        @db.VarChar(100)
+  weight                Decimal?       @db.Decimal(15, 2)
+  dimensions            String?        @db.VarChar(100)
+  description           String?        @db.VarChar(500)
+  purchasePrice         Decimal?       @map("purchase_price") @db.Decimal(15, 2)
+  sellingPriceRetail    Decimal?       @map("selling_price_retail") @db.Decimal(15, 2)
+  sellingPriceWholesale Decimal?       @map("selling_price_wholesale") @db.Decimal(15, 2)
+  sellingPriceVip       Decimal?       @map("selling_price_vip") @db.Decimal(15, 2)
+  taxRate               Decimal        @default(0) @map("tax_rate") @db.Decimal(5, 2)
+  minStockLevel         Decimal        @default(0) @map("min_stock_level") @db.Decimal(15, 2)
+  expiryDate            DateTime?      @map("expiry_date") @db.Date
+  status                ProductStatus  @default(active)
+  createdBy             Int?           @map("created_by")
+  isFeatured            Boolean        @default(false) @map("is_featured")
+  updatedBy             Int?           @map("updated_by")
+  createdAt             DateTime       @default(now()) @map("created_at")
+  updatedAt             DateTime       @updatedAt @map("updated_at")
+  deletedAt             DateTime?      @map("deleted_at")
+
+  category Category? @relation(fields: [categoryId], references: [id])
+  supplier Supplier? @relation(fields: [supplierId], references: [id])
+  unit     Unit?     @relation(fields: [unitId], references: [id])
+  creator  User?     @relation("ProductCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  updater  User?     @relation("ProductUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
+
   images                   ProductImage[]
   videos                   ProductVideo[]
-  productionOrderMaterials ProductionOrderMaterial[]
-  productionOrders         ProductionOrder[]
-  category                 Category?                 @relation(fields: [categoryId], references: [id])
-  creator                  User?                     @relation("ProductCreator", fields: [createdBy], references: [id])
-  supplier                 Supplier?                 @relation(fields: [supplierId], references: [id])
-  unit                     Unit?                     @relation(fields: [unitId], references: [id])
-  updater                  User?                     @relation("ProductUpdater", fields: [updatedBy], references: [id])
-  promotionGifts           PromotionProduct[]        @relation("GiftProduct")
-  promotionProducts        PromotionProduct[]
   purchaseOrderDetails     PurchaseOrderDetail[]
-  salesOrderDetails        SalesOrderDetail[]
+  inventory                Inventory[]
   stockTransactionDetails  StockTransactionDetail[]
   stockTransferDetails     StockTransferDetail[]
+  boms                     Bom[]
+  bomMaterials             BomMaterial[]
+  productionOrders         ProductionOrder[]
+  productionOrderMaterials ProductionOrderMaterial[]
+  invoiceDetails           InvoiceDetail[]
+  promotionProducts        PromotionProduct[]
+  promotionGifts           PromotionProduct[]        @relation("GiftProduct")
+  materials                ProductMaterial[]
+  expiries                 Expiry[]
+  productHasAttributes     ProductHasAttribute[]
 
   @@index([sku])
   @@index([categoryId])
@@ -396,8 +427,6 @@ model Product {
   @@index([status])
   @@index([productName])
   @@index([isFeatured])
-  @@index([createdBy], map: "products_created_by_fkey")
-  @@index([updatedBy], map: "products_updated_by_fkey")
   @@map("products")
 }
 
@@ -411,12 +440,12 @@ model ProductImage {
   displayOrder Int       @default(0) @map("display_order")
   uploadedBy   Int?      @map("uploaded_by")
   createdAt    DateTime  @default(now()) @map("created_at")
-  product      Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-  uploader     User?     @relation(fields: [uploadedBy], references: [id])
+
+  product  Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  uploader User?   @relation(fields: [uploadedBy], references: [id], onDelete: SetNull)
 
   @@index([productId])
   @@index([displayOrder])
-  @@index([uploadedBy], map: "product_images_uploaded_by_fkey")
   @@map("product_images")
 }
 
@@ -434,176 +463,173 @@ model ProductVideo {
   displayOrder Int       @default(0) @map("display_order")
   uploadedBy   Int?      @map("uploaded_by")
   createdAt    DateTime  @default(now()) @map("created_at")
-  product      Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-  uploader     User?     @relation(fields: [uploadedBy], references: [id])
+
+  product  Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  uploader User?   @relation(fields: [uploadedBy], references: [id], onDelete: SetNull)
 
   @@index([productId])
   @@index([displayOrder])
-  @@index([uploadedBy], map: "product_videos_uploaded_by_fkey")
   @@map("product_videos")
 }
 
 model Inventory {
-  id               Int       @id @default(autoincrement())
-  warehouseId      Int       @map("warehouse_id")
-  productId        Int       @map("product_id")
-  quantity         Decimal   @default(0.00) @db.Decimal(15, 2)
-  reservedQuantity Decimal   @default(0.00) @map("reserved_quantity") @db.Decimal(15, 2)
-  lastUpdated      DateTime  @default(now()) @updatedAt @map("last_updated")
-  updatedBy        Int?      @map("updated_by")
-  product          Product   @relation(fields: [productId], references: [id])
-  updater          User?     @relation(fields: [updatedBy], references: [id])
-  warehouse        Warehouse @relation(fields: [warehouseId], references: [id])
+  id               Int      @id @default(autoincrement())
+  warehouseId      Int      @map("warehouse_id")
+  productId        Int      @map("product_id")
+  quantity         Decimal  @default(0) @db.Decimal(15, 2)
+  reservedQuantity Decimal  @default(0) @map("reserved_quantity") @db.Decimal(15, 2)
+  lastUpdated      DateTime @default(now()) @updatedAt @map("last_updated")
+  updatedBy        Int?     @map("updated_by")
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  product   Product   @relation(fields: [productId], references: [id])
+  updater   User?     @relation(fields: [updatedBy], references: [id], onDelete: SetNull)
 
   @@unique([warehouseId, productId])
   @@index([warehouseId, productId])
   @@index([quantity])
-  @@index([productId], map: "inventory_product_id_fkey")
-  @@index([updatedBy], map: "inventory_updated_by_fkey")
   @@map("inventory")
 }
 
 model StockTransaction {
-  id                       Int                       @id @default(autoincrement())
-  transactionCode          String                    @unique @map("transaction_code") @db.VarChar(50)
-  transactionType          TransactionType           @map("transaction_type")
-  warehouseId              Int                       @map("warehouse_id")
-  sourceWarehouseId        Int?                      @map("source_warehouse_id")
-  destinationWarehouseId   Int?                      @map("destination_warehouse_id")
-  referenceType            String?                   @map("reference_type") @db.VarChar(50)
-  referenceId              Int?                      @map("reference_id")
-  totalValue               Decimal                   @default(0.00) @map("total_value") @db.Decimal(15, 2)
-  reason                   String?                   @db.VarChar(255)
-  notes                    String?                   @db.VarChar(500)
-  status                   TransactionStatus         @default(draft)
-  createdBy                Int                       @map("created_by")
-  approvedBy               Int?                      @map("approved_by")
-  cancelledBy              Int?                      @map("cancelled_by")
-  createdAt                DateTime                  @default(now()) @map("created_at")
-  approvedAt               DateTime?                 @map("approved_at")
-  cancelledAt              DateTime?                 @map("cancelled_at")
-  deletedAt                DateTime?                 @map("deleted_at")
-  productionOrderMaterials ProductionOrderMaterial[]
+  id                     Int               @id @default(autoincrement())
+  transactionCode        String            @unique @map("transaction_code") @db.VarChar(50)
+  transactionType        TransactionType   @map("transaction_type")
+  warehouseId            Int               @map("warehouse_id")
+  sourceWarehouseId      Int?              @map("source_warehouse_id")
+  destinationWarehouseId Int?              @map("destination_warehouse_id")
+  referenceType          String?           @map("reference_type") @db.VarChar(50)
+  referenceId            Int?              @map("reference_id")
+  totalValue             Decimal           @default(0) @map("total_value") @db.Decimal(15, 2)
+  reason                 String?           @db.VarChar(255)
+  notes                  String?           @db.VarChar(500)
+  status                 TransactionStatus @default(draft)
+  createdBy              Int               @map("created_by")
+  approvedBy             Int?              @map("approved_by")
+  cancelledBy            Int?              @map("cancelled_by")
+  createdAt              DateTime          @default(now()) @map("created_at")
+  approvedAt             DateTime?         @map("approved_at")
+  cancelledAt            DateTime?         @map("cancelled_at")
+  deletedAt              DateTime?         @map("deleted_at")
+
+  warehouse            Warehouse  @relation(fields: [warehouseId], references: [id])
+  sourceWarehouse      Warehouse? @relation("SourceWarehouse", fields: [sourceWarehouseId], references: [id])
+  destinationWarehouse Warehouse? @relation("DestinationWarehouse", fields: [destinationWarehouseId], references: [id])
+  creator              User       @relation("TransactionCreator", fields: [createdBy], references: [id])
+  approver             User?      @relation("TransactionApprover", fields: [approvedBy], references: [id])
+  canceller            User?      @relation("TransactionCanceller", fields: [cancelledBy], references: [id])
+
   details                  StockTransactionDetail[]
-  approver                 User?                     @relation("TransactionApprover", fields: [approvedBy], references: [id])
-  canceller                User?                     @relation("TransactionCanceller", fields: [cancelledBy], references: [id])
-  creator                  User                      @relation("TransactionCreator", fields: [createdBy], references: [id])
-  destinationWarehouse     Warehouse?                @relation("DestinationWarehouse", fields: [destinationWarehouseId], references: [id])
-  sourceWarehouse          Warehouse?                @relation("SourceWarehouse", fields: [sourceWarehouseId], references: [id])
-  warehouse                Warehouse                 @relation(fields: [warehouseId], references: [id])
+  productionOrderMaterials ProductionOrderMaterial[]
 
   @@index([transactionCode])
   @@index([transactionType])
   @@index([status])
   @@index([createdAt])
-  @@index([approvedBy], map: "stock_transactions_approved_by_fkey")
-  @@index([cancelledBy], map: "stock_transactions_cancelled_by_fkey")
-  @@index([createdBy], map: "stock_transactions_created_by_fkey")
-  @@index([destinationWarehouseId], map: "stock_transactions_destination_warehouse_id_fkey")
-  @@index([sourceWarehouseId], map: "stock_transactions_source_warehouse_id_fkey")
-  @@index([warehouseId], map: "stock_transactions_warehouse_id_fkey")
   @@map("stock_transactions")
 }
 
 model StockTransactionDetail {
-  id            Int              @id @default(autoincrement())
-  transactionId Int              @map("transaction_id")
-  productId     Int              @map("product_id")
-  warehouseId   Int?             @map("warehouse_id")
-  batchNumber   String?          @map("batch_number") @db.VarChar(100)
-  quantity      Decimal          @db.Decimal(15, 2)
-  unitPrice     Decimal?         @map("unit_price") @db.Decimal(15, 2)
-  expiryDate    DateTime?        @map("expiry_date") @db.Date
-  notes         String?          @db.VarChar(500)
-  product       Product          @relation(fields: [productId], references: [id])
-  transaction   StockTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
-  warehouse     Warehouse?       @relation(fields: [warehouseId], references: [id])
+  id            Int       @id @default(autoincrement())
+  transactionId Int       @map("transaction_id")
+  productId     Int       @map("product_id")
+  warehouseId   Int?      @map("warehouse_id")
+  batchNumber   String?   @map("batch_number") @db.VarChar(100)
+  quantity      Decimal   @db.Decimal(15, 2)
+  unitPrice     Decimal?  @map("unit_price") @db.Decimal(15, 2)
+  expiryDate    DateTime? @map("expiry_date") @db.Date
+  notes         String?   @db.VarChar(500)
+
+  transaction StockTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  product     Product          @relation(fields: [productId], references: [id])
+  warehouse   Warehouse?       @relation(fields: [warehouseId], references: [id])
 
   @@index([transactionId])
   @@index([productId])
   @@index([batchNumber])
-  @@index([warehouseId], map: "stock_transaction_details_warehouse_id_fkey")
   @@map("stock_transaction_details")
 }
 
 model StockTransfer {
-  id              Int                   @id @default(autoincrement())
-  transferCode    String                @unique @map("transfer_code") @db.VarChar(50)
-  fromWarehouseId Int                   @map("from_warehouse_id")
-  toWarehouseId   Int                   @map("to_warehouse_id")
-  transferDate    DateTime              @map("transfer_date") @db.Date
-  totalValue      Decimal               @default(0.00) @map("total_value") @db.Decimal(15, 2)
-  reason          String?               @db.VarChar(255)
-  status          TransferStatus        @default(pending)
-  requestedBy     Int                   @map("requested_by")
-  approvedBy      Int?                  @map("approved_by")
-  cancelledBy     Int?                  @map("cancelled_by")
-  createdAt       DateTime              @default(now()) @map("created_at")
-  approvedAt      DateTime?             @map("approved_at")
-  cancelledAt     DateTime?             @map("cancelled_at")
-  updatedAt       DateTime              @updatedAt @map("updated_at")
-  deletedAt       DateTime?             @map("deleted_at")
-  details         StockTransferDetail[]
-  approver        User?                 @relation("TransferApprover", fields: [approvedBy], references: [id])
-  canceller       User?                 @relation("TransferCanceller", fields: [cancelledBy], references: [id])
-  fromWarehouse   Warehouse             @relation("FromWarehouse", fields: [fromWarehouseId], references: [id])
-  requester       User                  @relation("TransferRequester", fields: [requestedBy], references: [id])
-  toWarehouse     Warehouse             @relation("ToWarehouse", fields: [toWarehouseId], references: [id])
+  id              Int            @id @default(autoincrement())
+  transferCode    String         @unique @map("transfer_code") @db.VarChar(50)
+  fromWarehouseId Int            @map("from_warehouse_id")
+  toWarehouseId   Int            @map("to_warehouse_id")
+  transferDate    DateTime       @map("transfer_date") @db.Date
+  totalValue      Decimal        @default(0) @map("total_value") @db.Decimal(15, 2)
+  reason          String?        @db.VarChar(255)
+  status          TransferStatus @default(pending)
+  requestedBy     Int            @map("requested_by")
+  approvedBy      Int?           @map("approved_by")
+  cancelledBy     Int?           @map("cancelled_by")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  approvedAt      DateTime?      @map("approved_at")
+  cancelledAt     DateTime?      @map("cancelled_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  deletedAt       DateTime?      @map("deleted_at")
+
+  fromWarehouse Warehouse @relation("FromWarehouse", fields: [fromWarehouseId], references: [id])
+  toWarehouse   Warehouse @relation("ToWarehouse", fields: [toWarehouseId], references: [id])
+  requester     User      @relation("TransferRequester", fields: [requestedBy], references: [id])
+  approver      User?     @relation("TransferApprover", fields: [approvedBy], references: [id])
+  canceller     User?     @relation("TransferCanceller", fields: [cancelledBy], references: [id])
+
+  details StockTransferDetail[]
 
   @@index([transferCode])
   @@index([status])
   @@index([transferDate])
-  @@index([approvedBy], map: "stock_transfers_approved_by_fkey")
-  @@index([cancelledBy], map: "stock_transfers_cancelled_by_fkey")
-  @@index([fromWarehouseId], map: "stock_transfers_from_warehouse_id_fkey")
-  @@index([requestedBy], map: "stock_transfers_requested_by_fkey")
-  @@index([toWarehouseId], map: "stock_transfers_to_warehouse_id_fkey")
   @@map("stock_transfers")
 }
 
 model StockTransferDetail {
-  id          Int           @id @default(autoincrement())
-  transferId  Int           @map("transfer_id")
-  productId   Int           @map("product_id")
-  quantity    Decimal       @db.Decimal(15, 2)
-  unitPrice   Decimal       @default(0.00) @map("unit_price") @db.Decimal(15, 2)
-  batchNumber String?       @map("batch_number") @db.VarChar(100)
-  expiryDate  DateTime?     @map("expiry_date") @db.Date
-  notes       String?       @db.VarChar(255)
-  product     Product       @relation(fields: [productId], references: [id])
-  transfer    StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  id          Int       @id @default(autoincrement())
+  transferId  Int       @map("transfer_id")
+  productId   Int       @map("product_id")
+  quantity    Decimal   @db.Decimal(15, 2)
+  unitPrice   Decimal   @default(0) @map("unit_price") @db.Decimal(15, 2)
+  batchNumber String?   @map("batch_number") @db.VarChar(100)
+  expiryDate  DateTime? @map("expiry_date") @db.Date
+  notes       String?   @db.VarChar(255)
+
+  transfer StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  product  Product       @relation(fields: [productId], references: [id])
 
   @@index([transferId])
   @@index([productId])
   @@map("stock_transfer_details")
 }
 
+// =====================================================
+// 3. PRODUCTION MANAGEMENT
+// =====================================================
+
 model Bom {
-  id                Int               @id @default(autoincrement())
-  bomCode           String            @unique @map("bom_code") @db.VarChar(50)
-  finishedProductId Int               @map("finished_product_id")
-  version           String            @default("1.0") @db.VarChar(20)
-  outputQuantity    Decimal           @map("output_quantity") @db.Decimal(15, 2)
-  efficiencyRate    Decimal           @default(100.00) @map("efficiency_rate") @db.Decimal(5, 2)
-  productionTime    Int?              @map("production_time")
-  status            BomStatus         @default(draft)
-  notes             String?           @db.VarChar(255)
-  createdBy         Int               @map("created_by")
-  approvedBy        Int?              @map("approved_by")
-  createdAt         DateTime          @default(now()) @map("created_at")
-  approvedAt        DateTime?         @map("approved_at")
-  updatedAt         DateTime          @updatedAt @map("updated_at")
-  deletedAt         DateTime?         @map("deleted_at")
-  approver          User?             @relation("BomApprover", fields: [approvedBy], references: [id])
-  creator           User              @relation("BomCreator", fields: [createdBy], references: [id])
-  finishedProduct   Product           @relation(fields: [finishedProductId], references: [id])
-  materials         BomMaterial[]
-  productionOrders  ProductionOrder[]
+  id                Int       @id @default(autoincrement())
+  bomCode           String    @unique @map("bom_code") @db.VarChar(50)
+  finishedProductId Int       @map("finished_product_id")
+  version           String    @default("1.0") @db.VarChar(20)
+  outputQuantity    Decimal   @map("output_quantity") @db.Decimal(15, 2)
+  efficiencyRate    Decimal   @default(100) @map("efficiency_rate") @db.Decimal(5, 2)
+  productionTime    Int?      @map("production_time")
+  status            BomStatus @default(draft)
+  notes             String?   @db.VarChar(255)
+  createdBy         Int       @map("created_by")
+  approvedBy        Int?      @map("approved_by")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  approvedAt        DateTime? @map("approved_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  finishedProduct Product @relation(fields: [finishedProductId], references: [id])
+  creator         User    @relation("BomCreator", fields: [createdBy], references: [id])
+  approver        User?   @relation("BomApprover", fields: [approvedBy], references: [id])
+
+  materials        BomMaterial[]
+  productionOrders ProductionOrder[]
 
   @@index([bomCode])
   @@index([finishedProductId])
-  @@index([approvedBy], map: "bom_approved_by_fkey")
-  @@index([createdBy], map: "bom_created_by_fkey")
   @@map("bom")
 }
 
@@ -615,117 +641,120 @@ model BomMaterial {
   unit         String?      @db.VarChar(50)
   materialType MaterialType @map("material_type")
   notes        String?      @db.VarChar(255)
-  bom          Bom          @relation(fields: [bomId], references: [id], onDelete: Cascade)
-  material     Product      @relation(fields: [materialId], references: [id])
+
+  bom      Bom     @relation(fields: [bomId], references: [id], onDelete: Cascade)
+  material Product @relation(fields: [materialId], references: [id])
 
   @@index([bomId])
-  @@index([materialId], map: "bom_materials_material_id_fkey")
   @@map("bom_materials")
 }
 
 model ProductionOrder {
-  id                Int                       @id @default(autoincrement())
-  orderCode         String                    @unique @map("order_code") @db.VarChar(50)
-  bomId             Int                       @map("bom_id")
-  finishedProductId Int                       @map("finished_product_id")
-  warehouseId       Int?                      @map("warehouse_id")
-  plannedQuantity   Decimal                   @map("planned_quantity") @db.Decimal(15, 2)
-  actualQuantity    Decimal                   @default(0.00) @map("actual_quantity") @db.Decimal(15, 2)
-  productionCost    Decimal                   @default(0.00) @map("production_cost") @db.Decimal(15, 2)
-  startDate         DateTime                  @map("start_date") @db.Date
-  endDate           DateTime?                 @map("end_date") @db.Date
-  status            ProductionStatus          @default(pending)
-  notes             String?                   @db.VarChar(255)
-  createdBy         Int                       @map("created_by")
-  approvedBy        Int?                      @map("approved_by")
-  cancelledBy       Int?                      @map("cancelled_by")
-  createdAt         DateTime                  @default(now()) @map("created_at")
-  approvedAt        DateTime?                 @map("approved_at")
-  completedAt       DateTime?                 @map("completed_at")
-  cancelledAt       DateTime?                 @map("cancelled_at")
-  updatedAt         DateTime                  @updatedAt @map("updated_at")
-  deletedAt         DateTime?                 @map("deleted_at")
-  materials         ProductionOrderMaterial[]
-  approver          User?                     @relation("ProductionApprover", fields: [approvedBy], references: [id])
-  bom               Bom                       @relation(fields: [bomId], references: [id])
-  canceller         User?                     @relation("ProductionCanceller", fields: [cancelledBy], references: [id])
-  creator           User                      @relation("ProductionCreator", fields: [createdBy], references: [id])
-  finishedProduct   Product                   @relation(fields: [finishedProductId], references: [id])
-  warehouse         Warehouse?                @relation(fields: [warehouseId], references: [id])
+  id                Int              @id @default(autoincrement())
+  orderCode         String           @unique @map("order_code") @db.VarChar(50)
+  bomId             Int              @map("bom_id")
+  finishedProductId Int              @map("finished_product_id")
+  warehouseId       Int?             @map("warehouse_id")
+  plannedQuantity   Decimal          @map("planned_quantity") @db.Decimal(15, 2)
+  actualQuantity    Decimal          @default(0) @map("actual_quantity") @db.Decimal(15, 2)
+  productionCost    Decimal          @default(0) @map("production_cost") @db.Decimal(15, 2)
+  startDate         DateTime         @map("start_date") @db.Date
+  endDate           DateTime?        @map("end_date") @db.Date
+  status            ProductionStatus @default(pending)
+  notes             String?          @db.VarChar(255)
+  createdBy         Int              @map("created_by")
+  approvedBy        Int?             @map("approved_by")
+  cancelledBy       Int?             @map("cancelled_by")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  approvedAt        DateTime?        @map("approved_at")
+  completedAt       DateTime?        @map("completed_at")
+  cancelledAt       DateTime?        @map("cancelled_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  deletedAt         DateTime?        @map("deleted_at")
+
+  bom             Bom        @relation(fields: [bomId], references: [id])
+  finishedProduct Product    @relation(fields: [finishedProductId], references: [id])
+  warehouse       Warehouse? @relation(fields: [warehouseId], references: [id])
+  creator         User       @relation("ProductionCreator", fields: [createdBy], references: [id])
+  approver        User?      @relation("ProductionApprover", fields: [approvedBy], references: [id])
+  canceller       User?      @relation("ProductionCanceller", fields: [cancelledBy], references: [id])
+
+  materials ProductionOrderMaterial[]
 
   @@index([orderCode])
   @@index([status])
   @@index([startDate])
-  @@index([approvedBy], map: "production_orders_approved_by_fkey")
-  @@index([bomId], map: "production_orders_bom_id_fkey")
-  @@index([cancelledBy], map: "production_orders_cancelled_by_fkey")
-  @@index([createdBy], map: "production_orders_created_by_fkey")
-  @@index([finishedProductId], map: "production_orders_finished_product_id_fkey")
-  @@index([warehouseId], map: "production_orders_warehouse_id_fkey")
   @@map("production_orders")
 }
 
 model ProductionOrderMaterial {
-  id                 Int               @id @default(autoincrement())
-  productionOrderId  Int               @map("production_order_id")
-  materialId         Int               @map("material_id")
-  plannedQuantity    Decimal           @map("planned_quantity") @db.Decimal(15, 2)
-  actualQuantity     Decimal           @default(0.00) @map("actual_quantity") @db.Decimal(15, 2)
-  wastage            Decimal           @default(0.00) @db.Decimal(15, 2)
-  unitPrice          Decimal           @default(0.00) @map("unit_price") @db.Decimal(15, 2)
-  materialType       MaterialType      @map("material_type")
-  stockTransactionId Int?              @map("stock_transaction_id")
-  notes              String?           @db.VarChar(255)
-  material           Product           @relation(fields: [materialId], references: [id])
-  productionOrder    ProductionOrder   @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
-  stockTransaction   StockTransaction? @relation(fields: [stockTransactionId], references: [id])
+  id                 Int          @id @default(autoincrement())
+  productionOrderId  Int          @map("production_order_id")
+  materialId         Int          @map("material_id")
+  plannedQuantity    Decimal      @map("planned_quantity") @db.Decimal(15, 2)
+  actualQuantity     Decimal      @default(0) @map("actual_quantity") @db.Decimal(15, 2)
+  wastage            Decimal      @default(0) @db.Decimal(15, 2)
+  unitPrice          Decimal      @default(0) @map("unit_price") @db.Decimal(15, 2)
+  materialType       MaterialType @map("material_type")
+  stockTransactionId Int?         @map("stock_transaction_id")
+  notes              String?      @db.VarChar(255)
+
+  productionOrder  ProductionOrder   @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  material         Product           @relation(fields: [materialId], references: [id])
+  stockTransaction StockTransaction? @relation(fields: [stockTransactionId], references: [id])
 
   @@index([productionOrderId])
-  @@index([materialId], map: "production_order_materials_material_id_fkey")
-  @@index([stockTransactionId], map: "production_order_materials_stock_transaction_id_fkey")
   @@map("production_order_materials")
 }
 
+// =====================================================
+// 4. CUSTOMER MANAGEMENT
+// =====================================================
+
 model Customer {
-  id              Int                     @id @default(autoincrement())
-  customerCode    String                  @unique @map("customer_code") @db.VarChar(50)
-  customerName    String                  @map("customer_name") @db.VarChar(200)
-  customerType    CustomerType            @map("customer_type")
-  classification  CustomerClassification  @default(retail)
+  id              Int                    @id @default(autoincrement())
+  customerCode    String                 @unique @map("customer_code") @db.VarChar(50)
+  customerName    String                 @map("customer_name") @db.VarChar(200)
+  customerType    CustomerType           @map("customer_type")
+  classification  CustomerClassification @default(retail)
   gender          Gender?
-  contactPerson   String?                 @map("contact_person") @db.VarChar(100)
-  phone           String?                 @unique @db.VarChar(20)
-  email           String?                 @db.VarChar(100)
-  avatarUrl       String?                 @map("avatar_url") @db.VarChar(255)
-  address         String?                 @db.VarChar(255)
-  taxCode         String?                 @map("tax_code") @db.VarChar(50)
-  creditLimit     Decimal                 @default(0.00) @map("credit_limit") @db.Decimal(15, 2)
-  currentDebt     Decimal                 @default(0.00) @map("current_debt") @db.Decimal(15, 2)
-  debtUpdatedAt   DateTime?               @map("debt_updated_at")
-  cccd            String?                 @unique @db.VarChar(20)
-  issuedAt        DateTime?               @map("issued_at") @db.Date
-  issuedBy        String?                 @map("issued_by") @db.VarChar(100)
-  status          CustomerStatus          @default(active)
-  rewardPoints    Int                     @default(0) @map("reward_points")
-  rewardCode      String?                 @map("reward_code") @db.VarChar(50)
-  notes           String?                 @db.VarChar(255)
-  phoneVerifiedAt DateTime?               @map("phone_verified_at")
-  createdBy       Int?                    @map("created_by")
-  updatedBy       Int?                    @map("updated_by")
-  createdAt       DateTime                @default(now()) @map("created_at")
-  updatedAt       DateTime                @updatedAt @map("updated_at")
-  deletedAt       DateTime?               @map("deleted_at")
-  assignedUserId  Int?                    @map("assigned_user_id")
-  crmTasks        CrmTask[]
-  customerAccount CustomerAccount?
-  expiryAccounts  CustomerExpiryAccount[]
-  assignedUser    User?                   @relation("CustomerManager", fields: [assignedUserId], references: [id])
-  creator         User?                   @relation("CustomerCreator", fields: [createdBy], references: [id])
-  updater         User?                   @relation("CustomerUpdater", fields: [updatedBy], references: [id])
-  debtPeriods     DebtPeriod[]
+  contactPerson   String?                @map("contact_person") @db.VarChar(100)
+  phone           String?                @unique @db.VarChar(20)
+  email           String?                @db.VarChar(100)
+  avatarUrl       String?                @map("avatar_url") @db.VarChar(255)
+  address         String?                @db.VarChar(255)
+  taxCode         String?                @map("tax_code") @db.VarChar(50)
+  creditLimit     Decimal                @default(0) @map("credit_limit") @db.Decimal(15, 2)
+  currentDebt     Decimal                @default(0) @map("current_debt") @db.Decimal(15, 2)
+  debtUpdatedAt   DateTime?              @map("debt_updated_at")
+  cccd            String?                @unique @db.VarChar(20)
+  issuedAt        DateTime?              @map("issued_at") @db.Date
+  issuedBy        String?                @map("issued_by") @db.VarChar(100)
+  status          CustomerStatus         @default(active)
+  rewardPoints    Int                    @default(0) @map("reward_points")
+  rewardCode      String?                @map("reward_code") @db.VarChar(50)
+  notes           String?                @db.VarChar(255)
+  phoneVerifiedAt DateTime?              @map("phone_verified_at")
+  createdBy       Int?                   @map("created_by")
+  updatedBy       Int?                   @map("updated_by")
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+  deletedAt       DateTime?              @map("deleted_at")
+  creator         User?                  @relation("CustomerCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  updater         User?                  @relation("CustomerUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  // ✅ THÊM DÒNG NÀY:
+  assignedUserId Int?  @map("assigned_user_id")
+  assignedUser   User? @relation("CustomerManager", fields: [assignedUserId], references: [id], onDelete: SetNull)
+
+  invoices        Invoice[]
   paymentReceipts PaymentReceipt[]
-  salesOrders     SalesOrder[]
+  // debtReconciliations DebtReconciliation[]
+  debtPeriods     DebtPeriod[]
+  customerAccount CustomerAccount?
   tickets         Ticket[]
+  crmTasks        CrmTask[]
+  expiryAccounts  CustomerExpiryAccount[]
 
   @@index([customerCode])
   @@index([phone])
@@ -733,28 +762,37 @@ model Customer {
   @@index([status])
   @@index([customerName])
   @@index([assignedUserId])
-  @@index([createdBy], map: "customers_created_by_fkey")
-  @@index([updatedBy], map: "customers_updated_by_fkey")
   @@map("customers")
 }
 
 model CustomerAccount {
-  id                Int          @id @default(autoincrement())
-  customerId        Int          @unique @map("customer_id")
-  accountIdentifier String       @unique @map("account_identifier") @db.VarChar(255)
-  authProvider      AuthProvider @default(PHONE) @map("auth_provider")
-  passwordHash      String?      @map("password_hash") @db.VarChar(255)
-  refreshToken      String?      @map("refresh_token") @db.Text
-  isVerified        Boolean      @default(false) @map("is_verified")
-  isActive          Boolean      @default(true) @map("is_active")
-  lastLogin         DateTime?    @map("last_login")
-  createdAt         DateTime     @default(now()) @map("created_at")
-  updatedAt         DateTime     @updatedAt @map("updated_at")
-  customer          Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  id Int @id @default(autoincrement())
+
+  customerId Int      @unique @map("customer_id")
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  // Với Phone: lưu UID của Supabase. Với Social: cũng lưu UID Supabase.
+  accountIdentifier String @unique @map("account_identifier") @db.VarChar(255)
+
+  authProvider AuthProvider @default(PHONE) @map("auth_provider")
+
+  passwordHash String? @map("password_hash") @db.VarChar(255)
+  refreshToken String? @map("refresh_token") @db.Text
+
+  isVerified Boolean   @default(false) @map("is_verified") // Supabase đã verify thì cái này auto true
+  isActive   Boolean   @default(true) @map("is_active")
+  lastLogin  DateTime? @map("last_login")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([accountIdentifier])
   @@map("customer_accounts")
 }
+
+// =====================================================
+// 5. SALES MANAGEMENT
+// =====================================================
 
 model CustomerExpiryAccount {
   id               Int       @id @default(autoincrement())
@@ -764,8 +802,9 @@ model CustomerExpiryAccount {
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
   deletedAt        DateTime? @map("deleted_at")
-  customer         Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  expiries         Expiry[]
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  expiries Expiry[]
 
   @@index([customerId])
   @@index([accountName])
@@ -773,107 +812,101 @@ model CustomerExpiryAccount {
 }
 
 model Expiry {
-  id            Int                   @id @default(autoincrement())
-  accountId     Int                   @map("account_id")
-  startDate     DateTime              @map("start_date")
-  endDate       DateTime              @map("end_date")
-  category      String?               @db.VarChar(100)
-  invoiceId     Int?                  @map("invoice_id")
-  productId     Int?                  @map("product_id")
-  alertDateStep Int?                  @default(30) @map("alert_date_step")
+  id            Int       @id @default(autoincrement())
+  accountId     Int       @map("account_id")
+  startDate     DateTime  @map("start_date")
+  endDate       DateTime  @map("end_date")
+  category      String?   @db.VarChar(100)
+  invoiceId     Int?      @map("invoice_id")
+  productId     Int?      @map("product_id")
+  alertDateStep Int?      @default(30) @map("alert_date_step")
   options       Json?
-  note          String?               @db.VarChar(500)
-  userId        Int?                  @map("user_id")
-  createdBy     Int?                  @map("created_by")
-  updatedBy     Int?                  @map("updated_by")
-  createdAt     DateTime              @default(now()) @map("created_at")
-  updatedAt     DateTime              @updatedAt @map("updated_at")
-  deletedAt     DateTime?             @map("deleted_at")
-  account       CustomerExpiryAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  creator       User?                 @relation("ExpiryCreator", fields: [createdBy], references: [id])
-  invoice       SalesOrder?           @relation(fields: [invoiceId], references: [id])
-  product       Product?              @relation(fields: [productId], references: [id])
-  updater       User?                 @relation("ExpiryUpdater", fields: [updatedBy], references: [id])
-  user          User?                 @relation("ExpiryUser", fields: [userId], references: [id])
+  note          String?   @db.VarChar(500)
+  userId        Int?      @map("user_id")
+  createdBy     Int?      @map("created_by")
+  updatedBy     Int?      @map("updated_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  account CustomerExpiryAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  product Product?              @relation(fields: [productId], references: [id], onDelete: SetNull)
+  invoice Invoice?              @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  user    User?                 @relation("ExpiryUser", fields: [userId], references: [id], onDelete: SetNull)
+  creator User?                 @relation("ExpiryCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  updater User?                 @relation("ExpiryUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   @@index([accountId])
   @@index([endDate])
-  @@index([createdBy], map: "expiries_created_by_fkey")
-  @@index([invoiceId], map: "expiries_invoice_id_fkey")
-  @@index([productId], map: "expiries_product_id_fkey")
-  @@index([updatedBy], map: "expiries_updated_by_fkey")
-  @@index([userId], map: "expiries_user_id_fkey")
   @@map("expiries")
 }
 
-model SalesOrder {
-  id              Int                @id @default(autoincrement())
-  orderCode       String             @unique @map("order_code") @db.VarChar(50)
-  customerId      Int                @map("customer_id")
-  warehouseId     Int?               @map("warehouse_id")
-  orderDate       DateTime           @map("order_date") @db.Date
-  salesChannel    SalesChannel       @default(retail) @map("sales_channel")
-  totalAmount     Decimal            @default(0.00) @map("total_amount") @db.Decimal(15, 2)
-  discountAmount  Decimal            @default(0.00) @map("discount_amount") @db.Decimal(15, 2)
-  taxAmount       Decimal            @default(0.00) @map("tax_amount") @db.Decimal(15, 2)
-  shippingFee     Decimal            @default(0.00) @map("shipping_fee") @db.Decimal(15, 2)
-  paidAmount      Decimal            @default(0.00) @map("paid_amount") @db.Decimal(15, 2)
-  paymentMethod   PaymentMethod      @map("payment_method")
-  paymentStatus   PaymentStatus      @default(unpaid) @map("payment_status")
-  orderStatus     OrderStatus        @default(pending) @map("order_status")
-  deliveryAddress String?            @map("delivery_address") @db.VarChar(255)
-  notes           String?            @db.VarChar(255)
-  createdBy       Int                @map("created_by")
-  approvedBy      Int?               @map("approved_by")
-  cancelledBy     Int?               @map("cancelled_by")
-  createdAt       DateTime           @default(now()) @map("created_at")
-  approvedAt      DateTime?          @map("approved_at")
-  completedAt     DateTime?          @map("completed_at")
-  cancelledAt     DateTime?          @map("cancelled_at")
-  updatedAt       DateTime           @updatedAt @map("updated_at")
-  deletedAt       DateTime?          @map("deleted_at")
+model Invoice {
+  id              Int           @id @default(autoincrement())
+  orderCode       String        @unique @map("order_code") @db.VarChar(50)
+  customerId      Int           @map("customer_id")
+  warehouseId     Int?          @map("warehouse_id")
+  orderDate       DateTime      @map("order_date") @db.Date
+  salesChannel    SalesChannel  @default(retail) @map("sales_channel")
+  totalAmount     Decimal       @default(0) @map("total_amount") @db.Decimal(15, 2)
+  discountAmount  Decimal       @default(0) @map("discount_amount") @db.Decimal(15, 2)
+  taxAmount       Decimal       @default(0) @map("tax_amount") @db.Decimal(15, 2)
+  shippingFee     Decimal       @default(0) @map("shipping_fee") @db.Decimal(15, 2)
+  paidAmount      Decimal       @default(0) @map("paid_amount") @db.Decimal(15, 2)
+  paymentMethod   PaymentMethod @map("payment_method")
+  paymentStatus   PaymentStatus @default(unpaid) @map("payment_status")
+  orderStatus     OrderStatus   @default(pending) @map("order_status")
+  deliveryAddress String?       @map("delivery_address") @db.VarChar(255)
+  notes           String?       @db.VarChar(255)
+  createdBy       Int           @map("created_by")
+  approvedBy      Int?          @map("approved_by")
+  cancelledBy     Int?          @map("cancelled_by")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  approvedAt      DateTime?     @map("approved_at")
+  completedAt     DateTime?     @map("completed_at")
+  cancelledAt     DateTime?     @map("cancelled_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  deletedAt       DateTime?     @map("deleted_at")
+
+  customer  Customer   @relation(fields: [customerId], references: [id])
+  warehouse Warehouse? @relation(fields: [warehouseId], references: [id])
+  creator   User       @relation("SalesCreator", fields: [createdBy], references: [id])
+  approver  User?      @relation("SalesApprover", fields: [approvedBy], references: [id])
+  canceller User?      @relation("SalesCanceller", fields: [cancelledBy], references: [id])
+
+  details         InvoiceDetail[]
   deliveries      Delivery[]
-  expiries        Expiry[]
   paymentReceipts PaymentReceipt[]
-  details         SalesOrderDetail[]
-  approver        User?              @relation("SalesApprover", fields: [approvedBy], references: [id])
-  canceller       User?              @relation("SalesCanceller", fields: [cancelledBy], references: [id])
-  creator         User               @relation("SalesCreator", fields: [createdBy], references: [id])
-  customer        Customer           @relation(fields: [customerId], references: [id])
-  warehouse       Warehouse?         @relation(fields: [warehouseId], references: [id])
+  expiries        Expiry[]
 
   @@index([orderCode])
   @@index([orderDate])
   @@index([orderStatus])
   @@index([paymentStatus])
   @@index([customerId, orderDate])
-  @@index([approvedBy], map: "sales_orders_approved_by_fkey")
-  @@index([cancelledBy], map: "sales_orders_cancelled_by_fkey")
-  @@index([createdBy], map: "sales_orders_created_by_fkey")
-  @@index([warehouseId], map: "sales_orders_warehouse_id_fkey")
-  @@map("sales_orders")
+  @@map("invoices")
 }
 
-model SalesOrderDetail {
-  id              Int        @id @default(autoincrement())
-  orderId         Int        @map("order_id")
-  productId       Int        @map("product_id")
-  warehouseId     Int?       @map("warehouse_id")
-  quantity        Decimal    @db.Decimal(15, 2)
-  unitPrice       Decimal    @map("unit_price") @db.Decimal(15, 2)
-  discountPercent Decimal    @default(0.00) @map("discount_percent") @db.Decimal(5, 2)
-  taxRate         Decimal    @default(0.00) @map("tax_rate") @db.Decimal(5, 2)
-  batchNumber     String?    @map("batch_number") @db.VarChar(100)
-  expiryDate      DateTime?  @map("expiry_date") @db.Date
-  notes           String?    @db.VarChar(255)
-  order           SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product         Product    @relation(fields: [productId], references: [id])
-  warehouse       Warehouse? @relation(fields: [warehouseId], references: [id])
+model InvoiceDetail {
+  id              Int       @id @default(autoincrement())
+  orderId         Int       @map("order_id")
+  productId       Int       @map("product_id")
+  warehouseId     Int?      @map("warehouse_id")
+  quantity        Decimal   @db.Decimal(15, 2)
+  unitPrice       Decimal   @map("unit_price") @db.Decimal(15, 2)
+  discountPercent Decimal   @default(0) @map("discount_percent") @db.Decimal(5, 2)
+  taxRate         Decimal   @default(0) @map("tax_rate") @db.Decimal(5, 2)
+  batchNumber     String?   @map("batch_number") @db.VarChar(100)
+  expiryDate      DateTime? @map("expiry_date") @db.Date
+  notes           String?   @db.VarChar(255)
+
+  order     Invoice    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product    @relation(fields: [productId], references: [id])
+  warehouse Warehouse? @relation(fields: [warehouseId], references: [id])
 
   @@index([orderId])
   @@index([productId])
-  @@index([warehouseId], map: "sales_order_details_warehouse_id_fkey")
-  @@map("sales_order_details")
+  @@map("invoice_details")
 }
 
 model Delivery {
@@ -884,9 +917,9 @@ model Delivery {
   shippingPartner  String?          @map("shipping_partner") @db.VarChar(100)
   deliveryDate     DateTime         @map("delivery_date") @db.Date
   deliveryStatus   DeliveryStatus   @default(pending) @map("delivery_status")
-  deliveryCost     Decimal          @default(0.00) @map("delivery_cost") @db.Decimal(15, 2)
-  codAmount        Decimal          @default(0.00) @map("cod_amount") @db.Decimal(15, 2)
-  collectedAmount  Decimal          @default(0.00) @map("collected_amount") @db.Decimal(15, 2)
+  deliveryCost     Decimal          @default(0) @map("delivery_cost") @db.Decimal(15, 2)
+  codAmount        Decimal          @default(0) @map("cod_amount") @db.Decimal(15, 2)
+  collectedAmount  Decimal          @default(0) @map("collected_amount") @db.Decimal(15, 2)
   receivedBy       String?          @map("received_by") @db.VarChar(100)
   receivedPhone    String?          @map("received_phone") @db.VarChar(20)
   deliveryProof    String?          @map("delivery_proof") @db.VarChar(500)
@@ -898,17 +931,19 @@ model Delivery {
   createdAt        DateTime         @default(now()) @map("created_at")
   updatedAt        DateTime         @updatedAt @map("updated_at")
   deletedAt        DateTime?        @map("deleted_at")
-  deliveryStaff    User             @relation("DeliveryStaff", fields: [deliveryStaffId], references: [id])
-  order            SalesOrder       @relation(fields: [orderId], references: [id])
-  settler          User?            @relation("DeliverySettler", fields: [settledBy], references: [id])
+
+  order         Invoice @relation(fields: [orderId], references: [id])
+  deliveryStaff User    @relation("DeliveryStaff", fields: [deliveryStaffId], references: [id])
+  settler       User?   @relation("DeliverySettler", fields: [settledBy], references: [id])
 
   @@index([deliveryCode])
   @@index([deliveryStatus])
-  @@index([deliveryStaffId], map: "deliveries_delivery_staff_id_fkey")
-  @@index([orderId], map: "deliveries_order_id_fkey")
-  @@index([settledBy], map: "deliveries_settled_by_fkey")
   @@map("deliveries")
 }
+
+// =====================================================
+// 6. FINANCIAL MANAGEMENT
+// =====================================================
 
 model PaymentReceipt {
   id                   Int                  @id @default(autoincrement())
@@ -929,17 +964,14 @@ model PaymentReceipt {
   createdBy            Int                  @map("created_by")
   createdAt            DateTime             @default(now()) @map("created_at")
   deletedAt            DateTime?            @map("deleted_at")
-  approver             User?                @relation("ReceiptApprover", fields: [approvedBy], references: [id])
-  creator              User                 @relation("ReceiptCreator", fields: [createdBy], references: [id])
-  customerRef          Customer             @relation(fields: [customerId], references: [id])
-  customer             SalesOrder?          @relation(fields: [orderId], references: [id])
+
+  customer    Invoice? @relation(fields: [orderId], references: [id])
+  customerRef Customer @relation(fields: [customerId], references: [id])
+  creator     User     @relation("ReceiptCreator", fields: [createdBy], references: [id])
+  approver    User?    @relation("ReceiptApprover", fields: [approvedBy], references: [id])
 
   @@index([receiptCode])
   @@index([receiptDate])
-  @@index([approvedBy], map: "payment_receipts_approved_by_fkey")
-  @@index([createdBy], map: "payment_receipts_created_by_fkey")
-  @@index([customerId], map: "payment_receipts_customer_id_fkey")
-  @@index([orderId], map: "payment_receipts_order_id_fkey")
   @@map("payment_receipts")
 }
 
@@ -960,39 +992,87 @@ model PaymentVoucher {
   createdBy      Int                  @map("created_by")
   createdAt      DateTime             @default(now()) @map("created_at")
   deletedAt      DateTime?            @map("deleted_at")
-  approver       User?                @relation("VoucherApprover", fields: [approvedBy], references: [id])
-  creator        User                 @relation("VoucherCreator", fields: [createdBy], references: [id])
-  supplier       Supplier?            @relation(fields: [supplierId], references: [id])
-  salaries       Salary[]
+
+  supplier Supplier? @relation(fields: [supplierId], references: [id])
+  creator  User      @relation("VoucherCreator", fields: [createdBy], references: [id])
+  approver User?     @relation("VoucherApprover", fields: [approvedBy], references: [id])
+
+  salaries Salary[]
 
   @@index([voucherCode])
   @@index([paymentDate])
-  @@index([approvedBy], map: "payment_vouchers_approved_by_fkey")
-  @@index([createdBy], map: "payment_vouchers_created_by_fkey")
-  @@index([supplierId], map: "payment_vouchers_supplier_id_fkey")
   @@map("payment_vouchers")
 }
 
-model DebtPeriod {
-  id               Int       @id @default(autoincrement())
-  customerId       Int?      @map("customer_id")
-  supplierId       Int?      @map("supplier_id")
-  periodName       String    @map("period_name") @db.VarChar(20)
-  startTime        DateTime  @map("start_time") @db.Date
-  endTime          DateTime  @map("end_time") @db.Date
-  openingBalance   Decimal   @default(0.00) @map("opening_balance") @db.Decimal(15, 2)
-  increasingAmount Decimal   @default(0.00) @map("increasing_amount") @db.Decimal(15, 2)
-  decreasingAmount Decimal   @default(0.00) @map("decreasing_amount") @db.Decimal(15, 2)
-  returnAmount     Decimal   @default(0.000000000000000000000000000000)
-  adjustmentAmount Decimal   @default(0.000000000000000000000000000000)
-  closingBalance   Decimal   @default(0.00) @map("closing_balance") @db.Decimal(15, 2)
-  isLocked         Boolean   @default(false) @map("is_locked")
-  notes            String?   @db.VarChar(255)
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
-  customer         Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  supplier         Supplier? @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+// model DebtReconciliation {
+//   id                 Int                  @id @default(autoincrement())
+//   reconciliationCode String               @unique @map("reconciliation_code") @db.VarChar(50)
+//   reconciliationType ReconciliationType   @map("reconciliation_type")
+//   period             String               @db.VarChar(20)
+//   customerId         Int?                 @map("customer_id")
+//   supplierId         Int?                 @map("supplier_id")
+//   openingBalance     Decimal              @default(0) @map("opening_balance") @db.Decimal(15, 2)
+//   transactionsAmount Decimal              @default(0) @map("transactions_amount") @db.Decimal(15, 2)
+//   paymentAmount      Decimal              @default(0) @map("payment_amount") @db.Decimal(15, 2)
+//   closingBalance     Decimal              @default(0) @map("closing_balance") @db.Decimal(15, 2)
+//   discrepancyAmount  Decimal              @default(0) @map("discrepancy_amount") @db.Decimal(15, 2)
+//   discrepancyReason  String?              @map("discrepancy_reason") @db.VarChar(255)
+//   status             ReconciliationStatus @default(pending)
+//   reconciliationDate DateTime             @map("reconciliation_date") @db.Date
+//   confirmedByName    String?              @map("confirmed_by_name") @db.VarChar(200)
+//   confirmedByEmail   String?              @map("confirmed_by_email") @db.VarChar(200)
+//   confirmedAt        DateTime?            @map("confirmed_at")
+//   attachmentUrl      String?              @map("attachment_url") @db.VarChar(500)
+//   notes              String?              @db.VarChar(255)
+//   approvedBy         Int?                 @map("approved_by")
+//   approvedAt         DateTime?            @map("approved_at")
+//   createdBy          Int                  @map("created_by")
+//   createdAt          DateTime             @default(now()) @map("created_at")
+//   deletedAt          DateTime?            @map("deleted_at")
 
+//   customer Customer? @relation(fields: [customerId], references: [id])
+//   supplier Supplier? @relation(fields: [supplierId], references: [id])
+//   creator  User      @relation("ReconciliationCreator", fields: [createdBy], references: [id])
+//   approver User?     @relation("ReconciliationApprover", fields: [approvedBy], references: [id])
+
+//   @@index([reconciliationCode])
+//   @@index([reconciliationType, period])
+//   @@index([status])
+//   @@map("debt_reconciliation")
+// }
+
+// Bảng lưu trữ lịch sử công nợ theo kỳ (Năm)
+model DebtPeriod {
+  id Int @id @default(autoincrement())
+
+  // 👇 Liên kết trực tiếp (Thay vì qua DebtMaster)
+  customerId Int? @map("customer_id")
+  supplierId Int? @map("supplier_id")
+
+  periodName String   @map("period_name") @db.VarChar(20) // VD: "2024", "2025"
+  startTime  DateTime @map("start_time") @db.Date
+  endTime    DateTime @map("end_time") @db.Date
+
+  // CÁC CỘT SỐ LIỆU
+  openingBalance   Decimal @default(0) @map("opening_balance") @db.Decimal(15, 2)
+  increasingAmount Decimal @default(0) @map("increasing_amount") @db.Decimal(15, 2) // Tổng mua/nhập
+  decreasingAmount Decimal @default(0) @map("decreasing_amount") @db.Decimal(15, 2) // Tổng trả/chi
+  returnAmount     Decimal @default(0) // Giá trị hàng trả lại
+  adjustmentAmount Decimal @default(0) // Giá trị điều chỉnh tăng/giảm
+
+  closingBalance Decimal @default(0) @map("closing_balance") @db.Decimal(15, 2) // Dư cuối
+
+  isLocked Boolean @default(false) @map("is_locked") // Đã chốt sổ chưa?
+  notes    String? @db.VarChar(255)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // RELATIONS
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  supplier Supplier? @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  // Đảm bảo mỗi khách chỉ có 1 dòng cho năm 2024
   @@unique([customerId, periodName])
   @@unique([supplierId, periodName])
   @@index([periodName])
@@ -1002,10 +1082,10 @@ model DebtPeriod {
 model CashFund {
   id             Int       @id @default(autoincrement())
   fundDate       DateTime  @unique @map("fund_date") @db.Date
-  openingBalance Decimal   @default(0.00) @map("opening_balance") @db.Decimal(15, 2)
-  closingBalance Decimal   @default(0.00) @map("closing_balance") @db.Decimal(15, 2)
-  totalReceipts  Decimal   @default(0.00) @map("total_receipts") @db.Decimal(15, 2)
-  totalPayments  Decimal   @default(0.00) @map("total_payments") @db.Decimal(15, 2)
+  openingBalance Decimal   @default(0) @map("opening_balance") @db.Decimal(15, 2)
+  closingBalance Decimal   @default(0) @map("closing_balance") @db.Decimal(15, 2)
+  totalReceipts  Decimal   @default(0) @map("total_receipts") @db.Decimal(15, 2)
+  totalPayments  Decimal   @default(0) @map("total_payments") @db.Decimal(15, 2)
   isLocked       Boolean   @default(false) @map("is_locked")
   lockedAt       DateTime? @map("locked_at")
   approvedBy     Int?      @map("approved_by")
@@ -1013,114 +1093,128 @@ model CashFund {
   reconciledBy   Int?      @map("reconciled_by")
   createdAt      DateTime  @default(now()) @map("created_at")
   deletedAt      DateTime? @map("deleted_at")
-  approver       User?     @relation("CashFundApprover", fields: [approvedBy], references: [id])
-  reconciler     User?     @relation("CashFundReconciler", fields: [reconciledBy], references: [id])
+
+  reconciler User? @relation("CashFundReconciler", fields: [reconciledBy], references: [id])
+  approver   User? @relation("CashFundApprover", fields: [approvedBy], references: [id])
 
   @@index([fundDate])
-  @@index([approvedBy], map: "cash_fund_approved_by_fkey")
-  @@index([reconciledBy], map: "cash_fund_reconciled_by_fkey")
   @@map("cash_fund")
 }
 
+// =====================================================
+// 7. PROMOTION MANAGEMENT
+// =====================================================
+
 model Promotion {
-  id               Int                @id @default(autoincrement())
-  promotionCode    String             @unique @map("promotion_code") @db.VarChar(50)
-  promotionName    String             @map("promotion_name") @db.VarChar(200)
-  promotionType    PromotionType      @map("promotion_type")
-  discountValue    Decimal?           @map("discount_value") @db.Decimal(15, 2)
-  maxDiscountValue Decimal?           @map("max_discount_value") @db.Decimal(15, 2)
-  startDate        DateTime           @map("start_date") @db.Date
-  endDate          DateTime           @map("end_date") @db.Date
-  isRecurring      Boolean            @default(false) @map("is_recurring")
-  applicableTo     ApplicableTo       @map("applicable_to")
-  minOrderValue    Decimal            @default(0.00) @map("min_order_value") @db.Decimal(15, 2)
-  minQuantity      Int                @default(0) @map("min_quantity")
+  id               Int             @id @default(autoincrement())
+  promotionCode    String          @unique @map("promotion_code") @db.VarChar(50)
+  promotionName    String          @map("promotion_name") @db.VarChar(200)
+  promotionType    PromotionType   @map("promotion_type")
+  discountValue    Decimal?        @map("discount_value") @db.Decimal(15, 2)
+  maxDiscountValue Decimal?        @map("max_discount_value") @db.Decimal(15, 2)
+  startDate        DateTime        @map("start_date") @db.Date
+  endDate          DateTime        @map("end_date") @db.Date
+  isRecurring      Boolean         @default(false) @map("is_recurring")
+  applicableTo     ApplicableTo    @map("applicable_to")
+  minOrderValue    Decimal         @default(0) @map("min_order_value") @db.Decimal(15, 2)
+  minQuantity      Int             @default(0) @map("min_quantity")
   conditions       Json?
-  quantityLimit    Int?               @map("quantity_limit")
-  usageCount       Int                @default(0) @map("usage_count")
-  status           PromotionStatus    @default(pending)
-  createdBy        Int                @map("created_by")
-  approvedBy       Int?               @map("approved_by")
-  approvedAt       DateTime?          @map("approved_at")
-  cancelledBy      Int?               @map("cancelled_by")
-  cancelledAt      DateTime?          @map("cancelled_at")
-  createdAt        DateTime           @default(now()) @map("created_at")
-  updatedAt        DateTime           @updatedAt @map("updated_at")
-  deletedAt        DateTime?          @map("deleted_at")
-  products         PromotionProduct[]
-  approver         User?              @relation("PromotionApprover", fields: [approvedBy], references: [id])
-  canceller        User?              @relation("PromotionCanceller", fields: [cancelledBy], references: [id])
-  creator          User               @relation("PromotionCreator", fields: [createdBy], references: [id])
+  quantityLimit    Int?            @map("quantity_limit")
+  usageCount       Int             @default(0) @map("usage_count")
+  status           PromotionStatus @default(pending)
+  createdBy        Int             @map("created_by")
+  approvedBy       Int?            @map("approved_by")
+  approvedAt       DateTime?       @map("approved_at")
+  cancelledBy      Int?            @map("cancelled_by")
+  cancelledAt      DateTime?       @map("cancelled_at")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+  deletedAt        DateTime?       @map("deleted_at")
+
+  creator   User  @relation("PromotionCreator", fields: [createdBy], references: [id])
+  approver  User? @relation("PromotionApprover", fields: [approvedBy], references: [id])
+  canceller User? @relation("PromotionCanceller", fields: [cancelledBy], references: [id])
+
+  products PromotionProduct[]
 
   @@index([promotionCode])
   @@index([startDate, endDate])
   @@index([status])
-  @@index([approvedBy], map: "promotions_approved_by_fkey")
-  @@index([cancelledBy], map: "promotions_cancelled_by_fkey")
-  @@index([createdBy], map: "promotions_created_by_fkey")
   @@map("promotions")
 }
 
 model PromotionProduct {
-  id                    Int       @id @default(autoincrement())
-  promotionId           Int       @map("promotion_id")
-  productId             Int       @map("product_id")
-  discountValueOverride Decimal?  @map("discount_value_override") @db.Decimal(15, 2)
-  minQuantity           Int       @default(1) @map("min_quantity")
-  giftProductId         Int?      @map("gift_product_id")
-  giftQuantity          Int       @default(0) @map("gift_quantity")
-  note                  String?   @db.VarChar(255)
-  giftProduct           Product?  @relation("GiftProduct", fields: [giftProductId], references: [id])
-  product               Product   @relation(fields: [productId], references: [id])
-  promotion             Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  id                    Int      @id @default(autoincrement())
+  promotionId           Int      @map("promotion_id")
+  productId             Int      @map("product_id")
+  discountValueOverride Decimal? @map("discount_value_override") @db.Decimal(15, 2)
+  minQuantity           Int      @default(1) @map("min_quantity")
+  giftProductId         Int?     @map("gift_product_id")
+  giftQuantity          Int      @default(0) @map("gift_quantity")
+  note                  String?  @db.VarChar(255)
+
+  promotion   Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  product     Product   @relation(fields: [productId], references: [id])
+  giftProduct Product?  @relation("GiftProduct", fields: [giftProductId], references: [id])
 
   @@unique([promotionId, productId])
   @@index([promotionId])
-  @@index([giftProductId], map: "promotion_products_gift_product_id_fkey")
-  @@index([productId], map: "promotion_products_product_id_fkey")
   @@map("promotion_products")
 }
 
+// =====================================================
+// 8. HR MANAGEMENT
+// =====================================================
+
 model Attendance {
-  id               Int               @id @default(autoincrement())
-  userId           Int               @map("user_id")
-  date             DateTime          @db.Date
-  checkInTime      DateTime?         @map("check_in_time") @db.Time(0)
-  checkOutTime     DateTime?         @map("check_out_time") @db.Time(0)
-  overtimeHours    Decimal           @default(0.00) @map("overtime_hours") @db.Decimal(5, 2)
-  status           AttendanceStatus  @default(present)
-  leaveType        LeaveType         @default(none) @map("leave_type")
-  shift            ShiftType         @default(all_day)
-  checkInLocation  String?           @map("check_in_location") @db.VarChar(255)
-  checkOutLocation String?           @map("check_out_location") @db.VarChar(255)
-  approvedBy       Int?              @map("approved_by")
-  approvedAt       DateTime?         @map("approved_at")
-  notes            String?           @db.VarChar(255)
-  createdAt        DateTime          @default(now()) @map("created_at")
-  approver         User?             @relation("AttendanceApprover", fields: [approvedBy], references: [id])
-  user             User              @relation(fields: [userId], references: [id])
-  qrLogs           AttendanceQRLog[]
+  id               Int              @id @default(autoincrement())
+  userId           Int              @map("user_id")
+  date             DateTime         @db.Date
+  checkInTime      DateTime?        @map("check_in_time") @db.Time()
+  checkOutTime     DateTime?        @map("check_out_time") @db.Time()
+  overtimeHours    Decimal          @default(0) @map("overtime_hours") @db.Decimal(5, 2)
+  status           AttendanceStatus @default(present)
+  leaveType        LeaveType        @default(none) @map("leave_type")
+  shift            ShiftType        @default(all_day) // morning, afternoon, all_day
+  checkInLocation  String?          @map("check_in_location") @db.VarChar(255)
+  checkOutLocation String?          @map("check_out_location") @db.VarChar(255)
+  approvedBy       Int?             @map("approved_by")
+  approvedAt       DateTime?        @map("approved_at")
+  notes            String?          @db.VarChar(255)
+  createdAt        DateTime         @default(now()) @map("created_at")
+
+  user     User              @relation(fields: [userId], references: [id])
+  approver User?             @relation("AttendanceApprover", fields: [approvedBy], references: [id])
+  qrLogs   AttendanceQRLog[]
 
   @@unique([userId, date])
   @@index([date])
   @@index([status])
-  @@index([approvedBy], map: "attendance_approved_by_fkey")
   @@map("attendance")
 }
 
 model AttendanceMonth {
   id        Int       @id @default(autoincrement())
-  month     String    @unique @db.Char(6)
+  month     String    @db.Char(6) // YYYYMM format
   isLocked  Boolean   @default(false) @map("is_locked")
   lockedBy  Int?      @map("locked_by")
   lockedAt  DateTime? @map("locked_at")
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
-  locker    User?     @relation(fields: [lockedBy], references: [id])
 
+  locker User? @relation(fields: [lockedBy], references: [id], onDelete: SetNull)
+
+  @@unique([month])
   @@index([month])
-  @@index([lockedBy], map: "attendance_months_locked_by_fkey")
   @@map("attendance_months")
+}
+
+// ✅ NEW: Overtime Management
+
+enum OvertimeSessionStatus {
+  open
+  closed
+  cancelled
 }
 
 model OvertimeSession {
@@ -1133,115 +1227,118 @@ model OvertimeSession {
   createdBy   Int                   @map("created_by")
   createdAt   DateTime              @default(now()) @map("created_at")
   updatedAt   DateTime              @updatedAt @map("updated_at")
-  entries     OvertimeEntry[]
-  creator     User                  @relation("OvertimeCreator", fields: [createdBy], references: [id])
+
+  creator User            @relation("OvertimeCreator", fields: [createdBy], references: [id])
+  entries OvertimeEntry[]
 
   @@index([status])
   @@index([startTime])
-  @@index([createdBy], map: "overtime_sessions_created_by_fkey")
   @@map("overtime_sessions")
 }
 
 model OvertimeEntry {
-  id                Int             @id @default(autoincrement())
-  overtimeSessionId Int             @map("overtime_session_id")
-  userId            Int             @map("user_id")
-  startTime         DateTime?       @map("start_time")
-  endTime           DateTime?       @map("end_time")
-  actualHours       Decimal         @default(0.00) @map("actual_hours") @db.Decimal(5, 2)
-  notes             String?         @db.VarChar(255)
-  createdAt         DateTime        @default(now()) @map("created_at")
-  session           OvertimeSession @relation(fields: [overtimeSessionId], references: [id], onDelete: Cascade)
-  user              User            @relation(fields: [userId], references: [id])
+  id                Int       @id @default(autoincrement())
+  overtimeSessionId Int       @map("overtime_session_id")
+  userId            Int       @map("user_id")
+  startTime         DateTime? @map("start_time") // Nếu khác session
+  endTime           DateTime? @map("end_time") // Nếu khác session
+  actualHours       Decimal   @default(0) @map("actual_hours") @db.Decimal(5, 2)
+  notes             String?   @db.VarChar(255)
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  session OvertimeSession @relation(fields: [overtimeSessionId], references: [id], onDelete: Cascade)
+  user    User            @relation(fields: [userId], references: [id])
 
   @@unique([overtimeSessionId, userId])
-  @@index([userId], map: "overtime_entries_user_id_fkey")
   @@map("overtime_entries")
 }
 
+// QR Code for Attendance Check-in
 model AttendanceQRCode {
-  id           Int               @id @default(autoincrement())
-  qrCode       String            @map("qr_code") @db.LongText
-  sessionToken String            @unique @map("session_token") @db.VarChar(500)
-  startDate    DateTime          @map("start_date") @db.Date
-  endDate      DateTime          @map("end_date") @db.Date
-  shift        ShiftType         @default(all_day)
-  type         ScanType          @default(check_in)
-  isActive     Boolean           @default(true) @map("is_active")
-  usageCount   Int               @default(0) @map("usage_count")
-  createdBy    Int               @map("created_by")
-  createdAt    DateTime          @default(now()) @map("created_at")
-  expiresAt    DateTime          @map("expires_at")
-  deletedAt    DateTime?         @map("deleted_at")
-  creator      User              @relation("QRCodeCreator", fields: [createdBy], references: [id])
-  logs         AttendanceQRLog[]
+  id           Int       @id @default(autoincrement())
+  qrCode       String    @map("qr_code") @db.LongText
+  sessionToken String    @unique @map("session_token") @db.VarChar(500)
+  startDate    DateTime  @map("start_date") @db.Date
+  endDate      DateTime  @map("end_date") @db.Date
+  shift        ShiftType @default(all_day)
+  type         ScanType  @default(check_in)
+  isActive     Boolean   @default(true) @map("is_active")
+  usageCount   Int       @default(0) @map("usage_count")
+  createdBy    Int       @map("created_by")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  expiresAt    DateTime  @map("expires_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  creator User              @relation("QRCodeCreator", fields: [createdBy], references: [id])
+  logs    AttendanceQRLog[]
 
   @@index([sessionToken])
   @@index([startDate, endDate])
   @@index([isActive])
-  @@index([createdBy], map: "attendance_qr_codes_created_by_fkey")
   @@map("attendance_qr_codes")
 }
 
+// QR Scan Log for Audit Trail
 model AttendanceQRLog {
-  id           Int              @id @default(autoincrement())
-  qrCodeId     Int              @map("qr_code_id")
-  userId       Int              @map("user_id")
-  attendanceId Int?             @map("attendance_id")
-  scannedAt    DateTime         @default(now()) @map("scanned_at")
-  ipAddress    String?          @map("ip_address") @db.VarChar(45)
-  userAgent    String?          @map("user_agent") @db.VarChar(255)
-  location     String?          @db.VarChar(255)
-  status       QRScanStatus     @default(success)
-  errorMessage String?          @map("error_message") @db.VarChar(500)
-  attendance   Attendance?      @relation(fields: [attendanceId], references: [id])
-  qrCode       AttendanceQRCode @relation(fields: [qrCodeId], references: [id])
-  user         User             @relation(fields: [userId], references: [id])
+  id           Int          @id @default(autoincrement())
+  qrCodeId     Int          @map("qr_code_id")
+  userId       Int          @map("user_id")
+  attendanceId Int?         @map("attendance_id")
+  scannedAt    DateTime     @default(now()) @map("scanned_at")
+  ipAddress    String?      @map("ip_address") @db.VarChar(45)
+  userAgent    String?      @map("user_agent") @db.VarChar(255)
+  location     String?      @db.VarChar(255)
+  status       QRScanStatus @default(success)
+  errorMessage String?      @map("error_message") @db.VarChar(500)
+
+  qrCode     AttendanceQRCode @relation(fields: [qrCodeId], references: [id])
+  user       User             @relation(fields: [userId], references: [id])
+  attendance Attendance?      @relation(fields: [attendanceId], references: [id])
 
   @@index([qrCodeId])
   @@index([userId])
   @@index([scannedAt])
-  @@index([attendanceId], map: "attendance_qr_logs_attendance_id_fkey")
   @@map("attendance_qr_logs")
 }
 
 model Salary {
-  id          Int             @id @default(autoincrement())
-  userId      Int             @map("user_id")
-  month       String          @db.Char(6)
-  basicSalary Decimal         @default(0.00) @map("basic_salary") @db.Decimal(15, 2)
-  allowance   Decimal         @default(0.00) @db.Decimal(15, 2)
-  overtimePay Decimal         @default(0.00) @map("overtime_pay") @db.Decimal(15, 2)
-  bonus       Decimal         @default(0.00) @db.Decimal(15, 2)
-  commission  Decimal         @default(0.00) @db.Decimal(15, 2)
-  deduction   Decimal         @default(0.00) @db.Decimal(15, 2)
-  advance     Decimal         @default(0.00) @db.Decimal(15, 2)
-  paymentDate DateTime?       @map("payment_date") @db.Date
-  status      SalaryStatus    @default(pending)
-  isPosted    Boolean         @default(false) @map("is_posted")
-  approvedBy  Int?            @map("approved_by")
-  approvedAt  DateTime?       @map("approved_at")
-  paidBy      Int?            @map("paid_by")
-  voucherId   Int?            @map("voucher_id")
-  notes       String?         @db.VarChar(255)
-  createdBy   Int             @map("created_by")
-  createdAt   DateTime        @default(now()) @map("created_at")
-  deletedAt   DateTime?       @map("deleted_at")
-  approver    User?           @relation("SalaryApprover", fields: [approvedBy], references: [id])
-  creator     User            @relation("SalaryCreator", fields: [createdBy], references: [id])
-  payer       User?           @relation("SalaryPayer", fields: [paidBy], references: [id])
-  user        User            @relation(fields: [userId], references: [id])
-  voucher     PaymentVoucher? @relation(fields: [voucherId], references: [id])
+  id          Int          @id @default(autoincrement())
+  userId      Int          @map("user_id")
+  month       String       @db.Char(6)
+  basicSalary Decimal      @default(0) @map("basic_salary") @db.Decimal(15, 2)
+  allowance   Decimal      @default(0) @db.Decimal(15, 2)
+  overtimePay Decimal      @default(0) @map("overtime_pay") @db.Decimal(15, 2)
+  bonus       Decimal      @default(0) @db.Decimal(15, 2)
+  commission  Decimal      @default(0) @db.Decimal(15, 2)
+  deduction   Decimal      @default(0) @db.Decimal(15, 2)
+  advance     Decimal      @default(0) @db.Decimal(15, 2)
+  paymentDate DateTime?    @map("payment_date") @db.Date
+  status      SalaryStatus @default(pending)
+  isPosted    Boolean      @default(false) @map("is_posted")
+  approvedBy  Int?         @map("approved_by")
+  approvedAt  DateTime?    @map("approved_at")
+  paidBy      Int?         @map("paid_by")
+  voucherId   Int?         @map("voucher_id")
+  notes       String?      @db.VarChar(255)
+  createdBy   Int          @map("created_by")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  deletedAt   DateTime?    @map("deleted_at")
+
+  user     User            @relation(fields: [userId], references: [id])
+  creator  User            @relation("SalaryCreator", fields: [createdBy], references: [id])
+  approver User?           @relation("SalaryApprover", fields: [approvedBy], references: [id])
+  payer    User?           @relation("SalaryPayer", fields: [paidBy], references: [id])
+  voucher  PaymentVoucher? @relation(fields: [voucherId], references: [id])
 
   @@unique([userId, month])
   @@index([month])
   @@index([status])
-  @@index([approvedBy], map: "salary_approved_by_fkey")
-  @@index([createdBy], map: "salary_created_by_fkey")
-  @@index([paidBy], map: "salary_paid_by_fkey")
-  @@index([voucherId], map: "salary_voucher_id_fkey")
   @@map("salary")
 }
+
+// =====================================================
+// 9. NOTIFICATION SYSTEM
+// =====================================================
 
 model Notification {
   id               BigInt               @id @default(autoincrement())
@@ -1260,229 +1357,20 @@ model Notification {
   expiresAt        DateTime?            @map("expires_at")
   deletedAt        DateTime?            @map("deleted_at")
   createdAt        DateTime             @default(now()) @map("created_at")
-  sender           User?                @relation("NotificationSender", fields: [senderId], references: [id])
-  user             User                 @relation(fields: [userId], references: [id])
+
+  user   User  @relation(fields: [userId], references: [id])
+  sender User? @relation("NotificationSender", fields: [senderId], references: [id])
 
   @@index([userId, isRead])
   @@index([notificationType])
   @@index([priority])
   @@index([createdAt])
-  @@index([senderId], map: "notifications_sender_id_fkey")
   @@map("notifications")
 }
 
-model NewsCategory {
-  id           Int        @id @default(autoincrement())
-  categoryKey  String     @unique @map("category_key") @db.VarChar(50)
-  categoryName String     @map("category_name") @db.VarChar(100)
-  description  String?    @db.Text
-  slug         String     @unique @db.VarChar(100)
-  displayOrder Int        @default(0) @map("display_order")
-  status       RoleStatus @default(active)
-  createdAt    DateTime   @default(now()) @map("created_at")
-  updatedAt    DateTime   @updatedAt @map("updated_at")
-  deletedAt    DateTime?  @map("deleted_at")
-  news         News[]
-
-  @@index([status, displayOrder])
-  @@map("news_categories")
-}
-
-model NewsTag {
-  id               Int               @id @default(autoincrement())
-  tagName          String            @unique @map("tag_name") @db.VarChar(50)
-  slug             String            @unique @db.VarChar(50)
-  createdAt        DateTime          @default(now()) @map("created_at")
-  deletedAt        DateTime?         @map("deleted_at")
-  newsTagRelations NewsTagRelation[]
-
-  @@map("news_tags")
-}
-
-model News {
-  id               Int               @id @default(autoincrement())
-  title            String            @db.VarChar(255)
-  slug             String            @unique @db.VarChar(255)
-  excerpt          String?           @db.Text
-  content          String            @db.LongText
-  contentType      ContentType       @default(article) @map("content_type")
-  featuredImage    String?           @map("featured_image") @db.VarChar(255)
-  videoFile        String?           @map("video_file") @db.VarChar(500)
-  videoThumbnail   String?           @map("video_thumbnail") @db.VarChar(255)
-  videoDuration    Int?              @map("video_duration")
-  categoryId       Int               @map("category_id")
-  authorId         Int               @map("author_id")
-  status           NewsStatus        @default(draft)
-  publishedAt      DateTime?         @map("published_at")
-  viewCount        Int               @default(0) @map("view_count")
-  likeCount        Int               @default(0) @map("like_count")
-  commentCount     Int               @default(0) @map("comment_count")
-  isFeatured       Boolean           @default(false) @map("is_featured")
-  metaTitle        String?           @map("meta_title") @db.VarChar(255)
-  metaDescription  String?           @map("meta_description") @db.Text
-  metaKeywords     String?           @map("meta_keywords") @db.VarChar(255)
-  createdBy        Int?              @map("created_by")
-  updatedBy        Int?              @map("updated_by")
-  createdAt        DateTime          @default(now()) @map("created_at")
-  updatedAt        DateTime          @updatedAt @map("updated_at")
-  deletedAt        DateTime?         @map("deleted_at")
-  author           User              @relation("NewsAuthor", fields: [authorId], references: [id])
-  category         NewsCategory      @relation(fields: [categoryId], references: [id])
-  creator          User?             @relation("NewsCreator", fields: [createdBy], references: [id])
-  updater          User?             @relation("NewsUpdater", fields: [updatedBy], references: [id])
-  newsTagRelations NewsTagRelation[]
-
-  @@index([categoryId, status, publishedAt])
-  @@index([authorId])
-  @@index([isFeatured, status])
-  @@index([contentType, status])
-  @@index([createdBy], map: "news_created_by_fkey")
-  @@index([updatedBy], map: "news_updated_by_fkey")
-  @@map("news")
-}
-
-model NewsTagRelation {
-  newsId Int     @map("news_id")
-  tagId  Int     @map("tag_id")
-  news   News    @relation(fields: [newsId], references: [id], onDelete: Cascade)
-  tag    NewsTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
-
-  @@id([newsId, tagId])
-  @@index([tagId], map: "news_tag_relations_tag_id_fkey")
-  @@map("news_tag_relations")
-}
-
-model GeneralSetting {
-  id        Int      @id @default(autoincrement())
-  brandName String   @map("brand_name") @db.VarChar(200)
-  logo      String?  @db.VarChar(500)
-  name      String   @db.VarChar(200)
-  email     String   @db.VarChar(100)
-  phone     String   @db.VarChar(20)
-  address   String   @db.VarChar(255)
-  taxCode   String   @map("tax_code") @db.VarChar(50)
-  website   String   @db.VarChar(255)
-  banks     String?  @db.LongText
-  updatedBy Int?     @map("updated_by")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  updater   User?    @relation(fields: [updatedBy], references: [id])
-
-  @@index([updatedBy], map: "general_settings_updated_by_fkey")
-  @@map("general_settings")
-}
-
-model LoginHistory {
-  id        Int       @id @default(autoincrement())
-  userId    Int       @map("user_id")
-  userAgent String    @map("user_agent") @db.VarChar(500)
-  ipAddress String    @map("ip_address") @db.VarChar(50)
-  createdAt DateTime  @default(now()) @map("created_at")
-  logoutAt  DateTime? @map("logout_at")
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, createdAt])
-  @@map("login_histories")
-}
-
-model UserPermission {
-  userId       Int        @map("user_id")
-  permissionId Int        @map("permission_id")
-  grantType    GrantType  @default(grant)
-  assignedAt   DateTime   @default(now()) @map("assigned_at")
-  assignedBy   Int?       @map("assigned_by")
-  assigner     User?      @relation("PermissionAssignedBy", fields: [assignedBy], references: [id])
-  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@id([userId, permissionId])
-  @@index([userId, grantType])
-  @@index([assignedBy], map: "user_permissions_assigned_by_fkey")
-  @@index([permissionId], map: "user_permissions_permission_id_fkey")
-  @@map("user_permissions")
-}
-
-model Ticket {
-  id           Int            @id @default(autoincrement())
-  ticketCode   String         @unique @map("ticket_code") @db.VarChar(50)
-  title        String         @db.VarChar(200)
-  description  String?        @db.Text
-  status       TicketStatus   @default(open)
-  priority     TicketPriority @default(medium)
-  customerId   Int            @map("customer_id")
-  assignedToId Int?           @map("assigned_to_id")
-  createdBy    Int            @map("created_by")
-  createdAt    DateTime       @default(now()) @map("created_at")
-  updatedAt    DateTime       @updatedAt @map("updated_at")
-  deletedAt    DateTime?      @map("deleted_at")
-  tasks        CrmTask[]
-  assignedTo   User?          @relation("TicketAssignee", fields: [assignedToId], references: [id])
-  creator      User           @relation("TicketCreator", fields: [createdBy], references: [id])
-  customer     Customer       @relation(fields: [customerId], references: [id])
-
-  @@index([status])
-  @@index([priority])
-  @@index([customerId])
-  @@index([assignedToId])
-  @@index([createdBy], map: "tickets_created_by_fkey")
-  @@map("tickets")
-}
-
-model CrmTask {
-  id              Int          @id @default(autoincrement())
-  title           String       @db.VarChar(200)
-  description     String?      @db.Text
-  dueDate         DateTime?    @map("due_date")
-  status          TaskStatus   @default(pending)
-  priority        TaskPriority @default(medium)
-  type            TaskType     @default(call)
-  customerId      Int          @map("customer_id")
-  assignedToId    Int?         @map("assigned_to_id")
-  relatedTicketId Int?         @map("related_ticket_id")
-  createdBy       Int          @map("created_by")
-  createdAt       DateTime     @default(now()) @map("created_at")
-  updatedAt       DateTime     @updatedAt @map("updated_at")
-  deletedAt       DateTime?    @map("deleted_at")
-  assignedTo      User?        @relation("TaskAssignee", fields: [assignedToId], references: [id])
-  creator         User         @relation("TaskCreator", fields: [createdBy], references: [id])
-  customer        Customer     @relation(fields: [customerId], references: [id])
-  relatedTicket   Ticket?      @relation(fields: [relatedTicketId], references: [id])
-
-  @@index([status])
-  @@index([customerId])
-  @@index([assignedToId])
-  @@index([createdBy], map: "crm_tasks_created_by_fkey")
-  @@index([relatedTicketId], map: "crm_tasks_related_ticket_id_fkey")
-  @@map("crm_tasks")
-}
-
-model Unit {
-  id          Int        @id @default(autoincrement())
-  unitCode    String     @unique @map("unit_code") @db.VarChar(50)
-  unitName    String     @map("unit_name") @db.VarChar(100)
-  description String?    @db.VarChar(255)
-  status      UnitStatus @default(active)
-  createdBy   Int?       @map("created_by")
-  updatedBy   Int?       @map("updated_by")
-  createdAt   DateTime   @default(now()) @map("created_at")
-  updatedAt   DateTime   @updatedAt @map("updated_at")
-  deletedAt   DateTime?  @map("deleted_at")
-  products    Product[]
-  creator     User?      @relation("UnitCreator", fields: [createdBy], references: [id])
-  updater     User?      @relation("UnitUpdater", fields: [updatedBy], references: [id])
-
-  @@index([unitCode])
-  @@index([status])
-  @@index([createdBy], map: "units_created_by_fkey")
-  @@index([updatedBy], map: "units_updated_by_fkey")
-  @@map("units")
-}
-
-enum OvertimeSessionStatus {
-  open
-  closed
-  cancelled
-}
+// =====================================================
+// ENUMS
+// =====================================================
 
 enum RoleStatus {
   active
@@ -1715,6 +1603,18 @@ enum VoucherPaymentMethod {
   transfer
 }
 
+enum ReconciliationType {
+  monthly
+  quarterly
+  yearly
+}
+
+enum ReconciliationStatus {
+  pending
+  confirmed
+  disputed
+}
+
 enum PromotionType {
   percent_discount
   fixed_discount
@@ -1728,10 +1628,12 @@ enum ApplicableTo {
   product_group
   specific_product
   customer_group
+  specific_customer
 }
 
 enum PromotionStatus {
   pending
+  waiting
   active
   expired
   cancelled
@@ -1810,6 +1712,8 @@ enum VerificationCodeType {
   email_verification
 }
 
+// ==================== NEWS MODULE ====================
+
 enum NewsStatus {
   draft
   published
@@ -1821,9 +1725,214 @@ enum ContentType {
   video
 }
 
+// News Category
+model NewsCategory {
+  id           Int        @id @default(autoincrement())
+  categoryKey  String     @unique @map("category_key") @db.VarChar(50)
+  categoryName String     @map("category_name") @db.VarChar(100)
+  description  String?    @db.Text
+  slug         String     @unique @db.VarChar(100)
+  displayOrder Int        @default(0) @map("display_order")
+  status       RoleStatus @default(active)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+  deletedAt    DateTime?  @map("deleted_at")
+
+  news News[]
+
+  @@index([status, displayOrder])
+  @@map("news_categories")
+}
+
+// News Tag
+model NewsTag {
+  id        Int       @id @default(autoincrement())
+  tagName   String    @unique @map("tag_name") @db.VarChar(50)
+  slug      String    @unique @db.VarChar(50)
+  createdAt DateTime  @default(now()) @map("created_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  newsTagRelations NewsTagRelation[]
+
+  @@map("news_tags")
+}
+
+// News
+model News {
+  id              Int         @id @default(autoincrement())
+  title           String      @db.VarChar(255)
+  slug            String      @unique @db.VarChar(255)
+  excerpt         String?     @db.Text
+  content         String      @db.LongText
+  contentType     ContentType @default(article) @map("content_type")
+  featuredImage   String?     @map("featured_image") @db.VarChar(255)
+  videoFile       String?     @map("video_file") @db.VarChar(500)
+  videoThumbnail  String?     @map("video_thumbnail") @db.VarChar(255)
+  videoDuration   Int?        @map("video_duration")
+  categoryId      Int         @map("category_id")
+  authorId        Int         @map("author_id")
+  status          NewsStatus  @default(draft)
+  publishedAt     DateTime?   @map("published_at")
+  viewCount       Int         @default(0) @map("view_count")
+  likeCount       Int         @default(0) @map("like_count")
+  commentCount    Int         @default(0) @map("comment_count")
+  isFeatured      Boolean     @default(false) @map("is_featured")
+  metaTitle       String?     @map("meta_title") @db.VarChar(255)
+  metaDescription String?     @map("meta_description") @db.Text
+  metaKeywords    String?     @map("meta_keywords") @db.VarChar(255)
+  createdBy       Int?        @map("created_by")
+  updatedBy       Int?        @map("updated_by")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+  deletedAt       DateTime?   @map("deleted_at")
+
+  category         NewsCategory      @relation(fields: [categoryId], references: [id])
+  author           User              @relation("NewsAuthor", fields: [authorId], references: [id])
+  creator          User?             @relation("NewsCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  updater          User?             @relation("NewsUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
+  newsTagRelations NewsTagRelation[]
+
+  @@index([categoryId, status, publishedAt])
+  @@index([authorId])
+  @@index([isFeatured, status])
+  @@index([contentType, status])
+  @@map("news")
+}
+
+// News Tag Relation (Many-to-Many)
+model NewsTagRelation {
+  newsId Int @map("news_id")
+  tagId  Int @map("tag_id")
+
+  news News    @relation(fields: [newsId], references: [id], onDelete: Cascade)
+  tag  NewsTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([newsId, tagId])
+  @@map("news_tag_relations")
+}
+
+// =====================================================
+// 10. SYSTEM SETTINGS
+// =====================================================
+
+model GeneralSetting {
+  id        Int      @id @default(autoincrement())
+  brandName String   @map("brand_name") @db.VarChar(200)
+  logo      String?  @db.VarChar(500)
+  name      String   @db.VarChar(200)
+  email     String   @db.VarChar(100)
+  phone     String   @db.VarChar(20)
+  address   String   @db.VarChar(255)
+  taxCode   String   @map("tax_code") @db.VarChar(50)
+  website   String   @db.VarChar(255)
+  banks     String?  @db.LongText // Store as JSON string array of bank accounts
+  updatedBy Int?     @map("updated_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  updater User? @relation(fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@map("general_settings")
+}
+
+// =====================================================
+// 11. LOGIN HISTORY
+// =====================================================
+
+model LoginHistory {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @map("user_id")
+  userAgent String    @map("user_agent") @db.VarChar(500)
+  ipAddress String    @map("ip_address") @db.VarChar(50)
+  createdAt DateTime  @default(now()) @map("created_at")
+  logoutAt  DateTime? @map("logout_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("login_histories")
+}
+
+// =====================================================
+// 12. USER PERMISSIONS
+// =====================================================
+
+model UserPermission {
+  userId       Int       @map("user_id")
+  permissionId Int       @map("permission_id")
+  grantType    GrantType @default(grant) // grant: thêm quyền, revoke: bỏ quyền
+  assignedAt   DateTime  @default(now()) @map("assigned_at")
+  assignedBy   Int?      @map("assigned_by")
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  assigner   User?      @relation("PermissionAssignedBy", fields: [assignedBy], references: [id], onDelete: SetNull)
+
+  @@id([userId, permissionId])
+  @@index([userId, grantType])
+  @@map("user_permissions")
+}
+
 enum GrantType {
-  grant
-  revoke
+  grant // Thêm quyền
+  revoke // Bỏ quyền (dùng để override quyền từ role)
+}
+
+// =====================================================
+// 13. CRM SYSTEM (Tickets & Tasks)
+// =====================================================
+
+model Ticket {
+  id           Int            @id @default(autoincrement())
+  ticketCode   String         @unique @map("ticket_code") @db.VarChar(50)
+  title        String         @db.VarChar(200)
+  description  String?        @db.Text
+  status       TicketStatus   @default(open)
+  priority     TicketPriority @default(medium)
+  customerId   Int            @map("customer_id")
+  assignedToId Int?           @map("assigned_to_id")
+  createdBy    Int            @map("created_by")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  deletedAt    DateTime?      @map("deleted_at")
+
+  customer   Customer  @relation(fields: [customerId], references: [id])
+  assignedTo User?     @relation("TicketAssignee", fields: [assignedToId], references: [id])
+  creator    User      @relation("TicketCreator", fields: [createdBy], references: [id])
+  tasks      CrmTask[]
+
+  @@index([status])
+  @@index([priority])
+  @@index([customerId])
+  @@index([assignedToId])
+  @@map("tickets")
+}
+
+model CrmTask {
+  id              Int          @id @default(autoincrement())
+  title           String       @db.VarChar(200)
+  description     String?      @db.Text
+  dueDate         DateTime?    @map("due_date")
+  status          TaskStatus   @default(pending)
+  priority        TaskPriority @default(medium)
+  type            TaskType     @default(call)
+  customerId      Int          @map("customer_id")
+  assignedToId    Int?         @map("assigned_to_id")
+  relatedTicketId Int?         @map("related_ticket_id")
+  createdBy       Int          @map("created_by")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  deletedAt       DateTime?    @map("deleted_at")
+
+  customer      Customer @relation(fields: [customerId], references: [id])
+  assignedTo    User?    @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  relatedTicket Ticket?  @relation(fields: [relatedTicketId], references: [id])
+  creator       User     @relation("TaskCreator", fields: [createdBy], references: [id])
+
+  @@index([status])
+  @@index([customerId])
+  @@index([assignedToId])
+  @@map("crm_tasks")
 }
 
 enum TicketStatus {
@@ -1860,7 +1969,136 @@ enum TaskType {
   other
 }
 
+model Material {
+  id            Int       @id @default(autoincrement())
+  materialCode  String    @unique @map("material_code") @db.VarChar(50)
+  name          String    @db.VarChar(200)
+  cost          Decimal   @db.Decimal(15, 2)
+  supplierId    Int?      @map("supplier_id")
+  categoryId    Int?      @map("category_id")
+  unit          String?   @db.VarChar(50)
+  materialType  String?   @map("material_type") @db.VarChar(100)
+  priority      Int       @default(0)
+  purchaseDate  DateTime? @map("purchase_date") @db.Date
+  effectiveDate DateTime? @map("effective_date") @db.Date
+  imageUrl      String?   @map("image_url") @db.VarChar(500)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  supplier Supplier?         @relation(fields: [supplierId], references: [id])
+  category Category?         @relation(fields: [categoryId], references: [id])
+  products ProductMaterial[]
+
+  @@index([supplierId])
+  @@index([categoryId])
+  @@index([materialCode])
+  @@map("materials")
+}
+
+model ProductMaterial {
+  productId  Int      @map("product_id")
+  materialId Int      @map("material_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  material Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@id([productId, materialId])
+  @@index([productId])
+  @@index([materialId])
+  @@map("product_materials")
+}
+
+// =====================================================
+// 14. UNIT MANAGEMENT
+// =====================================================
+
+model Unit {
+  id          Int        @id @default(autoincrement())
+  unitCode    String     @unique @map("unit_code") @db.VarChar(50)
+  unitName    String     @map("unit_name") @db.VarChar(100)
+  description String?    @db.VarChar(255)
+  status      UnitStatus @default(active)
+  createdBy   Int?       @map("created_by")
+  updatedBy   Int?       @map("updated_by")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  deletedAt   DateTime?  @map("deleted_at")
+
+  creator  User?     @relation("UnitCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  updater  User?     @relation("UnitUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
+  products Product[]
+
+  @@index([unitCode])
+  @@index([status])
+  @@map("units")
+}
+
 enum UnitStatus {
   active
   inactive
+}
+
+// =====================================================
+// 15. TAX MANAGEMENT
+// =====================================================
+
+model Tax {
+  id         Int       @id @default(autoincrement())
+  title      String    @db.VarChar(100)
+  percentage Decimal   @db.Decimal(5, 2)
+  priority   Int?      @default(0)
+  status     String    @default("active") @db.VarChar(20)
+  createdBy  Int?      @map("created_by")
+  updatedBy  Int?      @map("updated_by")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
+
+  creator User? @relation("TaxCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  updater User? @relation("TaxUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@map("taxes")
+}
+
+// =====================================================
+// 16. ATTRIBUTE MANAGEMENT
+// =====================================================
+
+model Attribute {
+  id          Int       @id @default(autoincrement())
+  name        String    @db.VarChar(100)
+  code        String?   @db.VarChar(50)
+  dataType    String?   @map("data_type") @db.VarChar(50)
+  unit        String?   @db.VarChar(50)
+  description String?   @db.VarChar(255)
+  status      String    @default("active") @db.VarChar(20)
+  createdBy   Int?      @map("created_by")
+  updatedBy   Int?      @map("updated_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  creator              User?                 @relation("AttributeCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  updater              User?                 @relation("AttributeUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
+  productHasAttributes ProductHasAttribute[]
+
+  @@index([status])
+  @@map("attributes")
+}
+
+model ProductHasAttribute {
+  id          Int     @id @default(autoincrement())
+  productId   Int     @map("product_id")
+  attributeId Int     @map("attribute_id")
+  value       String? @db.VarChar(255)
+
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  attribute Attribute @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([attributeId])
+  @@map("product_has_attributes")
 }

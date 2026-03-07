@@ -26,7 +26,6 @@ class PromotionService {
       sortBy = 'createdAt',
       sortOrder = 'desc',
     } = query;
-    console.log("aaaaaaa")
 
     const pageNum = Number(page);
     const limitNum = Number(limit);
@@ -60,8 +59,7 @@ class PromotionService {
         ],
       }),
       ...(isActive === 'true' && {
-        status: 'active',
-        startDate: { lte: new Date() },
+        status: { notIn: ['cancelled', 'expired'] },
         endDate: { gte: new Date() },
       }),
     };
@@ -114,6 +112,7 @@ class PromotionService {
     const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
     const activePromotions = allPromotions.filter((p: any) => p.status === 'active').length;
+    const waitingPromotions = allPromotions.filter((p: any) => p.status === 'waiting').length;
     const pendingPromotions = allPromotions.filter((p: any) => p.status === 'pending').length;
     const expiredPromotions = allPromotions.filter((p: any) => p.status === 'expired').length;
     const expiringPromotions = allPromotions.filter(
@@ -142,6 +141,7 @@ class PromotionService {
     const statistics = {
       totalPromotions: total,
       activePromotions,
+      waitingPromotions,
       pendingPromotions,
       expiredPromotions,
       expiringPromotions,
@@ -227,8 +227,8 @@ class PromotionService {
 
 
 
-    const existingCode = await prisma.promotion.findUnique({
-      where: { promotionCode: data.promotionCode },
+    const existingCode = await prisma.promotion.findFirst({
+      where: { promotionCode: data.promotionCode, deletedAt: null },
     });
 
     if (existingCode) {
@@ -241,7 +241,7 @@ class PromotionService {
     const start = new Date(data.startDate);
     const end = new Date(data.endDate);
 
-    if (start > end) {
+    if (start >= end) {
       throw new Error('Ngày bắt đầu phải nhỏ hơn ngày kết thúc');
     }
     // Validate promotion type specific fields
@@ -368,20 +368,22 @@ class PromotionService {
     const start = new Date(data.startDate);
     const end = new Date(data.endDate);
 
-    if (start > end) {
+    if (start >= end) {
       throw new Error('Ngày bắt đầu phải nhỏ hơn ngày kết thúc');
     }
 
 
-    // Cannot update if already active or expired
-    if (existing.status === 'active' || existing.status === 'expired') {
+    // Cannot update if already active, waiting, or expired
+    if (existing.status === 'active' || existing.status === 'expired' || existing.status === 'waiting') {
       throw new ValidationError(`Không thể cập nhật khuyến mãi có trạng thái: ${existing.status}`);
     }
 
     // If products are provided, delete old and create new
+    console.log('[UPDATE] data received:', JSON.stringify(data, null, 2));
     const updateData: any = {
-      // ...(data.po)
       ...(data.promotionName && { promotionName: data.promotionName }),
+      ...(data.promotionType && { promotionType: data.promotionType }),
+      ...(data.applicableTo && { applicableTo: data.applicableTo }),
       ...(data.startDate && { startDate: new Date(data.startDate) }),
       ...(data.endDate && { endDate: new Date(data.endDate) }),
       ...(data.isRecurring !== undefined && { isRecurring: data.isRecurring }),
@@ -390,12 +392,31 @@ class PromotionService {
       ...(data.conditions !== undefined && { conditions: data.conditions || Prisma.JsonNull }),
       ...(data.quantityLimit !== undefined && { quantityLimit: data.quantityLimit }),
     };
+    console.log('[UPDATE] updateData:', JSON.stringify(updateData, null, 2));
+
+    const isAllProductsBuyXGetY =
+      data.products &&
+      data.products.length > 0 &&
+      data.products[0].productId === 0;
 
     const promotion = await prisma.$transaction(async (tx) => {
-      // Delete existing products if new products provided
-      if (data.products) {
+      // Delete existing products if new products provided (including empty array = clear all)
+      if (data.products !== undefined) {
         await tx.promotionProduct.deleteMany({
           where: { promotionId: id },
+        });
+      }
+
+      // For buy_x_get_y with applicableTo=all: create PromotionProduct for every product
+      if (isAllProductsBuyXGetY) {
+        const allProducts = await tx.product.findMany({ select: { id: true } });
+        await tx.promotionProduct.createMany({
+          data: allProducts.map(({ id: productId }) => ({
+            promotionId: id,
+            productId,
+            giftProductId: data.products![0].giftProductId,
+            giftQuantity: data.products![0].giftQuantity || 0,
+          })),
         });
       }
 
@@ -404,12 +425,13 @@ class PromotionService {
         where: { id },
         data: {
           ...updateData,
-          ...(data.products && {
+          // Only inline-create products when productId != 0 (not "all products" case)
+          ...(data.products && data.products.length > 0 && !isAllProductsBuyXGetY && {
             products: {
               create: data.products.map((p) => ({
                 productId: p.productId,
                 discountValueOverride: p.discountValueOverride,
-                minQuantity: p.minQuantity || 1,
+                minQuantity: p.minQuantity || 0,
                 giftProductId: p.giftProductId,
                 giftQuantity: p.giftQuantity || 0,
                 note: p.note,
@@ -455,10 +477,14 @@ class PromotionService {
       throw new ValidationError('Chỉ có thể phê duyệt khuyến mãi đang chờ duyệt');
     }
 
+    // Determine status: waiting if startDate > now, active otherwise
+    const now = new Date();
+    const newStatus = promotion.startDate > now ? 'waiting' : 'active';
+
     const updated = await prisma.promotion.update({
       where: { id },
       data: {
-        status: 'active',
+        status: newStatus,
         approvedBy: userId,
         approvedAt: new Date(),
       },
@@ -475,7 +501,7 @@ class PromotionService {
     });
 
     // Log activity
-    logActivity('approve', userId, 'promotions', { id, code: updated.promotionCode });
+    logActivity('approve', userId, 'promotions', { id, code: updated.promotionCode, status: newStatus });
 
     return updated;
   }
@@ -490,11 +516,10 @@ class PromotionService {
       throw new NotFoundError('Khuyến mãi');
     }
 
-    if (promotion.status === 'cancelled' || promotion.status === 'expired') {
-      throw new ValidationError(
-        `Khuyến mãi đã ${promotion.status === 'cancelled' ? 'hủy' : 'hết hạn'}`
-      );
+    if (promotion.status === 'cancelled') {
+      throw new ValidationError('Khuyến mãi đã bị hủy');
     }
+    // Note: 'waiting', 'expired', 'active', 'pending' can all be cancelled
 
     const updated = await prisma.promotion.update({
       where: { id },
@@ -515,7 +540,39 @@ class PromotionService {
     return updated;
   }
 
-  // Delete promotion (soft delete)
+  // Restore cancelled promotion to pending
+  async restore(id: number, userId: number) {
+    const promotion = await prisma.promotion.findUnique({
+      where: { id },
+    });
+
+    if (!promotion) {
+      throw new NotFoundError('Khuyến mãi');
+    }
+
+    if (promotion.status !== 'cancelled' && promotion.status !== 'expired') {
+      throw new ValidationError('Chỉ có thể hoàn trả các khuyến mãi đã bị hủy hoặc hết hạn');
+    }
+
+    const updated = await prisma.promotion.update({
+      where: { id },
+      data: {
+        status: 'pending',
+        cancelledBy: null,
+        cancelledAt: null,
+      },
+      include: {
+        creator: true,
+      },
+    });
+
+    // Log activity
+    logActivity('update', userId, 'promotions', { id, action: 'restore', code: updated.promotionCode });
+
+    return updated;
+  }
+
+  // Delete promotion (hard delete)
   async delete(id: number, userId: number) {
     const promotion = await prisma.promotion.findUnique({
       where: { id },
@@ -525,15 +582,12 @@ class PromotionService {
       throw new NotFoundError('Promotion');
     }
 
-    if (promotion.status !== 'pending' && promotion.status !== 'cancelled') {
-      throw new ValidationError('Chỉ có thể xóa khuyến mãi ở trạng thái chờ duyệt hoặc đã hủy');
+    if (promotion.status !== 'cancelled' && promotion.status !== 'expired') {
+      throw new ValidationError('Chỉ có thể xóa khuyến mãi ở trạng thái đã hủy hoặc hết hạn');
     }
 
-    const updated = await prisma.promotion.update({
+    const deleted = await prisma.promotion.delete({
       where: { id },
-      data: {
-        deletedAt: new Date(),
-      },
       include: {
         creator: true,
         approver: true,
@@ -541,19 +595,157 @@ class PromotionService {
     });
 
     // Log activity
-    logActivity('delete', userId, 'promotions', { id, code: updated.promotionCode });
+    logActivity('delete', userId, 'promotions', { id, code: deleted.promotionCode });
 
-    return updated;
+    return deleted;
   }
 
-  // Get active promotions
+  // Bulk delete promotions (hard delete)
+  async bulkDelete(ids: number[], userId: number) {
+    // Filter out promotions that can't be deleted (not pending or cancelled)
+    const validPromotions = await prisma.promotion.findMany({
+      where: {
+        id: { in: ids },
+        status: { in: ['cancelled', 'expired'] },
+      },
+    });
+
+    const validIds = validPromotions.map(p => p.id);
+
+    if (validIds.length === 0) {
+      throw new ValidationError('Không có khuyến mãi nào hợp lệ để xóa (phải ở trạng thái đã hủy hoặc hết hạn)');
+    }
+
+    const result = await prisma.promotion.deleteMany({
+      where: {
+        id: { in: validIds }
+      }
+    });
+
+    // Log activity for each deleted promotion
+    validPromotions.forEach(promotion => {
+      logActivity('delete', userId, 'promotions', { id: promotion.id, code: promotion.promotionCode, bulk: true });
+    });
+
+    return { count: result.count, deletedIds: validIds };
+  }
+
+  // Bulk cancel promotions
+  async bulkCancel(ids: number[], reason: string, userId: number) {
+    const validPromotions = await prisma.promotion.findMany({
+      where: {
+        id: { in: ids },
+        status: { notIn: ['cancelled', 'expired'] },
+        deletedAt: null
+      },
+    });
+
+    const validIds = validPromotions.map(p => p.id);
+
+    if (validIds.length === 0) {
+      throw new ValidationError('Không có khuyến mãi nào hợp lệ để hủy');
+    }
+
+    const result = await prisma.promotion.updateMany({
+      where: {
+        id: { in: validIds }
+      },
+      data: {
+        status: 'cancelled',
+        cancelledBy: userId,
+        cancelledAt: new Date(),
+      },
+    });
+
+    validPromotions.forEach(promotion => {
+      logActivity('cancel', userId, 'promotions', { id: promotion.id, reason, code: promotion.promotionCode, bulk: true });
+    });
+
+    return { count: result.count, cancelledIds: validIds };
+  }
+
+  // Bulk restore promotions
+  async bulkRestore(ids: number[], userId: number) {
+    const validPromotions = await prisma.promotion.findMany({
+      where: {
+        id: { in: ids },
+        status: { in: ['cancelled', 'expired'] },
+        deletedAt: null
+      },
+    });
+
+    const validIds = validPromotions.map(p => p.id);
+
+    if (validIds.length === 0) {
+      throw new ValidationError('Không có khuyến mãi nào hợp lệ để khôi phục');
+    }
+
+    const result = await prisma.promotion.updateMany({
+      where: {
+        id: { in: validIds }
+      },
+      data: {
+        status: 'pending',
+        cancelledBy: null,
+        cancelledAt: null,
+      },
+    });
+
+    validPromotions.forEach(promotion => {
+      logActivity('update', userId, 'promotions', { id: promotion.id, action: 'restore', code: promotion.promotionCode, bulk: true });
+    });
+
+    return { count: result.count, restoredIds: validIds };
+  }
+
+  // Bulk approve promotions
+  async bulkApprove(ids: number[], notes: string, userId: number) {
+    const validPromotions = await prisma.promotion.findMany({
+      where: {
+        id: { in: ids },
+        status: 'pending',
+        deletedAt: null
+      },
+    });
+
+    const validIds = validPromotions.map(p => p.id);
+
+    if (validIds.length === 0) {
+      throw new ValidationError('Không có khuyến mãi nào hợp lệ để duyệt (phải ở trạng thái chờ duyệt)');
+    }
+
+    const now = new Date();
+
+    // Update each promotion individually to set correct status
+    const results = await prisma.$transaction(
+      validPromotions.map(p => {
+        const newStatus = p.startDate > now ? 'waiting' : 'active';
+        return prisma.promotion.update({
+          where: { id: p.id },
+          data: {
+            status: newStatus,
+            approvedBy: userId,
+            approvedAt: new Date(),
+          },
+        });
+      })
+    );
+
+    validPromotions.forEach(promotion => {
+      const newStatus = promotion.startDate > now ? 'waiting' : 'active';
+      logActivity('approve', userId, 'promotions', { id: promotion.id, code: promotion.promotionCode, notes, status: newStatus, bulk: true });
+    });
+
+    return { count: results.length, approvedIds: validIds };
+  }
+
+  // Get active promotions (includes waiting that are approved)
   async getActive(date?: string) {
     const checkDate = date ? new Date(date) : new Date();
 
     const promotions = await prisma.promotion.findMany({
       where: {
-        status: 'active',
-        startDate: { lte: checkDate },
+        status: { in: ['active', 'waiting'] },
         endDate: { gte: checkDate },
       },
       include: {
@@ -821,34 +1013,63 @@ class PromotionService {
       }
 
       case 'gift': {
-        if (!data.products || data.products.length === 0) {
+        if (!data.conditions) {
           throw new ValidationError('Khuyến mãi quà tặng yêu cầu ít nhất một sản phẩm');
         }
 
-        const hasGift = data.products.some((p) => p.giftProductId && p.giftQuantity);
-        if (!hasGift) {
-          throw new ValidationError('Khuyến mãi quà tặng yêu cầu giftProductId và giftQuantity');
-        }
         break;
       }
     }
   }
 
-  // Auto-expire promotions (should be called by cron job)
-  async autoExpirePromotions() {
+  // Auto-activate waiting promotions whose startDate has arrived
+  async autoActivatePromotions() {
     const now = new Date();
+
+    const activated = await prisma.promotion.updateMany({
+      where: {
+        status: 'waiting',
+        startDate: { lte: now },
+      },
+      data: {
+        status: 'active',
+      },
+    });
+
+    if (activated.count > 0) {
+      console.log(`✅ Auto-activated ${activated.count} promotion(s)`);
+    }
+
+    return activated.count;
+  }
+
+  // Auto-expire active promotions whose endDate has passed
+  async autoExpirePromotions() {
+    // Use start of today for comparison since endDate is a DATE-only field
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
     const expired = await prisma.promotion.updateMany({
       where: {
-        status: 'active',
-        endDate: { lt: now },
+        status: { in: ['active', 'waiting'] },
+        endDate: { lt: today },
       },
       data: {
         status: 'expired',
       },
     });
 
+    if (expired.count > 0) {
+      console.log(`⏰ Auto-expired ${expired.count} promotion(s)`);
+    }
+
     return expired.count;
+  }
+
+  // Run all status transitions (called by scheduler)
+  async runStatusTransitions() {
+    await this.autoActivatePromotions();
+    await this.autoExpirePromotions();
   }
 
   // Increment usage count
@@ -883,6 +1104,7 @@ class PromotionService {
     const statistics = {
       totalPromotions: promotions.length,
       activePromotions: promotions.filter(p => p.status === 'active').length,
+      waitingPromotions: promotions.filter(p => p.status === 'waiting').length,
       pendingPromotions: promotions.filter(p => p.status === 'pending').length,
       expiredPromotions: promotions.filter(p => p.status === 'expired').length,
       cancelledPromotions: promotions.filter(p => p.status === 'cancelled').length,

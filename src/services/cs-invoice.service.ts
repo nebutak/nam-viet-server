@@ -2,22 +2,22 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import { NotFoundError, ValidationError, AuthorizationError } from '@utils/errors';
 import customerService from './customer.service';
 import {
-  CreateCustomerSalesOrderInput,
+  CreateCustomerInvoiceInput,
   CustomerCancelOrderInput,
-} from '@validators/cs-sales_order.validator';
-import { SalesOrderQueryInput } from '@validators/sales-order.validator';
+} from '@validators/cs-invoice.validator';
+import { InvoiceQueryInput } from '@validators/invoice.validator';
 
 const prisma = new PrismaClient();
 const MAX_ORDER_AMOUNT = 30000000; // 30 Triệu
 
-class CustomerSalesOrderService {
+class CustomerInvoiceService {
   // ========================================================
   // HELPER: Sinh mã đơn & QR (Giữ nguyên như cũ)
   // ========================================================
   private async generateOrderCode(): Promise<string> {
     const date = new Date();
     const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
-    const count = await prisma.salesOrder.count({
+    const count = await prisma.invoice.count({
       where: {
         createdAt: {
           gte: new Date(date.setHours(0, 0, 0, 0)),
@@ -57,7 +57,7 @@ class CustomerSalesOrderService {
   }
 
   private async checkOrderOwnership(customerId: number, orderId: number) {
-    const order = await prisma.salesOrder.findUnique({ where: { id: orderId } });
+    const order = await prisma.invoice.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundError('Đơn hàng không tồn tại');
     if (order.customerId !== customerId) throw new AuthorizationError('Không có quyền truy cập');
     return order;
@@ -66,7 +66,7 @@ class CustomerSalesOrderService {
   // ========================================================
   // 1. CREATE ORDER (Logic Kết hợp: Bảo mật Khách + Tồn kho Admin)
   // ========================================================
-  async createOrder(customerId: number, data: CreateCustomerSalesOrderInput) {
+  async createOrder(customerId: number, data: CreateCustomerInvoiceInput) {
     // --- PHẦN 1: VALIDATE (Logic của Khách) ---
     const customer = await customerService.getById(customerId);
     if (customer.status !== 'active')
@@ -173,7 +173,7 @@ class CustomerSalesOrderService {
     // --- PHẦN 4: TRANSACTION & UPDATE KHO (Logic của Admin - COPY CHÍNH XÁC) ---
     const result = await prisma.$transaction(async (tx) => {
       // A. Tạo Order (Ép status an toàn)
-      const order = await tx.salesOrder.create({
+      const order = await tx.invoice.create({
         data: {
           orderCode,
           customerId,
@@ -248,12 +248,12 @@ class CustomerSalesOrderService {
   // ========================================================
   // 2. GET MY ORDERS (Giữ nguyên - Độc lập)
   // ========================================================
-  async getMyOrders(query: SalesOrderQueryInput) {
+  async getMyOrders(query: InvoiceQueryInput) {
     // Logic lấy danh sách đơn của riêng khách hàng
     const { customerId, page = 1, limit = 20, orderStatus, fromDate, toDate } = query;
     const skip = (Number(page) - 1) * Number(limit);
 
-    const where: Prisma.SalesOrderWhereInput = {
+    const where: Prisma.InvoiceWhereInput = {
       customerId: customerId,
       ...(orderStatus && {
         orderStatus: Array.isArray(orderStatus) ? { in: orderStatus } : orderStatus,
@@ -265,7 +265,7 @@ class CustomerSalesOrderService {
     };
 
     const [orders, total] = await Promise.all([
-      prisma.salesOrder.findMany({
+      prisma.invoice.findMany({
         where,
         skip,
         take: Number(limit),
@@ -275,7 +275,7 @@ class CustomerSalesOrderService {
           warehouse: { select: { warehouseName: true } },
         },
       }),
-      prisma.salesOrder.count({ where }),
+      prisma.invoice.count({ where }),
     ]);
 
     return {
@@ -297,7 +297,7 @@ class CustomerSalesOrderService {
     await prisma.$transaction(async (tx) => {
       // [LOGIC ADMIN] Trả tồn kho (Decrement Reserved)
       // Lặp qua details để trả hàng
-      const details = await tx.salesOrderDetail.findMany({ where: { orderId } });
+      const details = await tx.invoiceDetail.findMany({ where: { orderId } });
 
       for (const detail of details) {
         if (detail.warehouseId) {
@@ -320,7 +320,7 @@ class CustomerSalesOrderService {
       }
 
       // Cập nhật trạng thái
-      await tx.salesOrder.update({
+      await tx.invoice.update({
         where: { id: orderId },
         data: {
           orderStatus: 'cancelled',
@@ -342,7 +342,7 @@ class CustomerSalesOrderService {
     await this.checkOrderOwnership(customerId, orderId);
 
     // 2. Lấy chi tiết đầy đủ
-    const fullOrder = await prisma.salesOrder.findUnique({
+    const fullOrder = await prisma.invoice.findUnique({
       where: { id: orderId },
       include: {
         details: {
@@ -394,4 +394,4 @@ class CustomerSalesOrderService {
   }
 }
 
-export default new CustomerSalesOrderService();
+export default new CustomerInvoiceService();

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const createSalesOrderSchema = z.object({
+export const createInvoiceSchema = z.object({
   customerId: z.number().int().positive('ID khách hàng phải là số dương'),
   warehouseId: z.number().int().positive('ID kho phải là số dương').optional(),
   orderDate: z
@@ -32,7 +32,7 @@ export const createSalesOrderSchema = z.object({
     .min(1, 'Đơn hàng phải có ít nhất một sản phẩm'),
 });
 
-export const updateSalesOrderSchema = z.object({
+export const updateInvoiceSchema = z.object({
   orderDate: z
     .string()
     .refine((val) => !isNaN(Date.parse(val)), 'Ngày đặt hàng không hợp lệ')
@@ -58,7 +58,7 @@ export const processPaymentSchema = z.object({
   notes: z.string().max(255).optional(),
 });
 
-export const salesOrderQuerySchema = z.object({
+export const invoiceQuerySchema = z.object({
   page: z.string().regex(/^\d+$/).transform(Number).optional(),
   limit: z.string().regex(/^\d+$/).transform(Number).optional(),
   search: z.string().optional(),
@@ -77,9 +77,9 @@ export const salesOrderQuerySchema = z.object({
   sortOrder: z.enum(['asc', 'desc']).optional(),
 });
 
-export type CreateSalesOrderInput = z.infer<typeof createSalesOrderSchema>;
-export type UpdateSalesOrderInput = z.infer<typeof updateSalesOrderSchema>;
+export type CreateInvoiceInput = z.infer<typeof createInvoiceSchema>;
+export type UpdateInvoiceInput = z.infer<typeof updateInvoiceSchema>;
 export type ApproveOrderInput = z.infer<typeof approveOrderSchema>;
 export type CancelOrderInput = z.infer<typeof cancelOrderSchema>;
 export type ProcessPaymentInput = z.infer<typeof processPaymentSchema>;
-export type SalesOrderQueryInput = z.infer<typeof salesOrderQuerySchema>;
+export type InvoiceQueryInput = z.infer<typeof invoiceQuerySchema>;

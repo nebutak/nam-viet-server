@@ -558,50 +558,151 @@ class AuthService {
   private getOTPEmailTemplate(fullName: string, code: string): string {
     return `
 <!DOCTYPE html>
-<html>
+<html lang="vi">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mã xác thực đăng nhập</title>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-    <h1 style="color: white; margin: 0; font-size: 28px;">🔐 Mã Xác Thực Đăng Nhập</h1>
-  </div>
+<body style="margin:0;padding:0;background-color:#0f1a13;font-family:'Be Vietnam Pro',Arial,sans-serif;">
 
-  <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
-    <p style="font-size: 16px; margin-bottom: 20px;">Xin chào <strong>${fullName}</strong>,</p>
+  <!-- Outer wrapper -->
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f1a13;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width:580px;">
 
-    <p style="font-size: 14px; margin-bottom: 20px;">
-      Bạn đã yêu cầu đăng nhập vào hệ thống <strong>Quản Lý Bán Hàng - Công Ty Nam Việt</strong>.
-    </p>
+          <!-- Logo / Brand Header -->
+          <tr>
+            <td align="center" style="padding-bottom:28px;">
+              <table cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:linear-gradient(135deg,#22c55e,#16a34a);border-radius:14px;padding:10px 18px;">
+                    <span style="font-size:13px;font-weight:700;color:#fff;letter-spacing:2px;text-transform:uppercase;">Nam Việt</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
 
-    <div style="background: white; padding: 25px; border-radius: 10px; text-align: center; margin: 30px 0; border: 2px solid #16a34a;">
-      <p style="font-size: 14px; color: #666; margin-bottom: 10px;">Mã xác thực của bạn là:</p>
-      <div style="font-size: 36px; font-weight: bold; color: #16a34a; letter-spacing: 8px; font-family: 'Courier New', monospace;">
-        ${code}
-      </div>
-    </div>
+          <!-- Main Card -->
+          <tr>
+            <td style="background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,0.4);">
 
-    <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px;">
-      <p style="margin: 0; font-size: 13px; color: #856404;">
-        ⚠️ <strong>Lưu ý:</strong> Mã này chỉ có hiệu lực trong <strong>5 phút</strong>.
-      </p>
-    </div>
+              <!-- Top accent bar -->
+              <div style="height:5px;background:linear-gradient(90deg,#22c55e 0%,#4ade80 50%,#86efac 100%);"></div>
 
-    <div style="background: #f8d7da; border-left: 4px solid #dc3545; padding: 15px; margin: 20px 0; border-radius: 5px;">
-      <p style="margin: 0; font-size: 13px; color: #721c24;">
-        🚨 <strong>Bảo mật:</strong> Không chia sẻ mã này với bất kỳ ai. Nếu bạn không yêu cầu đăng nhập, vui lòng bỏ qua email này.
-      </p>
-    </div>
+              <table width="100%" cellpadding="0" cellspacing="0">
 
-    <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;">
+                <!-- Hero section -->
+                <tr>
+                  <td style="background:linear-gradient(160deg,#052e16 0%,#14532d 60%,#166534 100%);padding:44px 44px 36px;text-align:center;">
+                    <!-- Shield icon -->
+                    <div style="display:inline-block;background:rgba(255,255,255,0.08);border:1.5px solid rgba(255,255,255,0.15);border-radius:20px;padding:16px 20px;margin-bottom:22px;">
+                      <span style="font-size:32px;line-height:1;">🛡️</span>
+                    </div>
+                    <h1 style="margin:0 0 10px;font-size:26px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">Xác Thực Đăng Nhập</h1>
+                    <p style="margin:0;font-size:14px;color:#86efac;font-weight:500;">Hệ thống Quản Lý Bán Hàng</p>
+                  </td>
+                </tr>
 
-    <p style="font-size: 12px; color: #999; text-align: center;">
-      Trân trọng,<br>
-      <strong>Công Ty Cổ Phần Hóa Sinh Nam Việt</strong>
-    </p>
-  </div>
+                <!-- Body -->
+                <tr>
+                  <td style="padding:40px 44px 36px;">
+
+                    <!-- Greeting -->
+                    <p style="margin:0 0 8px;font-size:15px;color:#6b7280;font-weight:500;">Xin chào,</p>
+                    <p style="margin:0 0 28px;font-size:20px;font-weight:700;color:#111827;">${fullName} 👋</p>
+
+                    <p style="margin:0 0 32px;font-size:14px;color:#6b7280;line-height:1.8;">
+                      Chúng tôi nhận được yêu cầu đăng nhập vào hệ thống từ tài khoản của bạn. Sử dụng mã xác thực bên dưới để hoàn tất quá trình đăng nhập.
+                    </p>
+
+                    <!-- OTP Box -->
+                    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+                      <tr>
+                        <td style="background:linear-gradient(145deg,#f0fdf4,#dcfce7);border:1.5px solid #bbf7d0;border-radius:16px;padding:28px;text-align:center;">
+                          <p style="margin:0 0 14px;font-size:12px;font-weight:600;color:#16a34a;letter-spacing:2.5px;text-transform:uppercase;">Mã xác thực của bạn</p>
+                          <div style="display:inline-block;background:#ffffff;border-radius:12px;padding:16px 32px;box-shadow:0 4px 20px rgba(22,163,74,0.15);">
+                            <span style="font-size:42px;font-weight:800;color:#15803d;letter-spacing:12px;font-family:'Courier New',monospace;">${code}</span>
+                          </div>
+                          <p style="margin:16px 0 0;font-size:12px;color:#16a34a;font-weight:500;">
+                            ⏱&nbsp; Hiệu lực trong <strong>5 phút</strong>
+                          </p>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <!-- Warning cards -->
+                    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:14px;">
+                      <tr>
+                        <td style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:14px 18px;">
+                          <p style="margin:0;font-size:13px;color:#92400e;line-height:1.6;">
+                            <strong>⚠️ Lưu ý:</strong>&nbsp; Mã này chỉ sử dụng được <strong>một lần</strong> và sẽ hết hạn sau 5 phút kể từ thời điểm gửi.
+                          </p>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <table width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:14px 18px;">
+                          <p style="margin:0;font-size:13px;color:#991b1b;line-height:1.6;">
+                            <strong>🔒 Bảo mật:</strong>&nbsp; Tuyệt đối <strong>không chia sẻ</strong> mã này với bất kỳ ai. Nếu bạn không thực hiện yêu cầu này, hãy bỏ qua email.
+                          </p>
+                        </td>
+                      </tr>
+                    </table>
+
+                  </td>
+                </tr>
+
+                <!-- Divider -->
+                <tr>
+                  <td style="padding:0 44px;">
+                    <div style="height:1px;background:linear-gradient(90deg,transparent,#e5e7eb,transparent);"></div>
+                  </td>
+                </tr>
+
+                <!-- Footer -->
+                <tr>
+                  <td style="padding:28px 44px 36px;">
+                    <table width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td>
+                          <p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#111827;">Công Ty Cổ Phần Hóa Sinh Nam Việt</p>
+                          <p style="margin:0;font-size:12px;color:#9ca3af;">Email tự động — vui lòng không phản hồi lại email này.</p>
+                        </td>
+                        <td align="right" valign="middle">
+                          <div style="background:linear-gradient(135deg,#22c55e,#15803d);border-radius:10px;padding:8px 14px;display:inline-block;">
+                            <span style="font-size:11px;font-weight:700;color:#fff;letter-spacing:1.5px;">NV</span>
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+              </table>
+            </td>
+          </tr>
+
+          <!-- Bottom note -->
+          <tr>
+            <td align="center" style="padding-top:24px;">
+              <p style="margin:0;font-size:11px;color:#4b5563;line-height:1.6;">
+                Email này được gửi tới bạn vì có yêu cầu đăng nhập từ hệ thống của Nam Việt.<br>
+                © 2025 Công Ty Cổ Phần Hóa Sinh Nam Việt. All rights reserved.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
 </body>
 </html>
     `;

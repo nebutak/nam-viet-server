@@ -72,7 +72,7 @@ class CustomerService {
           },
           _count: {
             select: {
-              salesOrders: true,
+              invoices: true,
             },
           },
         },
@@ -155,7 +155,7 @@ class CustomerService {
             email: true,
           },
         },
-        salesOrders: {
+        invoices: {
           select: {
             id: true,
             orderCode: true,
@@ -445,7 +445,7 @@ class CustomerService {
         creditLimit: true,
         currentDebt: true,
         debtUpdatedAt: true,
-        salesOrders: {
+        invoices: {
           where: {
             orderStatus: {
               in: ['pending', 'preparing', 'delivering', 'completed'],
@@ -471,14 +471,14 @@ class CustomerService {
       throw new NotFoundError('Không tìm thấy khách hàng');
     }
 
-    const unpaidOrders = customer.salesOrders.map((order) => ({
+    const unpaidOrders = customer.invoices.map((order) => ({
       ...order,
       debtAmount: Number(order.totalAmount) - Number(order.paidAmount),
     }));
 
     // Calculate total revenue and paid amounts
-    const totalRevenue = customer.salesOrders.reduce((sum, order) => sum + Number(order.totalAmount), 0);
-    const totalPaid = customer.salesOrders.reduce((sum, order) => sum + Number(order.paidAmount), 0);
+    const totalRevenue = customer.invoices.reduce((sum, order) => sum + Number(order.totalAmount), 0);
+    const totalPaid = customer.invoices.reduce((sum, order) => sum + Number(order.paidAmount), 0);
 
     const debtPercentage =
       Number(customer.creditLimit) > 0
@@ -501,7 +501,7 @@ class CustomerService {
       unpaidOrders,
       totalUnpaidOrders: unpaidOrders.length,
       totalRevenue,
-      totalOrders: customer.salesOrders.length,
+      totalOrders: customer.invoices.length,
       totalPaid,
     };
   }
@@ -522,7 +522,7 @@ class CustomerService {
         currentDebt: true,
         creditLimit: true,
         debtUpdatedAt: true,
-        salesOrders: {
+        invoices: {
           where: {
             orderStatus: {
               in: ['pending', 'preparing', 'delivering', 'completed'],
@@ -557,7 +557,7 @@ class CustomerService {
         creditLimit: Number(customer.creditLimit),
         debtPercentage: Math.round(debtPercentage * 100) / 100,
         isOverLimit: Number(customer.currentDebt) > Number(customer.creditLimit),
-        unpaidOrdersCount: customer.salesOrders.length,
+        unpaidOrdersCount: customer.invoices.length,
         debtUpdatedAt: customer.debtUpdatedAt,
       };
     });
@@ -575,7 +575,7 @@ class CustomerService {
     const offset = (page - 1) * limit;
 
     const [orders, total] = await Promise.all([
-      prisma.salesOrder.findMany({
+      prisma.invoice.findMany({
         where: { customerId: id },
         select: {
           id: true,
@@ -597,7 +597,7 @@ class CustomerService {
         take: limit,
         orderBy: { orderDate: 'desc' },
       }),
-      prisma.salesOrder.count({ where: { customerId: id } }),
+      prisma.invoice.count({ where: { customerId: id } }),
     ]);
 
     return {
@@ -620,7 +620,7 @@ class CustomerService {
     const customer = await prisma.customer.findUnique({
       where: { id },
       include: {
-        salesOrders: true,
+        invoices: true,
       },
     });
 
@@ -632,7 +632,7 @@ class CustomerService {
       throw new ValidationError('Không thể xóa khách hàng khi còn công nợ');
     }
 
-    if (customer.salesOrders.length > 0) {
+    if (customer.invoices.length > 0) {
       throw new ValidationError(
         'Không thể xóa khách hàng có lịch sử đơn hàng. Hãy thay đổi trạng thái thành không hoạt động.'
       );
@@ -656,7 +656,7 @@ class CustomerService {
 
   async getCustomerInvoices(query: any) {
     const { customerId, page = 1, limit = 10, dateFrom, dateTo, status, order } = query;
-    const where: Prisma.SalesOrderWhereInput = {
+    const where: Prisma.InvoiceWhereInput = {
       customerId: Number(customerId),
       deletedAt: null,
       ...(dateFrom || dateTo
@@ -684,14 +684,14 @@ class CustomerService {
     } catch (e) {}
 
     const [orders, total, allOrdersForSummary] = await Promise.all([
-      prisma.salesOrder.findMany({
+      prisma.invoice.findMany({
         where,
         skip: offset,
         take: Number(limit),
         orderBy: orderByConfig,
       }),
-      prisma.salesOrder.count({ where }),
-      prisma.salesOrder.findMany({
+      prisma.invoice.count({ where }),
+      prisma.invoice.findMany({
         where,
         select: { totalAmount: true, paidAmount: true, paymentStatus: true, taxAmount: true, discountAmount: true },
       }),
@@ -726,7 +726,7 @@ class CustomerService {
 
   async getCustomerPurchasedProducts(query: any) {
     const customerId = Number(query.customerId);
-    const details = await prisma.salesOrderDetail.groupBy({
+    const details = await prisma.invoiceDetail.groupBy({
       by: ['productId'],
       where: {
         order: {

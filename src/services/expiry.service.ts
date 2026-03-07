@@ -143,7 +143,7 @@ export class ExpiryService {
 
     let invoice = null;
     if (invoiceId) {
-      invoice = await prisma.salesOrder.findUnique({ where: { orderCode: invoiceId } });
+      invoice = await prisma.invoice.findUnique({ where: { orderCode: invoiceId } });
       if (!invoice) throw new BadRequestError(`Không tìm thấy hóa đơn ${invoiceId}`);
     }
 
@@ -250,7 +250,7 @@ export class ExpiryService {
 
     let invoice = null;
     if (invoiceId) {
-      invoice = await prisma.salesOrder.findUnique({ where: { orderCode: invoiceId } });
+      invoice = await prisma.invoice.findUnique({ where: { orderCode: invoiceId } });
       if (!invoice) throw new BadRequestError(`Không tìm thấy hóa đơn ${invoiceId}`);
     }
 

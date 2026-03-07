@@ -475,7 +475,7 @@ class NotificationService {
       notificationType: 'order_new',
       priority: 'normal',
       channel: 'web',
-      referenceType: 'sales_order',
+      referenceType: 'invoice',
       referenceId: orderData.orderId,
       metaData: {
         orderCode: orderData.orderCode,

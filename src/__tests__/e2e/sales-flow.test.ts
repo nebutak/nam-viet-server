@@ -9,7 +9,7 @@ import productRoutes from '@routes/product.routes';
 import warehouseRoutes from '@routes/warehouse.routes';
 import categoryRoutes from '@routes/category.routes';
 import inventoryRoutes from '@routes/inventory.routes';
-import salesOrderRoutes from '@routes/sales-order.routes';
+import invoiceRoutes from '@routes/invoice.routes';
 import customerRoutes from '@routes/customer.routes';
 import { errorHandler } from '@middlewares/errorHandler';
 
@@ -23,7 +23,7 @@ const createTestApp = (): Application => {
   app.use('/api/warehouses', warehouseRoutes);
   app.use('/api/categories', categoryRoutes);
   app.use('/api/inventory', inventoryRoutes);
-  app.use('/api/sales-orders', salesOrderRoutes);
+  app.use('/api/invoices', invoiceRoutes);
   app.use('/api/customers', customerRoutes);
   app.use(errorHandler);
   return app;
@@ -38,7 +38,7 @@ describe('E2E: Complete Sales Order Flow', () => {
   let category: any;
   let product: any;
   let customer: any;
-  let salesOrder: any;
+  let invoice: any;
 
   beforeAll(async () => {
     app = createTestApp();
@@ -73,9 +73,9 @@ describe('E2E: Complete Sales Order Flow', () => {
 
   afterAll(async () => {
     // Clean up in reverse order
-    if (salesOrder) {
-      await prisma.salesOrderDetail.deleteMany({ where: { orderId: salesOrder.id } });
-      await prisma.salesOrder.delete({ where: { id: salesOrder.id } }).catch(() => {});
+    if (invoice) {
+      await prisma.invoiceDetail.deleteMany({ where: { orderId: invoice.id } });
+      await prisma.invoice.delete({ where: { id: invoice.id } }).catch(() => {});
     }
     if (customer) {
       await prisma.customer.delete({ where: { id: customer.id } }).catch(() => {});
@@ -219,7 +219,7 @@ describe('E2E: Complete Sales Order Flow', () => {
     // Step 8: Create sales order
     console.log('Step 8: Creating sales order...');
     const orderResponse = await request(app)
-      .post('/api/sales-orders')
+      .post('/api/invoices')
       .set('Authorization', `Bearer ${accessToken}`)
       .send({
         customerId: customer.id,
@@ -241,14 +241,14 @@ describe('E2E: Complete Sales Order Flow', () => {
       });
 
     expect(orderResponse.status).toBe(201);
-    salesOrder = orderResponse.body.data;
-    console.log('✓ Sales order created:', salesOrder.orderCode);
+    invoice = orderResponse.body.data;
+    console.log('✓ Sales order created:', invoice.orderCode);
 
     // Verify order details
-    expect(salesOrder.customerId).toBe(customer.id);
-    expect(salesOrder.warehouseId).toBe(warehouse.id);
-    expect(salesOrder.details).toHaveLength(1);
-    expect(salesOrder.details[0].quantity).toBe(100);
+    expect(invoice.customerId).toBe(customer.id);
+    expect(invoice.warehouseId).toBe(warehouse.id);
+    expect(invoice.details).toHaveLength(1);
+    expect(invoice.details[0].quantity).toBe(100);
 
     // Step 9: Verify inventory was reserved
     console.log('Step 9: Verifying inventory reservation...');
@@ -266,7 +266,7 @@ describe('E2E: Complete Sales Order Flow', () => {
     // Step 10: Approve order
     console.log('Step 10: Approving order...');
     const approveResponse = await request(app)
-      .put(`/api/sales-orders/${salesOrder.id}/approve`)
+      .put(`/api/invoices/${invoice.id}/approve`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send({
         notes: 'Approved for E2E test',
@@ -292,7 +292,7 @@ describe('E2E: Complete Sales Order Flow', () => {
     // Step 12: Complete order
     console.log('Step 12: Completing order...');
     const completeResponse = await request(app)
-      .put(`/api/sales-orders/${salesOrder.id}/complete`)
+      .put(`/api/invoices/${invoice.id}/complete`)
       .set('Authorization', `Bearer ${accessToken}`);
 
     expect(completeResponse.status).toBe(200);

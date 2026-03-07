@@ -9,6 +9,8 @@ export interface PromotionConditions {
   get_same_product?: boolean;
   gift_product_id?: number;
   gift_quantity?: number;
+  customer_id?: number;
+  unit?: string;
 }
 
 export interface ApplyPromotionResult {

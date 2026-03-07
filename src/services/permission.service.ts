@@ -5,24 +5,28 @@ class PermissionService {
   // Get all permissions (optionally grouped by module)
   async getAllPermissions() {
     const permissions = await prisma.permission.findMany({
-      orderBy: [{ module: 'asc' }, { permissionName: 'asc' }],
+      orderBy: [{ id: 'asc' }],
       select: {
         id: true,
         permissionKey: true,
         permissionName: true,
         description: true,
         module: true,
+        moduleLabel: true,
         createdAt: true,
       },
     });
 
     // Group by module
     const grouped = permissions.reduce((acc: any, permission) => {
-      const module = permission.module || 'general';
-      if (!acc[module]) {
-        acc[module] = [];
+      const moduleKey = permission.module || 'general';
+      if (!acc[moduleKey]) {
+        acc[moduleKey] = {
+          label: permission.moduleLabel || moduleKey.toUpperCase(),
+          permissions: []
+        };
       }
-      acc[module].push(permission);
+      acc[moduleKey].permissions.push(permission);
       return acc;
     }, {});
 

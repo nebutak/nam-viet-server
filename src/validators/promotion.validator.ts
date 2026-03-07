@@ -12,6 +12,7 @@ export const applicableToEnum = z.enum([
   'product_group',
   'specific_product',
   'customer_group',
+  'specific_customer',
 ]);
 
 export const promotionStatusEnum = z.enum(['pending', 'active', 'expired', 'cancelled']);
@@ -28,6 +29,8 @@ export const conditionsSchema = z.object({
   get_same_product: z.boolean().optional(),
   gift_product_id: z.number().optional(),
   gift_quantity: z.number().optional(),
+  customer_id: z.number().optional(),
+  unit: z.string().optional(),
 });
 
 // Query Schema
@@ -67,9 +70,9 @@ export const createPromotionSchema = z.object({
       z.object({
         productId: z.number().min(0),
         discountValueOverride: z.number().min(0).optional(),
-        minQuantity: z.number().min(1).optional(),
+        minQuantity: z.number().min(0).optional(),
         giftProductId: z.number().min(1).optional(),
-        giftQuantity: z.number().optional(),
+        giftQuantity: z.number().min(0).optional(),
         note: z.string().max(255).optional(),
       })
     )
@@ -79,6 +82,8 @@ export const createPromotionSchema = z.object({
 // Update Promotion Schema
 export const updatePromotionSchema = z.object({
   promotionName: z.string().min(1).max(200).optional(),
+  promotionType: promotionTypeEnum.optional(),
+  applicableTo: applicableToEnum.optional(),
   startDate: z
     .string()
     .refine((val) => !isNaN(Date.parse(val)), {
@@ -99,11 +104,11 @@ export const updatePromotionSchema = z.object({
   products: z
     .array(
       z.object({
-        productId: z.number().min(1),
+        productId: z.number().min(0),
         discountValueOverride: z.number().min(0).optional(),
-        minQuantity: z.number().min(1).optional(),
+        minQuantity: z.number().min(0).optional(),
         giftProductId: z.number().min(1).optional(),
-        giftQuantity: z.number().min(1).optional(),
+        giftQuantity: z.number().min(0).optional(),
         note: z.string().max(255).optional(),
       })
     )
@@ -117,7 +122,7 @@ export const approvePromotionSchema = z.object({
 
 // Cancel Promotion Schema
 export const cancelPromotionSchema = z.object({
-  reason: z.string().min(1, 'Lý do hủy là bắt buộc').max(500),
+  reason: z.string().max(500).optional(),
 });
 
 // Apply Promotion Schema

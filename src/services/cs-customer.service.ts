@@ -54,7 +54,7 @@ class CustomerService {
                         authProvider: true
                     },
                 },
-                salesOrders: {
+                invoices: {
                     select: {
                         id: true,
                         orderCode: true,
@@ -191,7 +191,7 @@ class CustomerService {
                 creditLimit: true,
                 currentDebt: true,
                 debtUpdatedAt: true,
-                salesOrders: {
+                invoices: {
                     // Chỉ lấy các đơn hàng đang có nợ
                     where: {
                         orderStatus: {
@@ -216,7 +216,7 @@ class CustomerService {
             throw new NotFoundError('Customer not found');
         }
 
-        const unpaidOrders = customer.salesOrders.map((order) => ({
+        const unpaidOrders = customer.invoices.map((order) => ({
             ...order,
             debtAmount: Number(order.totalAmount) - Number(order.paidAmount),
         }));
@@ -255,7 +255,7 @@ class CustomerService {
         const offset = (page - 1) * limit;
 
         const [orders, total] = await Promise.all([
-            prisma.salesOrder.findMany({
+            prisma.invoice.findMany({
                 where: { customerId: id },
                 select: {
                     id: true,
@@ -277,7 +277,7 @@ class CustomerService {
                 take: limit,
                 orderBy: { orderDate: 'desc' },
             }),
-            prisma.salesOrder.count({ where: { customerId: id } }),
+            prisma.invoice.count({ where: { customerId: id } }),
         ]);
 
         return {

@@ -1,7 +1,7 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import { NotFoundError, ValidationError } from '@utils/errors';
 import { logActivity } from '@utils/logger';
-import salesOrderService from './sales-order.service';
+import invoiceService from './invoice.service';
 // import inventoryService from './inventory.service'; // Removed unused import
 import {
   CreateDeliveryInput,
@@ -184,7 +184,7 @@ class DeliveryService {
   }
 
   async create(data: CreateDeliveryInput) {
-    const order = await salesOrderService.getById(data.orderId);
+    const order = await invoiceService.getById(data.orderId);
 
     if (order.orderStatus !== 'preparing') {
       throw new ValidationError('Can only create delivery for orders with preparing status');
@@ -230,7 +230,7 @@ class DeliveryService {
         },
       });
 
-      await tx.salesOrder.update({
+      await tx.invoice.update({
         where: { id: data.orderId },
         data: {
           orderStatus: 'delivering',
@@ -386,7 +386,7 @@ class DeliveryService {
         },
       });
 
-      await tx.salesOrder.update({
+      await tx.invoice.update({
         where: { id: delivery.orderId },
         data: {
           orderStatus: 'completed',
@@ -406,7 +406,7 @@ class DeliveryService {
           paymentStatus = 'unpaid';
         }
 
-        await tx.salesOrder.update({
+        await tx.invoice.update({
           where: { id: delivery.orderId },
           data: {
             paidAmount: newPaidAmount,
@@ -519,7 +519,7 @@ class DeliveryService {
 
       if (data.cancelOrder) {
         // 1. Update Order Status
-        await tx.salesOrder.update({
+        await tx.invoice.update({
           where: { id: delivery.orderId },
           data: {
             orderStatus: 'cancelled',
@@ -567,7 +567,7 @@ class DeliveryService {
 
   async redirect(
       oldDeliveryId: number,
-      _newOrderData: CreateDeliveryInput & { customerId: number; items: any[] }, // Simplified for now, in reality likely calls SalesOrder Create
+      _newOrderData: CreateDeliveryInput & { customerId: number; items: any[] }, // Simplified for now, in reality likely calls Invoice Create
       userId: number
   ) {
       // 1. Fail old delivery & Cancel old order
@@ -576,7 +576,7 @@ class DeliveryService {
           cancelOrder: true 
       });
 
-      // 2. Create New Order (This part likely needs SalesOrderService to expose a create method accepting TX or specific input)
+      // 2. Create New Order (This part likely needs InvoiceService to expose a create method accepting TX or specific input)
       // For this task, we'll assume the client calls "Create Order" separately.
       // But the user said: "Shipper creates slip... then deliver".
       // We'll leave this for Frontend Flow: "Fail & Return" -> "Create New Order".
@@ -708,7 +708,7 @@ class DeliveryService {
         where: { id },
       });
 
-      await tx.salesOrder.update({
+      await tx.invoice.update({
         where: { id: delivery.orderId },
         data: {
           orderStatus: 'preparing',

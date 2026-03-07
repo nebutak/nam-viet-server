@@ -38,7 +38,7 @@ import stockTransferRoutes from '@routes/stock-transfer.routes';
 import bomRoutes from '@routes/bom.routes';
 import productionOrderRoutes from '@routes/production-order.routes';
 import customerRoutes from '@routes/customer.routes';
-import salesOrderRoutes from '@routes/sales-order.routes';
+import invoiceRoutes from '@routes/invoice.routes';
 import deliveryRoutes from '@routes/delivery.routes';
 import paymentReceiptRoutes from '@routes/payment-receipt.routes';
 import paymentVoucherRoutes from '@routes/payment-voucher.routes';
@@ -57,6 +57,8 @@ import securityRoutes from '@routes/security.routes';
 import generalSettingRoutes from '@routes/general-setting.routes';
 import loginHistoryRoutes from '@routes/login-history.routes';
 import unitRoutes from '@routes/unit.routes';
+import taxRoutes from '@routes/tax.routes';
+import attributeRoutes from '@routes/attribute.routes';
 
 import smartDebtRoutes from '@routes/smart-debt.routes';
 import cs_authRoutes from '@routes/cs-auth.routes';
@@ -66,7 +68,7 @@ import cs_inventoryRoutes from '@routes/cs-inventory.routes';
 import expiryRoutes from '@routes/expiry.routes';
 import cs_customerRoutes from '@routes/cs-customer.routes';
 import cs_warehouseRoutes from '@routes/cs-warehouse.routes';
-import cs_salesOrderRoutes from '@routes/cs-sales-order.routes';
+import cs_invoiceRoutes from '@routes/cs-invoice.routes';
 import cs_product_Routes from '@routes/cs-product.routes';
 
 // News routes
@@ -77,6 +79,9 @@ import newsCategoryRoutes from '@routes/news-category.routes';
 // Contact routes
 import contactRoutes from '@routes/contact.routes';
 
+// Material Routes
+import materialRoutes from '@routes/material.routes';
+
 // CRM Routes
 import ticketRoutes from '@routes/ticket.routes';
 import taskRoutes from '@routes/task.routes';
@@ -84,6 +89,9 @@ import activityLogRoutes from '@routes/activity-log.routes';
 
 // Import notification scheduler
 import notificationScheduler from '@schedulers/notification.scheduler';
+
+// Import promotion service for auto-status transitions
+import promotionService from '@services/promotion.service';
 
 dotenv.config();
 
@@ -223,13 +231,13 @@ app.use('/api/stock-transfers', stockTransferRoutes);
 app.use('/api/bom', bomRoutes);
 app.use('/api/production-orders', productionOrderRoutes);
 app.use('/api/customers', customerRoutes);
-app.use('/api/sales-orders', salesOrderRoutes);
+app.use('/api/invoices', invoiceRoutes);
 app.use('/api/deliveries', deliveryRoutes);
 app.use('/api/payment-receipts', paymentReceiptRoutes);
 app.use('/api/payment-vouchers', paymentVoucherRoutes);
 // app.use('/api/debt-reconciliation', debtReconciliationRoutes);
 app.use('/api/cash-fund', cashFundRoutes);
-app.use('/api/promotions', promotionRoutes);
+app.use('/api/promotion', promotionRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/salary', salaryRoutes);
 app.use('/api/overtime', overtimeRoutes);
@@ -244,6 +252,8 @@ app.use('/api/security', securityRoutes);
 app.use('/api/settings/general', generalSettingRoutes);
 app.use('/api/settings/login-history', loginHistoryRoutes);
 app.use('/api/units', unitRoutes);
+app.use('/api/taxes', taxRoutes);
+app.use('/api/attributes', attributeRoutes);
 
 // Smart Debt routes
 app.use('/api/smart-debt', smartDebtRoutes);
@@ -254,7 +264,7 @@ app.use('/api/cs/products', cs_productRoutes);
 app.use('/api/cs/inventory', cs_inventoryRoutes);
 app.use('/api/cs/customers', cs_customerRoutes);
 app.use('/api/cs/warehouses', cs_warehouseRoutes);
-app.use('/api/cs/sale-order', cs_salesOrderRoutes);
+app.use('/api/cs/invoices', cs_invoiceRoutes);
 app.use('/api/cs/products', cs_product_Routes);
 
 // News routes
@@ -262,6 +272,9 @@ app.use('/api/news', newsRoutes);
 // News routes
 app.use('/api/news', newsRoutes);
 app.use('/api/news-categories', newsCategoryRoutes);
+
+// Material Routes
+app.use('/api/materials', materialRoutes);
 
 // CRM Routes
 app.use('/api/tickets', ticketRoutes);
@@ -301,6 +314,18 @@ httpServer.listen(PORT, async () => {
     console.log('⚠️  Notification scheduler disabled (set ENABLE_SCHEDULER=true to enable)');
   }
 
+  // Initialize promotion status transition scheduler (always enabled)
+  // Run immediately on startup, then every 60 seconds
+  promotionService.runStatusTransitions().catch(err =>
+    console.error('❌ Initial promotion status transition failed:', err)
+  );
+  setInterval(() => {
+    promotionService.runStatusTransitions().catch(err =>
+      console.error('❌ Promotion status transition failed:', err)
+    );
+  }, 10 * 1000); // every 10 seconds
+  console.log('✅ Promotion status transition scheduler started (every 10s)');
+
   console.log(`
 ╔═══════════════════════════════════════════════════════════╗
 ║                                                           ║
@@ -324,7 +349,7 @@ httpServer.listen(PORT, async () => {
 ║   📋 BOM API: http://localhost:${PORT}/api/bom           ║
 ║   🏭 Production Orders API: http://localhost:${PORT}/api/production-orders ║
 ║   👤 Customer API: http://localhost:${PORT}/api/customers ║
-║   🛒 Sales Orders API: http://localhost:${PORT}/api/sales-orders ║
+║   🛒 Sales Orders API: http://localhost:${PORT}/api/invoices ║
 ║   🚚 Deliveries API: http://localhost:${PORT}/api/deliveries ║
 ║   💰 Payment Receipts API: http://localhost:${PORT}/api/payment-receipts ║
 ║   💸 Payment Vouchers API: http://localhost:${PORT}/api/payment-vouchers ║

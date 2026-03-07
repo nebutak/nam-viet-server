@@ -81,8 +81,8 @@ class ReportService {
     }
 
     // Common WHERE clauses for quick inline usage
-    const salesOrderWhere: any = { orderStatus: 'pending' };
-    if (warehouseId) salesOrderWhere.warehouseId = warehouseId;
+    const invoiceWhere: any = { orderStatus: 'pending' };
+    if (warehouseId) invoiceWhere.warehouseId = warehouseId;
     
     // Note: Production Order and Activity Logs might not support warehouse param easily
     // We will apply warehouse filter where straightforward
@@ -118,7 +118,7 @@ class ReportService {
       this.getRevenueByPeriod(periodFromDate, periodToDate, warehouseId),
       this.getRevenueByPeriod(previousFromDate, previousToDate, warehouseId),
       this.getOrderCountByPeriod(periodFromDate, periodToDate, warehouseId),
-      prisma.salesOrder.count({ where: salesOrderWhere }),
+      prisma.invoice.count({ where: invoiceWhere }),
       this.getTotalInventoryValue(warehouseId),
       this.getLowStockCount(warehouseId),
       this.getTotalReceivables(), // Global debt
@@ -173,7 +173,7 @@ class ReportService {
       }),
 
       // Recent
-      prisma.salesOrder.findMany({
+      prisma.invoice.findMany({
         where: warehouseId ? { warehouseId } : undefined,
         take: 5,
         orderBy: { createdAt: 'desc' },
@@ -242,7 +242,7 @@ class ReportService {
       let activityType: 'order' | 'inventory' | 'production' | 'finance' | 'user' = 'user';
 
       if (log.tableName) {
-        if (['sales_orders', 'deliveries'].includes(log.tableName)) {
+        if (['invoices', 'deliveries'].includes(log.tableName)) {
           activityType = 'order';
         } else if (['inventory', 'stock_transactions'].includes(log.tableName)) {
           activityType = 'inventory';
@@ -377,9 +377,9 @@ class ReportService {
       this.getOrderCountByPeriod(startOfToday, endOfToday),
       this.getOrderCountByPeriod(startOfWeek, endOfToday),
       this.getOrderCountByPeriod(startOfMonth, endOfToday),
-      prisma.salesOrder.count({ where: { orderStatus: 'pending' } }),
-      prisma.salesOrder.count({ where: { orderStatus: 'preparing' } }),
-      prisma.salesOrder.count({ where: { orderStatus: 'delivering' } }),
+      prisma.invoice.count({ where: { orderStatus: 'pending' } }),
+      prisma.invoice.count({ where: { orderStatus: 'preparing' } }),
+      prisma.invoice.count({ where: { orderStatus: 'delivering' } }),
 
       // Inventory
       this.getTotalInventoryValue(),
@@ -528,7 +528,7 @@ class ReportService {
       where.warehouseId = warehouseId;
     }
 
-    const orders = await prisma.salesOrder.findMany({
+    const orders = await prisma.invoice.findMany({
       where,
       select: {
         completedAt: true,
@@ -588,7 +588,7 @@ class ReportService {
 
   // GET /api/reports/dashboard/recent-orders?limit=10
   async getDashboardRecentOrders(limit: number = 10) {
-    const orders = await prisma.salesOrder.findMany({
+    const orders = await prisma.invoice.findMany({
       take: limit,
       orderBy: { createdAt: 'desc' },
       select: {
@@ -678,7 +678,7 @@ class ReportService {
 
     const dateRange = this.getDateRange(fromDate, toDate);
 
-    const where: Prisma.SalesOrderWhereInput = {
+    const where: Prisma.InvoiceWhereInput = {
       orderStatus: 'completed',
       completedAt: {
         gte: dateRange.fromDate,
@@ -688,7 +688,7 @@ class ReportService {
       ...(customerId && { customerId }),
     };
 
-    const orders = await prisma.salesOrder.findMany({
+    const orders = await prisma.invoice.findMany({
       where,
       select: {
         id: true,
@@ -733,9 +733,9 @@ class ReportService {
       totalTax: totalTax,
       averageOrderValue: averageOrderValue,
       paidAmount: totalPaid,
-      debtAmount: 0,
+      debtAmount: totalRevenue - totalPaid,  // ✅ FIX: Calculate actual debt
       shippingFee: totalShipping,
-      growth: 0,
+      growth: 0,  // TODO: Compare with previous period
     };
 
     // Prepare trend data expected by frontend
@@ -814,7 +814,7 @@ class ReportService {
       where.warehouseId = warehouseId;
     }
 
-    const result = await prisma.salesOrder.groupBy({
+    const result = await prisma.invoice.groupBy({
       by: ['salesChannel'],
       where,
       _sum: {
@@ -837,7 +837,7 @@ class ReportService {
   async getRevenueByRegion(fromDate?: string, toDate?: string) {
     const dateRange = this.getDateRange(fromDate, toDate);
 
-    const orders = await prisma.salesOrder.findMany({
+    const orders = await prisma.invoice.findMany({
       where: {
         orderStatus: 'completed',
         completedAt: {
@@ -1228,7 +1228,7 @@ class ReportService {
     const dateRange = this.getDateRange(fromDate, toDate);
 
     // Get sales order details with aggregation
-    const details = await prisma.salesOrderDetail.findMany({
+    const details = await prisma.invoiceDetail.findMany({
       where: {
         order: {
           orderStatus: 'completed',
@@ -1284,7 +1284,7 @@ class ReportService {
   async getTopCustomers(limit: number = 10, fromDate?: string, toDate?: string) {
     const dateRange = this.getDateRange(fromDate, toDate);
 
-    const result = await prisma.salesOrder.groupBy({
+    const result = await prisma.invoice.groupBy({
       by: ['customerId'],
       where: {
         orderStatus: 'completed',
@@ -1371,7 +1371,7 @@ class ReportService {
     if (createdBy) where.createdBy = createdBy;
 
     // 1. KPI Summary
-    const orders = await prisma.salesOrder.findMany({
+    const orders = await prisma.invoice.findMany({
       where,
       include: {
         details: {
@@ -1384,10 +1384,10 @@ class ReportService {
     const totalNetRevenue = orders.reduce((sum, o) => sum + Number(o.totalAmount || 0) - Number(o.discountAmount || 0), 0);
     const totalNewDebt = orders.reduce((sum, o) => sum + (Number(o.totalAmount || 0) - Number(o.paidAmount || 0)), 0);
     const totalOrders = orders.length;
-    const cancelledOrders = await prisma.salesOrder.count({
+    const cancelledOrders = await prisma.invoice.count({
       where: { ...where, orderStatus: 'cancelled' },
     });
-    const completedOrders = await prisma.salesOrder.count({
+    const completedOrders = await prisma.invoice.count({
       where: { ...where, orderStatus: 'completed' },
     });
 
@@ -1401,7 +1401,7 @@ class ReportService {
       });
     });
 
-    const previousOrders = await prisma.salesOrder.findMany({
+    const previousOrders = await prisma.invoice.findMany({
       where: {
         ...where,
         orderDate: {
@@ -1490,7 +1490,7 @@ class ReportService {
     const topProducts = await this.getTopSellingProducts(10, fromDate, toDate);
 
     // 5. Staff Performance
-    const staffPerformance = await prisma.salesOrder.groupBy({
+    const staffPerformance = await prisma.invoice.groupBy({
       by: ['createdBy'],
       where,
       _sum: {
@@ -1698,7 +1698,7 @@ class ReportService {
   async getEmployeePerformance(fromDate?: string, toDate?: string) {
     const dateRange = this.getDateRange(fromDate, toDate);
 
-    const salesByEmployee = await prisma.salesOrder.groupBy({
+    const salesByEmployee = await prisma.invoice.groupBy({
       by: ['createdBy'],
       where: {
         orderStatus: 'completed',
@@ -1753,7 +1753,7 @@ class ReportService {
   async getFinancialSummary(fromDate?: string, toDate?: string) {
     const dateRange = this.getDateRange(fromDate, toDate);
 
-    const [receipts, vouchers, salesOrders] = await Promise.all([
+    const [receipts, vouchers, invoices] = await Promise.all([
       prisma.paymentReceipt.aggregate({
         where: {
           receiptDate: {
@@ -1788,7 +1788,7 @@ class ReportService {
           id: true,
         },
       }),
-      prisma.salesOrder.aggregate({
+      prisma.invoice.aggregate({
         where: {
           orderStatus: 'completed',
           completedAt: {
@@ -1805,8 +1805,8 @@ class ReportService {
 
     const totalReceipts = Number(receipts._sum.amount || 0);
     const totalPayments = Number(vouchers._sum.amount || 0);
-    const totalRevenue = Number(salesOrders._sum.totalAmount || 0);
-    const totalPaid = Number(salesOrders._sum.paidAmount || 0);
+    const totalRevenue = Number(invoices._sum.totalAmount || 0);
+    const totalPaid = Number(invoices._sum.paidAmount || 0);
 
     return {
       revenue: {
@@ -1848,7 +1848,7 @@ class ReportService {
   }
 
   private async getRevenueByPeriod(fromDate: Date, toDate: Date, warehouseId?: number): Promise<number> {
-    const result = await prisma.salesOrder.aggregate({
+    const result = await prisma.invoice.aggregate({
       where: {
         orderStatus: 'completed',
         completedAt: {
@@ -1866,7 +1866,7 @@ class ReportService {
   }
 
   private async getOrderCountByPeriod(fromDate: Date, toDate: Date, warehouseId?: number): Promise<number> {
-    return await prisma.salesOrder.count({
+    return await prisma.invoice.count({
       where: {
         orderStatus: 'completed',
         completedAt: {
@@ -2001,7 +2001,7 @@ class ReportService {
     if (createdBy) where.createdBy = createdBy;
 
     // Summary aggregation
-    const summary = await prisma.salesOrder.aggregate({
+    const summary = await prisma.invoice.aggregate({
       where,
       _sum: {
         totalAmount: true,
@@ -2013,7 +2013,7 @@ class ReportService {
     });
 
     // Get cost for profit calculation
-    const orders = await prisma.salesOrder.findMany({
+    const orders = await prisma.invoice.findMany({
       where,
       include: {
         details: {
@@ -2071,7 +2071,7 @@ class ReportService {
     if (createdBy) where.createdBy = createdBy;
 
     // Get all orders
-    const orders = await prisma.salesOrder.findMany({
+    const orders = await prisma.invoice.findMany({
       where,
       select: {
         orderDate: true,
@@ -2141,7 +2141,7 @@ class ReportService {
 
     if (type === 'product') {
       // Top Products
-      const details = await prisma.salesOrderDetail.findMany({
+      const details = await prisma.invoiceDetail.findMany({
         where: { order: where },
         include: {
           product: { select: { id: true, productName: true, sku: true } },
@@ -2170,7 +2170,7 @@ class ReportService {
       );
     } else if (type === 'staff') {
       // Top Staff
-      const staffData = await prisma.salesOrder.groupBy({
+      const staffData = await prisma.invoice.groupBy({
         by: ['createdBy'],
         where,
         _sum: { totalAmount: true },
@@ -2197,7 +2197,7 @@ class ReportService {
         .sort((a, b) => b.totalRevenue - a.totalRevenue);
     } else {
       // Top Customers
-      const custData = await prisma.salesOrder.groupBy({
+      const custData = await prisma.invoice.groupBy({
         by: ['customerId'],
         where,
         _sum: { totalAmount: true },
@@ -2243,7 +2243,7 @@ class ReportService {
       return customers;
     } else if (action === 'get-sales-staff') {
       // Get users who created at least one order
-      const staffIds = await prisma.salesOrder
+      const staffIds = await prisma.invoice
         .findMany({
           select: { createdBy: true },
           distinct: ['createdBy'],
