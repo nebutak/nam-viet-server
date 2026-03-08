@@ -1,8 +1,6 @@
 import { Response } from 'express';
 import { AuthRequest } from '@custom-types/common.type';
 import supplierService from '@services/supplier.service';
-import path from 'path';
-import fs from 'fs';
 import { ApiResponse } from '@custom-types/common.type';
 
 class SupplierController {
@@ -29,6 +27,21 @@ class SupplierController {
     const response: ApiResponse = {
       success: true,
       data: supplier,
+      message: 'Success',
+      timestamp: new Date().toISOString(),
+    };
+
+    res.status(200).json(response);
+  }
+
+  // GET /api/suppliers/:id/products
+  async getSupplierWithProducts(req: AuthRequest, res: Response) {
+    const id = parseInt(req.params.id);
+    const result = await supplierService.getSupplierWithProducts(id);
+
+    const response: ApiResponse = {
+      success: true,
+      data: result,
       message: 'Success',
       timestamp: new Date().toISOString(),
     };
@@ -98,6 +111,31 @@ class SupplierController {
     });
   }
 
+  // POST /api/suppliers/bulk-delete
+  async bulkDelete(req: AuthRequest, res: Response) {
+    const userId = req.user!.id;
+    const { ids } = req.body;
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Danh sách ID không hợp lệ'
+        }
+      });
+      return;
+    }
+
+    const result = await supplierService.bulkDelete(ids, userId);
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   // POST /api/suppliers/import
   async import(req: AuthRequest, res: Response) {
     const userId = req.user!.id;
@@ -142,22 +180,28 @@ class SupplierController {
   // GET /api/suppliers/import-template
   async downloadTemplate(req: AuthRequest, res: Response) {
     const { type } = req.query;
-    const extension = type === 'excel' ? 'xlsx' : 'csv';
-    const filename = `supplier_import_template.${extension}`;
-    const filePath = path.join(process.cwd(), 'public/templates', filename);
+    try {
+      const extension = type === 'excel' ? 'xlsx' : 'csv';
+      const buffer = await supplierService.downloadImportTemplate(type as any);
 
-    if (!fs.existsSync(filePath)) {
-      res.status(404).json({
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename=supplier_import_template.${extension}`
+      );
+      res.send(buffer);
+    } catch (error: any) {
+      res.status(400).json({
         success: false,
         error: {
-          code: 'NOT_FOUND',
-          message: `File mẫu (${filename}) chưa được tải lên hệ thống`
+          code: 'BAD_REQUEST',
+          message: error.message
         }
       });
-      return;
     }
-
-    res.download(filePath, filename);
   }
 }
 

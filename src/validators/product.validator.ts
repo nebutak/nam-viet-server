@@ -48,6 +48,19 @@ export const createProductSchema = z.object({
       return isNaN(date.getTime()) ? undefined : date.toISOString();
     }),
   status: z.enum(['active', 'inactive', 'discontinued']).optional().default('active'),
+  // New fields added
+  taxIds: z.array(z.number()).optional(),
+  attributeIdsWithValue: z.array(z.object({
+    attributeId: z.number().or(z.string().transform(Number)),
+    value: z.string().optional()
+  })).optional(),
+  unitConversions: z.array(z.object({
+    unitId: z.number().or(z.string().transform(Number)),
+    conversionFactor: z.number().or(z.string().transform(Number))
+  })).optional(),
+  manageSerial: z.boolean().optional(),
+  applyWarranty: z.boolean().optional(),
+  warrantyPolicy: z.any().optional(),
 });
 
 export const updateProductSchema = z.object({
@@ -90,6 +103,19 @@ export const updateProductSchema = z.object({
       return isNaN(date.getTime()) ? null : date.toISOString();
     }),
   status: z.enum(['active', 'inactive', 'discontinued']).optional(),
+  // New fields added
+  taxIds: z.array(z.number()).optional(),
+  attributeIdsWithValue: z.array(z.object({
+    attributeId: z.number().or(z.string().transform(Number)),
+    value: z.string().optional()
+  })).optional(),
+  unitConversions: z.array(z.object({
+    unitId: z.number().or(z.string().transform(Number)),
+    conversionFactor: z.number().or(z.string().transform(Number))
+  })).optional(),
+  manageSerial: z.boolean().optional(),
+  applyWarranty: z.boolean().optional(),
+  warrantyPolicy: z.any().optional(),
 });
 
 export const updateFeaturedSchema = z

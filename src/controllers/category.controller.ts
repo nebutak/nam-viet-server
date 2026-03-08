@@ -151,22 +151,37 @@ class CategoryController {
     res.send(buffer);
   }
 
+  // GET /api/categories/import-template
+  async downloadTemplate(_req: AuthRequest, res: Response) {
+    const buffer = await categoryService.downloadImportTemplate();
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename=Template_Import_Danhmuc.xlsx'
+    );
+    res.send(buffer);
+  }
+
   // POST /api/categories/import
-  async importCategories(req: AuthRequest, res: Response) {
-    if (!req.file) {
-      res.status(400).json({
-        success: false,
-        message: 'Vui lòng chọn file Excel để import',
-        timestamp: new Date().toISOString(),
-      });
-      return;
+  async import(req: AuthRequest, res: Response) {
+    const userId = req.user!.id;
+    const items = req.body.items;
+
+    if (!items || !Array.isArray(items)) {
+        res.status(400).json({
+            success: false,
+            error: {
+                code: 'VALIDATION_ERROR',
+                message: 'Dữ liệu không hợp lệ',
+            },
+        });
+        return;
     }
 
-    const userId = req.user!.id;
-    const result = await categoryService.importCategories(req.file.buffer || require('fs').readFileSync(req.file.path), userId);
-
-    // If using memoryStorage, req.file.buffer exists.
-    // If using diskStorage, req.file.path exists and we must read it.
+    const result = await categoryService.importCategories(items, userId);
 
     const response: ApiResponse = {
       success: true,

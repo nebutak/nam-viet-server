@@ -24,6 +24,18 @@ router.get(
 );
 
 router.get(
+    '/import-template',
+    authorize('GET_TAX'),
+    asyncHandler(taxController.downloadImportTemplate.bind(taxController))
+);
+
+router.post(
+    '/import',
+    authorize('CREATE_TAX'),
+    asyncHandler(taxController.import.bind(taxController))
+);
+
+router.get(
     '/:id',
     authorize('GET_TAX'),
     validate(taxIdSchema, 'params'),

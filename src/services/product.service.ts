@@ -287,6 +287,14 @@ class ProductService {
       throw new ValidationError('Packaging type is required for packaging products');
     }
 
+    let totalTaxRate = data.taxRate || 0;
+    if (data.taxIds && data.taxIds.length > 0) {
+      const taxes = await prisma.tax.findMany({
+        where: { id: { in: data.taxIds } },
+      });
+      totalTaxRate = taxes.reduce((sum, tax) => sum + Number(tax.percentage), 0);
+    }
+
     const product = await prisma.product.create({
       data: {
         sku,
@@ -305,11 +313,27 @@ class ProductService {
         sellingPriceRetail: data.sellingPriceRetail,
         sellingPriceWholesale: data.sellingPriceWholesale,
         sellingPriceVip: data.sellingPriceVip,
-        taxRate: data.taxRate,
+        taxRate: totalTaxRate,
+        taxIds: data.taxIds ? JSON.parse(JSON.stringify(data.taxIds)) : null,
+        manageSerial: data.manageSerial || false,
+        applyWarranty: data.applyWarranty || false,
+        warrantyPolicy: data.warrantyPolicy ? JSON.parse(JSON.stringify(data.warrantyPolicy)) : null,
         minStockLevel: data.minStockLevel,
         expiryDate: data.expiryDate ? new Date(data.expiryDate) : null,
         status: (data.status as any) || 'active',
         createdBy: userId,
+        productHasAttributes: {
+          create: data.attributeIdsWithValue?.map((attr) => ({
+            attributeId: attr.attributeId,
+            value: attr.value,
+          })) || [],
+        },
+        unitConversions: {
+          create: data.unitConversions?.map((uc) => ({
+            unitId: uc.unitId,
+            conversionFactor: uc.conversionFactor,
+          })) || [],
+        },
       },
       include: {
         category: true,
@@ -382,12 +406,53 @@ class ProductService {
       slug = finalSlug;
     }
 
+    let totalTaxRate: number | undefined = undefined;
+    if (data.taxIds !== undefined) {
+      if (data.taxIds && data.taxIds.length > 0) {
+        const taxes = await prisma.tax.findMany({
+          where: { id: { in: data.taxIds } },
+        });
+        totalTaxRate = taxes.reduce((sum, tax) => sum + Number(tax.percentage), 0);
+      } else {
+        totalTaxRate = 0;
+      }
+    }
+
+    const {
+      attributeIdsWithValue,
+      unitConversions,
+      taxIds,
+      warrantyPolicy,
+      ...restData
+    } = data;
+
     const product = await prisma.product.update({
       where: { id },
       data: {
-        ...data,
+        ...restData,
+        taxRate: totalTaxRate !== undefined ? totalTaxRate : undefined,
+        taxIds: taxIds !== undefined ? taxIds ? JSON.parse(JSON.stringify(taxIds)) : null : undefined,
+        warrantyPolicy: warrantyPolicy !== undefined ? warrantyPolicy ? JSON.parse(JSON.stringify(warrantyPolicy)) : null : undefined,
         slug,
         updatedBy: userId,
+        ...(attributeIdsWithValue && {
+          productHasAttributes: {
+            deleteMany: {},
+            create: attributeIdsWithValue.map((attr) => ({
+              attributeId: attr.attributeId,
+              value: attr.value,
+            })),
+          },
+        }),
+        ...(unitConversions && {
+          unitConversions: {
+            deleteMany: {},
+            create: unitConversions.map((uc) => ({
+              unitId: uc.unitId,
+              conversionFactor: uc.conversionFactor,
+            })),
+          },
+        }),
       },
       include: {
         category: true,

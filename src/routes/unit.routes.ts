@@ -25,6 +25,25 @@ router.get(
     asyncHandler(unitController.getAll.bind(unitController))
 );
 
+router.post(
+    '/bulk-delete',
+    authorizeAny('DELETE_PRODUCT', 'DELETE_UNIT'),
+    validate(bulkDeleteUnitSchema, 'body'),
+    asyncHandler(unitController.bulkDelete.bind(unitController))
+);
+
+router.post(
+    '/import',
+    authorizeAny('CREATE_PRODUCT', 'CREATE_UNIT'),
+    asyncHandler(unitController.import.bind(unitController))
+);
+
+router.get(
+    '/import-template',
+    authorizeAny('CREATE_PRODUCT', 'CREATE_UNIT'),
+    asyncHandler(unitController.downloadTemplate.bind(unitController))
+);
+
 router.get(
     '/:id',
     authorizeAny('GET_PRODUCT', 'GET_UNIT'),
@@ -37,13 +56,6 @@ router.post(
     authorizeAny('CREATE_PRODUCT', 'CREATE_UNIT'),
     validate(createUnitSchema, 'body'),
     asyncHandler(unitController.create.bind(unitController))
-);
-
-router.post(
-    '/bulk-delete',
-    authorizeAny('DELETE_PRODUCT', 'DELETE_UNIT'),
-    validate(bulkDeleteUnitSchema, 'body'),
-    asyncHandler(unitController.bulkDelete.bind(unitController))
 );
 
 router.put(

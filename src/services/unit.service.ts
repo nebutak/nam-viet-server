@@ -1,6 +1,7 @@
 import { PrismaClient, Prisma } from '@prisma/client';
-import { NotFoundError, ConflictError } from '@utils/errors';
+import { NotFoundError, ConflictError, ValidationError } from '@utils/errors';
 import { logActivity } from '@utils/logger';
+import ExcelJS from 'exceljs';
 import {
     UnitQueryInput,
     CreateUnitInput,
@@ -222,6 +223,150 @@ class UnitService {
         });
 
         return { message: `Xóa thành công ${units.length} đơn vị tính` };
+    }
+
+    async downloadImportTemplate(): Promise<Buffer> {
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Nhập liệu Đơn vị');
+
+        // Instructions
+        worksheet.mergeCells('A1:D1');
+        worksheet.getCell('A1').value = 'HƯỚNG DẪN NHẬP LIỆU ĐƠN VỊ TÍNH';
+        worksheet.getCell('A1').font = { bold: true, size: 14 };
+        worksheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+
+        const instructions = [
+            '1. Các cột có dấu (*) là bắt buộc nhập',
+            '2. Tên đơn vị và Mã đơn vị phải viết duy nhất, không trùng lặp đè lên dữ liệu cũ',
+            '3. Trạng thái chỉ điền "Cho phép sử dụng" hoặc "Ngưng"'
+        ];
+
+        instructions.forEach((instruction, idx) => {
+            worksheet.getCell(`A${idx + 2}`).value = instruction;
+        });
+
+        // Add headers at row 6
+        worksheet.getRow(6).values = [
+            'STT',
+            'Tên đơn vị (*)',
+            'Mã đơn vị (*)',
+            'Ghi chú',
+            'Trạng thái (*)'
+        ];
+
+        worksheet.getRow(6).font = { bold: true };
+        worksheet.getRow(6).fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFE0E0E0' }
+        };
+
+        // Format columns
+        worksheet.columns = [
+            { width: 10 },  // STT
+            { width: 30 },  // Tên đơn vị
+            { width: 25 },  // Mã đơn vị
+            { width: 30 },  // Ghi chú
+            { width: 20 },  // Trạng thái
+        ];
+
+        return Buffer.from(await workbook.xlsx.writeBuffer() as ArrayBuffer);
+    }
+
+    async importUnits(items: any[], userId: number): Promise<any> {
+        if (!items || items.length === 0) {
+            throw new ValidationError('Không tìm thấy dữ liệu hợp lệ để import');
+        }
+
+        const validUnits: any[] = [];
+        const errors: any[] = [];
+
+        items.forEach((item, index) => {
+            const rowNumber = index + 6; // To match Excel rows typically
+            
+            const unitName = item.unitName?.toString().trim();
+            const unitCode = item.unitCode?.toString().trim();
+            const description = item.description?.toString().trim() || null;
+            let statusRaw = item.status?.toString().trim().toLowerCase();
+
+            if (!unitName || !unitCode) {
+                if (unitName || unitCode) {
+                    errors.push({ row: rowNumber, message: 'Thiếu Tên hoặc Mã đơn vị ở các trường bắt buộc (*)' });
+                }
+                return;
+            }
+
+            let status = 'active';
+            if (statusRaw === 'ngưng' || statusRaw === 'ngung' || statusRaw === 'inactive') {
+                status = 'inactive';
+            } else if (!statusRaw && item.status !== undefined) {
+                errors.push({ row: rowNumber, message: 'Trạng thái không được bỏ trống' });
+                return;
+            }
+
+            validUnits.push({
+                unitName,
+                unitCode,
+                description,
+                status,
+                createdBy: userId,
+            });
+        });
+
+        if (validUnits.length === 0) {
+            throw new ValidationError('Không tìm thấy dữ liệu hợp lệ để import');
+        }
+
+        const codeSet = new Set();
+        const duplicateCodesInFile = validUnits.filter(u => {
+            if (codeSet.has(u.unitCode)) return true;
+            codeSet.add(u.unitCode);
+            return false;
+        });
+
+        if (duplicateCodesInFile.length > 0) {
+            const duplicatesStr = duplicateCodesInFile.map(d => d.unitCode).join(', ');
+            throw new ValidationError(`Phát hiện mã đơn vị trùng lặp trong file: ${duplicatesStr}`);
+        }
+
+        const incomingCodes = validUnits.map(u => u.unitCode);
+
+        const existingUnits = await prisma.unit.findMany({
+            where: { unitCode: { in: incomingCodes } },
+            select: { unitCode: true }
+        });
+
+        const existingCodeSet = new Set(existingUnits.map(u => u.unitCode));
+
+        const toInsert = validUnits.filter(u => !existingCodeSet.has(u.unitCode));
+        const duplicateCodesInDb = validUnits.filter(u => existingCodeSet.has(u.unitCode)).map(u => u.unitCode);
+
+        if (duplicateCodesInDb.length > 0) {
+            errors.push({
+                row: 'N/A',
+                message: `Các mã đơn vị sau đã tồn tại trong hệ thống và bị bỏ qua: ${duplicateCodesInDb.join(', ')}`
+            });
+        }
+
+        let importedCount = 0;
+        if (toInsert.length > 0) {
+            const { count } = await prisma.unit.createMany({
+                data: toInsert,
+                skipDuplicates: true,
+            });
+            importedCount = count;
+            
+            logActivity('import', userId, 'units', {
+                action: 'import_units',
+                importedCount,
+            });
+        }
+
+        return {
+            importedCount,
+            totalProcessed: items.length,
+            errors,
+        };
     }
 }
 

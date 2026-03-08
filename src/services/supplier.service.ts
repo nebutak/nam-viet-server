@@ -170,6 +170,44 @@ class SupplierService {
     return supplier;
   }
 
+  async getSupplierWithProducts(id: number) {
+    const supplier = await this.getSupplierById(id);
+
+    const poDetails = await prisma.purchaseOrderDetail.findMany({
+      where: {
+        purchaseOrder: {
+          supplierId: id,
+          status: { not: 'cancelled' },
+          deletedAt: null,
+        }
+      },
+      include: {
+        product: {
+          include: { unit: true }
+        },
+        purchaseOrder: {
+          select: { orderDate: true, createdAt: true, taxRate: true }
+        }
+      },
+      orderBy: { purchaseOrder: { orderDate: 'desc' } }
+    });
+
+    const productsHistory = poDetails.map(detail => ({
+      id: detail.id,
+      productId: detail.productId,
+      productName: detail.product.productName,
+      unitName: detail.product.unit?.unitName || '—',
+      price: detail.unitPrice,
+      createdAt: detail.purchaseOrder.orderDate || detail.purchaseOrder.createdAt,
+      taxes: detail.purchaseOrder.taxRate.gt(0) ? [{ title: 'VAT', percentage: detail.purchaseOrder.taxRate }] : [],
+    }));
+
+    return {
+      supplier,
+      products: productsHistory,
+    };
+  }
+
   async createSupplier(data: CreateSupplierInput, createdBy: number) {
     const codeExists = await this.checkSupplierCodeExists(data.supplierCode);
     if (codeExists) {
@@ -379,6 +417,40 @@ class SupplierService {
     return { message: 'Xóa nhà cung cấp thành công' };
   }
 
+  async bulkDelete(ids: number[], deletedBy: number) {
+    // Check if any of these suppliers have constraints
+    const suppliers = await prisma.supplier.findMany({
+      where: { id: { in: ids } },
+      include: {
+        _count: {
+          select: { products: true, purchaseOrders: true }
+        }
+      }
+    });
+
+    const hasConstraints = suppliers.some(
+      s => s._count.products > 0 || s._count.purchaseOrders > 0
+    );
+
+    if (hasConstraints) {
+      throw new ValidationError('Không thể xóa nhà cung cấp đang có sản phẩm hoặc đơn hàng');
+    }
+
+    await prisma.supplier.updateMany({
+      where: { id: { in: ids } },
+      data: {
+        deletedAt: new Date(),
+      },
+    });
+
+    logActivity('delete', deletedBy, 'suppliers', {
+      action: 'bulk_delete',
+      recordIds: ids,
+    });
+
+    return { message: `Xóa thành công ${ids.length} nhà cung cấp` };
+  }
+
   async checkSupplierCodeExists(code: string, excludeId?: number): Promise<boolean> {
     const supplier = await prisma.supplier.findFirst({
       where: {
@@ -450,18 +522,30 @@ class SupplierService {
         existingSupplier = await prisma.supplier.findFirst({ where: { email } });
       }
 
+      const mapStatus = (statusStr: string) => {
+        const s = statusStr.trim().toLowerCase();
+        if (s === 'hoạt động' || s === 'active') return 'active';
+        if (s === 'ngừng' || s === 'ngừng hoạt động' || s === 'inactive') return 'inactive';
+        return 'active';
+      }
+
       const supplierData = {
         supplierType: item.supplierType || 'local',
-        supplierName: item.name.trim(),
+        supplierName: item.supplierName?.trim() || item.name?.trim() || '',
         contactName: item.contactName?.trim() || null,
         phone,
         email,
         address: item.address?.trim() || null,
         taxCode,
         paymentTerms: item.paymentTerms?.trim() || null,
-        notes: item.note?.trim() || null,
-        status: item.status || 'active',
+        notes: item.notes?.trim() || item.note?.trim() || null,
+        status: item.status ? mapStatus(item.status) : 'active',
       };
+
+      if (!supplierData.supplierName) {
+        errorItems.push({ row, errors: [{ field: 'Tên nhà cung cấp', message: 'Tên nhà cung cấp là bắt buộc.' }] });
+        continue;
+      }
 
       if (existingSupplier) {
         if (phone && phone !== existingSupplier.phone) {
@@ -547,6 +631,61 @@ class SupplierService {
     });
 
     return { createdCount, updatedCount, totalProcessed: operations.length };
+  }
+
+  async downloadImportTemplate(type: 'excel' | 'csv') {
+    if (type !== 'excel') {
+      throw new Error('Chỉ hỗ trợ template Excel');
+    }
+
+    const ExcelJS = require('exceljs');
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Mau_Them_NCC');
+
+    worksheet.mergeCells('A1:I1');
+    worksheet.getCell('A1').value = 'HƯỚNG DẪN NHẬP LIỆU (VUI LÒNG KHÔNG XÓA 5 DÒNG ĐẦU)';
+    worksheet.getCell('A1').font = { bold: true, color: { argb: 'FFFF0000' } };
+    
+    worksheet.getCell('A2').value = '- Cột "Tên nhà cung cấp": Bắt buộc nhập.';
+    worksheet.getCell('A3').value = '- Cột "Số điện thoại", "Email", "Mã số thuế": Phải là duy nhất trên hệ thống nếu có nhập.';
+    worksheet.getCell('A4').value = '- Cột "Trạng thái": Nhập "Hoạt động" hoặc "Ngừng". Bỏ trống mặc định là Hoạt động.';
+
+    // Format header row 5
+    const headers = [
+      'Tên nhà cung cấp (*)', 
+      'Mã số thuế', 
+      'Người đại diện', 
+      'Số điện thoại', 
+      'Email', 
+      'Địa chỉ', 
+      'Ghi chú', 
+      'Trạng thái (*)'
+    ];
+    
+    const headerRow = worksheet.getRow(5);
+    headerRow.values = headers;
+    headerRow.font = { bold: true };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE0E0E0' }
+    };
+
+    worksheet.columns = [
+      { width: 35 }, // Tên NCC
+      { width: 20 }, // MST
+      { width: 25 }, // Người đại diện
+      { width: 20 }, // SĐT
+      { width: 25 }, // Email
+      { width: 40 }, // Địa chỉ
+      { width: 30 }, // Ghi chú
+      { width: 20 }  // Trạng thái
+    ];
+
+    // Mẫu data
+    worksheet.addRow(['Công ty Mẫu ABC', '0123456789', 'Nguyễn Văn A', '0987654321', 'contact@abc.vn', '123 Đường Mẫu', 'Hỗ trợ đổi trả', 'Hoạt động']);
+    
+    return await workbook.xlsx.writeBuffer();
   }
 }
 

@@ -25,7 +25,8 @@ router.get(
   asyncHandler(supplierController.getAllSuppliers.bind(supplierController))
 );
 
-// Import/Export (must be before /:id)
+// Import/Export/Bulk Actions (must be before /:id)
+router.post('/bulk-delete', authorize('DELETE_SUPPLIER'), asyncHandler(supplierController.bulkDelete.bind(supplierController)));
 router.post('/import', asyncHandler(supplierController.import.bind(supplierController)));
 router.get('/import-template', asyncHandler(supplierController.downloadTemplate.bind(supplierController)));
 
@@ -34,6 +35,13 @@ router.get(
   '/:id',
   authorize('GET_SUPPLIER'),
   asyncHandler(supplierController.getSupplierById.bind(supplierController))
+);
+
+// GET /api/suppliers/:id/products
+router.get(
+  '/:id/products',
+  authorize('GET_SUPPLIER'),
+  asyncHandler(supplierController.getSupplierWithProducts.bind(supplierController))
 );
 
 // POST /api/suppliers

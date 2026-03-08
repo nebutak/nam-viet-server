@@ -32,6 +32,38 @@ class AttributeController {
         const result = await attributeService.bulkDelete(req.body.ids, req.user!.id);
         res.status(200).json({ success: true, message: result.message });
     }
+
+    async import(req: AuthRequest, res: Response) {
+        const userId = req.user!.id;
+        const items = req.body.items;
+
+        if (!items || !Array.isArray(items)) {
+            res.status(400).json({
+                success: false,
+                error: {
+                    code: 'VALIDATION_ERROR',
+                    message: 'Dữ liệu không hợp lệ',
+                },
+            });
+            return;
+        }
+
+        const result = await attributeService.importAttributes(items, userId);
+
+        res.status(200).json({
+            success: true,
+            data: result,
+            message: 'Import dữ liệu thành công',
+            timestamp: new Date().toISOString(),
+        });
+    }
+
+    async downloadTemplate(_req: AuthRequest, res: Response) {
+        const buffer = await attributeService.downloadImportTemplate();
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename=Template_Import_Thuoctinh.xlsx');
+        res.send(buffer);
+    }
 }
 
 export default new AttributeController();

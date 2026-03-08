@@ -1,6 +1,7 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import { NotFoundError, ValidationError, ConflictError } from '@utils/errors';
 import { logActivity } from '@utils/logger';
+import ExcelJS from 'exceljs';
 import type {
   CreateCategoryInput,
   UpdateCategoryInput,
@@ -545,107 +546,211 @@ class CategoryService {
     return xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
   }
 
-  async importCategories(buffer: Buffer, userId: number) {
-    const xlsx = require('xlsx');
-    const workbook = xlsx.read(buffer, { type: 'buffer' });
-    const sheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheetName];
-    const data: any[] = xlsx.utils.sheet_to_json(worksheet);
+  async downloadImportTemplate(): Promise<Buffer> {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Nhập liệu Danh mục');
 
-    let successCount = 0;
-    let errorCount = 0;
-    const errors: string[] = [];
+    worksheet.mergeCells('A1:E1');
+    worksheet.getCell('A1').value = 'HƯỚNG DẪN NHẬP LIỆU DANH MỤC';
+    worksheet.getCell('A1').font = { bold: true, size: 14 };
+    worksheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
 
-    for (const [index, row] of data.entries()) {
-      try {
-        const rowNum = index + 2; // +1 for 0-index, +1 for header
-        const categoryCode = row['Mã danh mục'];
-        const categoryName = row['Tên danh mục'];
-        const slug = row['Đường dẫn'];
-        const description = row['Mô tả'];
-        const statusText = row['Trạng thái'];
-        const parentName = row['Danh mục cha'];
+    const instructions = [
+      '1. Các cột có dấu (*) là bắt buộc nhập',
+      '2. Mã danh mục và Đường dẫn phải là duy nhất.',
+      '3. Trạng thái chỉ điền "Hoạt động" hoặc "Ngừng"',
+      '4. Danh mục cha phải nhập đúng Tên danh mục đã tồn tại trong hệ thống (để trống nếu là danh mục root)'
+    ];
 
-        if (!categoryCode || !categoryName || !slug) {
-          errors.push(`Dòng ${rowNum}: Thiếu trường bắt buộc (Mã, Tên hoặc Đường dẫn)`);
-          errorCount++;
-          continue;
-        }
+    instructions.forEach((instruction, idx) => {
+      worksheet.getCell(`A${idx + 2}`).value = instruction;
+    });
 
-        const existingCode = await prisma.category.findFirst({
-          where: { categoryCode }
-        });
-        if (existingCode) {
-          if (existingCode.deletedAt === null) {
-            errors.push(`Dòng ${rowNum}: Mã danh mục ${categoryCode} đã tồn tại`);
-            errorCount++;
-            continue;
-          } else {
-            // Rename to free code
-            await prisma.category.update({
-              where: { id: existingCode.id },
-              data: { categoryCode: `${existingCode.categoryCode}-deleted-${Date.now()}` }
-            });
-          }
-        }
+    worksheet.getRow(7).values = [
+      'STT',
+      'Tên danh mục (*)',
+      'Mã danh mục (*)',
+      'Đường dẫn (*)',
+      'Danh mục cha',
+      'Mô tả',
+      'Trạng thái (*)'
+    ];
 
-        const existingSlug = await prisma.category.findFirst({
-          where: { slug }
-        });
-        if (existingSlug) {
-          if (existingSlug.deletedAt === null) {
-            errors.push(`Dòng ${rowNum}: Đường dẫn ${slug} đã tồn tại`);
-            errorCount++;
-            continue;
-          } else {
-            // Rename to free slug
-            await prisma.category.update({
-              where: { id: existingSlug.id },
-              data: { slug: `${existingSlug.slug}-deleted-${Date.now()}` }
-            });
-          }
-        }
+    worksheet.getRow(7).font = { bold: true };
+    worksheet.getRow(7).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE0E0E0' }
+    };
 
-        let parentId = null;
-        if (parentName) {
-          const parent = await prisma.category.findFirst({
-            where: { categoryName: parentName, deletedAt: null }
-          });
-          if (parent) {
-            parentId = parent.id;
-          } else {
-            errors.push(`Dòng ${rowNum}: Không tìm thấy danh mục cha '${parentName}'`);
-          }
-        }
+    worksheet.columns = [
+      { width: 10 },
+      { width: 30 },
+      { width: 20 },
+      { width: 25 },
+      { width: 30 },
+      { width: 40 },
+      { width: 20 },
+    ];
 
-        const status = (statusText === 'Ngừng hoạt động' || statusText === 'inactive') ? 'inactive' : 'active';
+    return Buffer.from(await workbook.xlsx.writeBuffer() as ArrayBuffer);
+  }
 
-        await prisma.category.create({
-          data: {
-            categoryCode,
-            categoryName,
-            slug,
-            description: description || null,
-            parentId,
-            status
-          }
-        });
-        successCount++;
-      } catch (err: any) {
-        errors.push(`Dòng ${index + 2}: Lỗi hệ thống - ${err.message}`);
-        errorCount++;
-      }
+  async importCategories(items: any[], userId: number): Promise<any> {
+    if (!items || items.length === 0) {
+      throw new ValidationError('Không tìm thấy dữ liệu hợp lệ để import');
     }
 
+    const validCategories: any[] = [];
+    const errors: any[] = [];
+    const parentNameMap = new Map<string, number>();
+
+    for (const [index, item] of items.entries()) {
+      const rowNumber = index + 8; // Headers at row 7
+
+      const categoryName = item.categoryName?.toString().trim();
+      const categoryCode = item.categoryCode?.toString().trim();
+      const slug = item.slug?.toString().trim();
+      const parentNameRow = item.parentName?.toString().trim() || null;
+      const description = item.description?.toString().trim() || null;
+      const statusRaw = item.status?.toString().trim().toLowerCase();
+
+      if (!categoryName) {
+        errors.push({ row: rowNumber, message: 'Thiếu Tên danh mục (*)' });
+        continue;
+      }
+      if (!categoryCode) {
+        errors.push({ row: rowNumber, message: 'Thiếu Mã danh mục (*)' });
+        continue;
+      }
+      if (!slug) {
+        errors.push({ row: rowNumber, message: 'Thiếu Đường dẫn (*)' });
+        continue;
+      }
+
+      let status = 'active';
+      if (statusRaw === 'ngừng' || statusRaw === 'ngung' || statusRaw === 'inactive' || statusRaw === 'ngừng hoạt động') {
+        status = 'inactive';
+      } else if (!statusRaw && item.status !== undefined) {
+        errors.push({ row: rowNumber, message: 'Trạng thái không được bỏ trống' });
+        continue;
+      }
+
+      let parentId: number | null = null;
+
+      if (parentNameRow) {
+        if (!parentNameMap.has(parentNameRow)) {
+          const parent = await prisma.category.findFirst({
+            where: { categoryName: parentNameRow, deletedAt: null }
+          });
+          if (parent) {
+            parentNameMap.set(parentNameRow, parent.id);
+            parentId = parent.id;
+          } else {
+            errors.push({ row: rowNumber, message: `Không tìm thấy danh mục cha '${parentNameRow}'` });
+            continue;
+          }
+        } else {
+            parentId = parentNameMap.get(parentNameRow) || null;
+        }
+      }
+
+      validCategories.push({
+        categoryName,
+        categoryCode,
+        slug,
+        parentId,
+        description,
+        status,
+        rowNumber
+      });
+    }
+
+    if (validCategories.length === 0) {
+      throw new ValidationError('Không tìm thấy dữ liệu hợp lệ để import (có thể bị lỗi format)');
+    }
+
+    // Check duplicates in file
+    const codeSet = new Set();
+    const slugSet = new Set();
+    
+    validCategories.forEach(cat => {
+      if (codeSet.has(cat.categoryCode)) {
+        errors.push({ row: cat.rowNumber, message: `Mã danh mục ${cat.categoryCode} bị trùng trong file` });
+      } else {
+        codeSet.add(cat.categoryCode);
+      }
+
+      if (slugSet.has(cat.slug)) {
+        errors.push({ row: cat.rowNumber, message: `Đường dẫn ${cat.slug} bị trùng trong file` });
+      } else {
+        slugSet.add(cat.slug);
+      }
+    });
+
+    if (errors.length > 0) {
+       throw { importErrors: errors };
+    }
+
+    // Check DB existing codes
+    const existingCategories = await prisma.category.findMany({
+        where: {
+            OR: [
+                { categoryCode: { in: validCategories.map(c => c.categoryCode) } },
+                { slug: { in: validCategories.map(c => c.slug) } }
+            ]
+        },
+        select: { categoryCode: true, slug: true, deletedAt: true, id: true }
+    });
+
+    for (const cat of validCategories) {
+        const matches = existingCategories.filter(e => e.categoryCode === cat.categoryCode || e.slug === cat.slug);
+        for(let match of matches) {
+            if(match.deletedAt === null) {
+                if(match.categoryCode === cat.categoryCode) {
+                     errors.push({ row: cat.rowNumber, message: `Mã danh mục ${cat.categoryCode} đã tồn tại trong hệ thống` });
+                }
+                if(match.slug === cat.slug) {
+                     errors.push({ row: cat.rowNumber, message: `Đường dẫn ${cat.slug} đã tồn tại trong hệ thống` });
+                }
+            } else {
+               // Hard delete or rename soft deleted item to free up space
+               await prisma.category.update({
+                  where: { id: match.id },
+                  data: {
+                      categoryCode: `${match.categoryCode}-deleted-${Date.now()}`,
+                      slug: `${match.slug}-deleted-${Date.now()}`
+                  }
+               });
+            }
+        }
+    }
+
+    if (errors.length > 0) {
+      throw { importErrors: errors };
+    }
+
+    const { count } = await prisma.category.createMany({
+      data: validCategories.map(c => ({
+          categoryName: c.categoryName,
+          categoryCode: c.categoryCode,
+          slug: c.slug,
+          parentId: c.parentId,
+          description: c.description,
+          status: c.status,
+      })),
+      skipDuplicates: true,
+    });
+
     logActivity('import', userId, 'categories', {
-      successCount,
-      errorCount
+      action: 'import_categories',
+      importedCount: count,
     });
 
     return {
-      successCount,
-      errorCount,
-      errors
+      importedCount: count,
+      totalProcessed: items.length,
+      errors,
     };
   }
 

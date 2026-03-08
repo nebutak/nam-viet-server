@@ -12,27 +12,6 @@ import {
   bulkDeleteCategorySchema,
 } from '@validators/category.validator';
 import { logActivityMiddleware } from '@middlewares/logger';
-import multer from 'multer';
-
-// Setup multer for file uploads
-const upload = multer({
-  dest: './uploads/categories/',
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
-  fileFilter: (_req, file, cb) => {
-    // Only allow Excel files
-    const allowedMimes = [
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'text/csv',
-    ];
-
-    if (allowedMimes.includes(file.mimetype) || file.originalname.endsWith('.csv')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only Excel (.xlsx, .xls) and CSV files are allowed'));
-    }
-  },
-});
 
 const router = Router();
 
@@ -71,6 +50,29 @@ router.get(
   '/tree',
   authorize('GET_CATEGORY'),
   asyncHandler(categoryController.getCategoryTree.bind(categoryController))
+);
+
+/**
+ * GET /api/categories/import-template
+ * Download category import template
+ * Permission: CREATE_CATEGORY
+ */
+router.get(
+  '/import-template',
+  authorize('CREATE_CATEGORY'),
+  asyncHandler(categoryController.downloadTemplate.bind(categoryController))
+);
+
+/**
+ * POST /api/categories/import
+ * Import categories from Excel JSON items
+ * Permission: CREATE_CATEGORY
+ */
+router.post(
+  '/import',
+  authorize('CREATE_CATEGORY'),
+  logActivityMiddleware('import', 'category'),
+  asyncHandler(categoryController.import.bind(categoryController))
 );
 
 /**
@@ -158,19 +160,6 @@ router.get(
   authorize('GET_CATEGORY'),
   logActivityMiddleware('export', 'category'),
   asyncHandler(categoryController.exportCategories.bind(categoryController))
-);
-
-/**
- * POST /api/categories/import
- * Import categories from Excel
- * Permission: CREATE_CATEGORY
- */
-router.post(
-  '/import',
-  authorize('CREATE_CATEGORY'),
-  upload.single('file'),
-  logActivityMiddleware('import', 'category'),
-  asyncHandler(categoryController.importCategories.bind(categoryController))
 );
 
 export default router;

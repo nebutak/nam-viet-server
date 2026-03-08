@@ -386,6 +386,10 @@ model Product {
   sellingPriceWholesale Decimal?       @map("selling_price_wholesale") @db.Decimal(15, 2)
   sellingPriceVip       Decimal?       @map("selling_price_vip") @db.Decimal(15, 2)
   taxRate               Decimal        @default(0) @map("tax_rate") @db.Decimal(5, 2)
+  taxIds                Json?          @map("tax_ids")
+  manageSerial          Boolean        @default(false) @map("manage_serial")
+  applyWarranty         Boolean        @default(false) @map("apply_warranty")
+  warrantyPolicy        Json?          @map("warranty_policy")
   minStockLevel         Decimal        @default(0) @map("min_stock_level") @db.Decimal(15, 2)
   expiryDate            DateTime?      @map("expiry_date") @db.Date
   status                ProductStatus  @default(active)
@@ -418,6 +422,7 @@ model Product {
   materials                ProductMaterial[]
   expiries                 Expiry[]
   productHasAttributes     ProductHasAttribute[]
+  unitConversions          ProductUnitConversion[]
 
   @@index([sku])
   @@index([categoryId])
@@ -2026,9 +2031,10 @@ model Unit {
   updatedAt   DateTime   @updatedAt @map("updated_at")
   deletedAt   DateTime?  @map("deleted_at")
 
-  creator  User?     @relation("UnitCreator", fields: [createdBy], references: [id], onDelete: SetNull)
-  updater  User?     @relation("UnitUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
-  products Product[]
+  creator         User?                   @relation("UnitCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  updater         User?                   @relation("UnitUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
+  products        Product[]
+  unitConversions ProductUnitConversion[]
 
   @@index([unitCode])
   @@index([status])
@@ -2101,4 +2107,21 @@ model ProductHasAttribute {
   @@index([productId])
   @@index([attributeId])
   @@map("product_has_attributes")
+}
+
+model ProductUnitConversion {
+  id               Int      @id @default(autoincrement())
+  productId        Int      @map("product_id")
+  unitId           Int      @map("unit_id")
+  conversionFactor Decimal  @map("conversion_factor") @db.Decimal(15, 2)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  unit    Unit    @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, unitId])
+  @@index([productId])
+  @@index([unitId])
+  @@map("product_unit_conversions")
 }
