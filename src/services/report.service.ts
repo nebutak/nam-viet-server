@@ -873,33 +873,57 @@ class ReportService {
   async getInventoryReport(params: InventoryReportParams) {
     const { warehouseId, categoryId, productType, lowStock, searchTerm, showExpiring } = params;
 
+    // Query expiring products if showExpiring is true
+    let expiringProductIds: Set<number> | null = null;
+    if (showExpiring) {
+      const today = new Date();
+      const sevenDaysLater = new Date(today);
+      sevenDaysLater.setDate(today.getDate() + 7);
+
+      const expiringProducts = await prisma.expiry.findMany({
+        where: {
+          endDate: {
+            gte: today,
+            lte: sevenDaysLater,
+          },
+          deletedAt: null,
+        },
+        select: {
+          productId: true,
+        },
+      });
+
+      expiringProductIds = new Set(expiringProducts.map(e => e.productId).filter((id): id is number => id !== null));
+    }
+
     const where: Prisma.InventoryWhereInput = {
       ...(warehouseId && { warehouseId }),
+      ...(showExpiring && expiringProductIds && expiringProductIds.size > 0 && {
+        productId: {
+          in: Array.from(expiringProductIds),
+        },
+      }),
       ...(productType && {
         // Product type filtering removed as productType field was removed
       }),
-      ...(categoryId && {
+      ...((categoryId || searchTerm) && {
         product: {
-          categoryId,
+          ...(categoryId && { categoryId }),
+          ...(searchTerm && {
+            OR: [
+              {
+                code: {
+                  contains: searchTerm,
+                },
+              },
+              {
+                productName: {
+                  contains: searchTerm,
+                },
+              },
+            ],
+          }),
         },
-      }),
-      ...(searchTerm && {
-        OR: [
-          {
-            product: {
-              code: {
-                contains: searchTerm,
-              },
-            },
-          },
-          {
-            product: {
-              productName: {
-                contains: searchTerm,
-              },
-            },
-          },
-        ],
       }),
     };
 
@@ -935,9 +959,9 @@ class ReportService {
       const value = availableQty * Number(inv.product.basePrice || 0);
       const isLowStock = availableQty < Number(inv.product.minStockLevel);
       
-      // Check if expiring (within 7 days or already expired) - expiryDate field was removed from schema
-      const daysUntilExpiry = null;
-      const isExpiring = false;
+      // Check if product is in expiring list
+      const isExpiring = expiringProductIds ? expiringProductIds.has(inv.productId) : false;
+      const daysUntilExpiry = null; // We don't calculate exact days here, just check if in expiring list
 
       return {
         warehouseId: inv.warehouseId,
@@ -967,9 +991,7 @@ class ReportService {
     if (lowStock) {
       filtered = filtered.filter((item) => item.isLowStock);
     }
-    if (showExpiring) {
-      filtered = filtered.filter((item) => item.isExpiring);
-    }
+    // showExpiring filter is already applied in the query
 
     const summary = {
       totalItems: filtered.length,
@@ -978,20 +1000,21 @@ class ReportService {
       totalQuantity: filtered.reduce((sum, item) => sum + item.availableQuantity, 0),
     };
 
-    // Group by product type
-    const byType = Object.values(
+    // Group by category
+    const byCategory = Object.values(
       filtered.reduce((acc, item) => {
-        if (!acc[item.productType]) {
-          acc[item.productType] = {
-            productType: item.productType,
+        const category = item.categoryName || 'Khác';
+        if (!acc[category]) {
+          acc[category] = {
+            category: category,
             quantity: 0,
             value: 0,
             itemCount: 0,
           };
         }
-        acc[item.productType].quantity += item.availableQuantity;
-        acc[item.productType].value += item.totalValue;
-        acc[item.productType].itemCount += 1;
+        acc[category].quantity += item.availableQuantity;
+        acc[category].value += item.totalValue;
+        acc[category].itemCount += 1;
         return acc;
       }, {} as Record<string, any>)
     );
@@ -1011,7 +1034,7 @@ class ReportService {
     return {
       summary,
       data: filtered,
-      byType,
+      byCategory,
       topProducts,
     };
   }
@@ -2171,6 +2194,32 @@ class ReportService {
     });
 
     return Object.values(grouped).sort((a: any, b: any) => a.period.localeCompare(b.period));
+  }
+
+  // =====================================================
+  // FILTER OPTIONS
+  // =====================================================
+  
+  // Get warehouses for filter (truy vấn trực tiếp)
+  async getWarehousesForFilter() {
+    const warehouses = await prisma.warehouse.findMany({
+      where: {
+        status: 'active',
+      },
+      select: {
+        id: true,
+        warehouseCode: true,
+        warehouseName: true,
+        warehouseType: true,
+        city: true,
+        region: true,
+      },
+      orderBy: {
+        warehouseName: 'asc',
+      },
+    });
+
+    return warehouses;
   }
 }
 

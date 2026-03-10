@@ -669,7 +669,7 @@ export async function main() {
   // Insert products
   for (const product of products) {
     await prisma.product.upsert({
-      where: { sku: product.sku },
+      where: { code : product.sku },
       update: product as any,
       create: product as any,
     });

@@ -162,7 +162,16 @@ class ReportController {
 
   // GET /api/reports/inventory - Inventory report
   async getInventoryReport(req: AuthRequest, res: Response) {
-    const result = await reportService.getInventoryReport(req.query as any);
+    // Convert query params
+    const params = {
+      ...req.query,
+      warehouseId: req.query.warehouseId ? Number(req.query.warehouseId) : undefined,
+      categoryId: req.query.categoryId ? Number(req.query.categoryId) : undefined,
+      lowStock: req.query.lowStock === 'true',
+      showExpiring: req.query.showExpiring === 'true',
+    };
+
+    const result = await reportService.getInventoryReport(params as any);
 
     res.status(200).json({
       success: true,
@@ -415,6 +424,18 @@ class ReportController {
     res.status(200).json({
       success: true,
       data: result,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // GET /api/reports/filter-options/warehouses - Get warehouses for filter
+  async getWarehousesForFilter(_req: AuthRequest, res: Response) {
+    const warehouses = await reportService.getWarehousesForFilter();
+
+    res.status(200).json({
+      success: true,
+      message: 'Lấy danh sách kho thành công',
+      data: warehouses,
       timestamp: new Date().toISOString(),
     });
   }

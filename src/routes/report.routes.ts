@@ -238,4 +238,14 @@ router.get(
   asyncHandler(reportController.getFinancialReport.bind(reportController))
 );
 
+// =====================================================
+// FILTER OPTIONS
+// =====================================================
+// GET /api/reports/filter-options/warehouses - Get warehouses for filter
+router.get(
+  '/filter-options/warehouses',
+  authorize('GET_INVENTORY_REPORT'),
+  asyncHandler(reportController.getWarehousesForFilter.bind(reportController))
+);
+
 export default router;
