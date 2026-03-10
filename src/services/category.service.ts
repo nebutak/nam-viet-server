@@ -33,7 +33,6 @@ class CategoryService {
         OR: [
           { categoryName: { contains: search } },
           { categoryCode: { contains: search } },
-          { description: { contains: search } },
         ],
       }),
       // Handle parentId filter:
@@ -57,9 +56,7 @@ class CategoryService {
           id: true,
           categoryCode: true,
           categoryName: true,
-          slug: true,
           parentId: true,
-          description: true,
           status: true,
           createdAt: true,
           updatedAt: true,
@@ -105,9 +102,7 @@ class CategoryService {
         id: true,
         categoryCode: true,
         categoryName: true,
-        slug: true,
         parentId: true,
-        description: true,
         _count: {
           select: {
             products: true,
@@ -139,9 +134,7 @@ class CategoryService {
         id: true,
         categoryCode: true,
         categoryName: true,
-        slug: true,
         parentId: true,
-        description: true,
         status: true,
         createdAt: true,
         updatedAt: true,
@@ -150,7 +143,6 @@ class CategoryService {
             id: true,
             categoryCode: true,
             categoryName: true,
-            slug: true,
           },
         },
         children: {
@@ -159,7 +151,6 @@ class CategoryService {
             id: true,
             categoryCode: true,
             categoryName: true,
-            slug: true,
             status: true,
             _count: {
               select: {
@@ -202,21 +193,6 @@ class CategoryService {
       }
     }
 
-    const existingSlug = await prisma.category.findFirst({
-      where: { slug: data.slug }
-    });
-    if (existingSlug) {
-      if (existingSlug.deletedAt === null) {
-        throw new ConflictError('Slug đã tồn tại');
-      } else {
-        // Soft-deleted category exists with this slug, rename it to free up the slug
-        await prisma.category.update({
-          where: { id: existingSlug.id },
-          data: { slug: `${existingSlug.slug}-deleted-${Date.now()}` }
-        });
-      }
-    }
-
     if (data.parentId) {
       const parentExists = await prisma.category.findUnique({
         where: { id: data.parentId },
@@ -230,18 +206,14 @@ class CategoryService {
       data: {
         categoryCode: data.categoryCode,
         categoryName: data.categoryName,
-        slug: data.slug,
         parentId: data.parentId || null,
-        description: data.description || null,
         status: data.status || 'active',
       },
       select: {
         id: true,
         categoryCode: true,
         categoryName: true,
-        slug: true,
         parentId: true,
-        description: true,
         status: true,
         createdAt: true,
         parent: {
@@ -288,23 +260,6 @@ class CategoryService {
       }
     }
 
-    if (data.slug && data.slug !== existingCategory.slug) {
-      const existingSlug = await prisma.category.findFirst({
-        where: { slug: data.slug, id: { not: id } }
-      });
-      if (existingSlug) {
-        if (existingSlug.deletedAt === null) {
-          throw new ConflictError('Slug đã tồn tại');
-        } else {
-          // Soft-deleted category exists with this slug, rename it to free up the slug
-          await prisma.category.update({
-            where: { id: existingSlug.id },
-            data: { slug: `${existingSlug.slug}-deleted-${Date.now()}` }
-          });
-        }
-      }
-    }
-
     if (data.parentId !== undefined) {
       if (data.parentId === id) {
         throw new ValidationError('Danh mục không thể là danh mục cha của chính nó');
@@ -330,18 +285,14 @@ class CategoryService {
       data: {
         ...(data.categoryCode && { categoryCode: data.categoryCode }),
         ...(data.categoryName && { categoryName: data.categoryName }),
-        ...(data.slug && { slug: data.slug }),
         ...(data.parentId !== undefined && { parentId: data.parentId }),
-        ...(data.description !== undefined && { description: data.description }),
         ...(data.status && { status: data.status }),
       },
       select: {
         id: true,
         categoryCode: true,
         categoryName: true,
-        slug: true,
         parentId: true,
-        description: true,
         status: true,
         updatedAt: true,
         parent: {
@@ -504,18 +455,6 @@ class CategoryService {
     return !!category;
   }
 
-  async checkSlugExists(slug: string, excludeId?: number): Promise<boolean> {
-    const category = await prisma.category.findFirst({
-      where: {
-        slug,
-        deletedAt: null,
-        ...(excludeId && { id: { not: excludeId } }),
-      },
-    });
-
-    return !!category;
-  }
-
   async exportCategories() {
     // We'll import dynamically to avoid loading it if not used immediately,
     // though static import is also fine. Let's just use static or require.
@@ -532,9 +471,7 @@ class CategoryService {
     const data = categories.map((cat) => ({
       'Mã danh mục': cat.categoryCode,
       'Tên danh mục': cat.categoryName,
-      'Đường dẫn': cat.slug,
       'Danh mục cha': cat.parent?.categoryName || '',
-      'Mô tả': cat.description || '',
       'Trạng thái': cat.status === 'active' ? 'Hoạt động' : 'Ngừng hoạt động',
       'Ngày tạo': cat.createdAt.toISOString(),
     }));
@@ -570,9 +507,7 @@ class CategoryService {
       'STT',
       'Tên danh mục (*)',
       'Mã danh mục (*)',
-      'Đường dẫn (*)',
       'Danh mục cha',
-      'Mô tả',
       'Trạng thái (*)'
     ];
 
@@ -587,9 +522,7 @@ class CategoryService {
       { width: 10 },
       { width: 30 },
       { width: 20 },
-      { width: 25 },
       { width: 30 },
-      { width: 40 },
       { width: 20 },
     ];
 
@@ -610,9 +543,7 @@ class CategoryService {
 
       const categoryName = item.categoryName?.toString().trim();
       const categoryCode = item.categoryCode?.toString().trim();
-      const slug = item.slug?.toString().trim();
       const parentNameRow = item.parentName?.toString().trim() || null;
-      const description = item.description?.toString().trim() || null;
       const statusRaw = item.status?.toString().trim().toLowerCase();
 
       if (!categoryName) {
@@ -621,10 +552,6 @@ class CategoryService {
       }
       if (!categoryCode) {
         errors.push({ row: rowNumber, message: 'Thiếu Mã danh mục (*)' });
-        continue;
-      }
-      if (!slug) {
-        errors.push({ row: rowNumber, message: 'Thiếu Đường dẫn (*)' });
         continue;
       }
 
@@ -658,9 +585,7 @@ class CategoryService {
       validCategories.push({
         categoryName,
         categoryCode,
-        slug,
         parentId,
-        description,
         status,
         rowNumber
       });
@@ -672,19 +597,12 @@ class CategoryService {
 
     // Check duplicates in file
     const codeSet = new Set();
-    const slugSet = new Set();
     
     validCategories.forEach(cat => {
       if (codeSet.has(cat.categoryCode)) {
         errors.push({ row: cat.rowNumber, message: `Mã danh mục ${cat.categoryCode} bị trùng trong file` });
       } else {
         codeSet.add(cat.categoryCode);
-      }
-
-      if (slugSet.has(cat.slug)) {
-        errors.push({ row: cat.rowNumber, message: `Đường dẫn ${cat.slug} bị trùng trong file` });
-      } else {
-        slugSet.add(cat.slug);
       }
     });
 
@@ -696,30 +614,25 @@ class CategoryService {
     const existingCategories = await prisma.category.findMany({
         where: {
             OR: [
-                { categoryCode: { in: validCategories.map(c => c.categoryCode) } },
-                { slug: { in: validCategories.map(c => c.slug) } }
+                { categoryCode: { in: validCategories.map(c => c.categoryCode) } }
             ]
         },
-        select: { categoryCode: true, slug: true, deletedAt: true, id: true }
+        select: { categoryCode: true, deletedAt: true, id: true }
     });
 
     for (const cat of validCategories) {
-        const matches = existingCategories.filter(e => e.categoryCode === cat.categoryCode || e.slug === cat.slug);
+        const matches = existingCategories.filter(e => e.categoryCode === cat.categoryCode);
         for(let match of matches) {
             if(match.deletedAt === null) {
                 if(match.categoryCode === cat.categoryCode) {
                      errors.push({ row: cat.rowNumber, message: `Mã danh mục ${cat.categoryCode} đã tồn tại trong hệ thống` });
-                }
-                if(match.slug === cat.slug) {
-                     errors.push({ row: cat.rowNumber, message: `Đường dẫn ${cat.slug} đã tồn tại trong hệ thống` });
                 }
             } else {
                // Hard delete or rename soft deleted item to free up space
                await prisma.category.update({
                   where: { id: match.id },
                   data: {
-                      categoryCode: `${match.categoryCode}-deleted-${Date.now()}`,
-                      slug: `${match.slug}-deleted-${Date.now()}`
+                      categoryCode: `${match.categoryCode}-deleted-${Date.now()}`
                   }
                });
             }
@@ -734,9 +647,7 @@ class CategoryService {
       data: validCategories.map(c => ({
           categoryName: c.categoryName,
           categoryCode: c.categoryCode,
-          slug: c.slug,
           parentId: c.parentId,
-          description: c.description,
           status: c.status,
       })),
       skipDuplicates: true,

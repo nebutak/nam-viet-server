@@ -52,8 +52,6 @@ async function main() {
     console.log('   ✓ Deleted Suppliers');
 
     await prisma.promotionProduct.deleteMany({});
-    await prisma.productImage.deleteMany({});
-    await prisma.productVideo.deleteMany({});
     await prisma.inventory.deleteMany({});
     await prisma.product.deleteMany({});
     console.log('   ✓ Deleted Products');

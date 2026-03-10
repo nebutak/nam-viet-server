@@ -683,13 +683,6 @@ class StockTransactionService {
   }
 
   private async processImport(tx: any, transaction: any, userId: number) {
-    let purchaseOrder = null;
-    if (transaction.referenceType === 'purchase_order' && transaction.referenceId) {
-      purchaseOrder = await tx.purchaseOrder.findUnique({
-        where: { id: transaction.referenceId },
-      });
-    }
-
     for (const detail of transaction.details) {
       const current = await tx.inventory.findUnique({
         where: {
@@ -748,18 +741,8 @@ class StockTransactionService {
         });
       }
 
-      // Cập nhật giá nhập mới nhất vào Product
-      if (detail.unitPrice) {
-        await tx.product.update({
-          where: { id: detail.productId },
-          data: {
-            purchasePrice: Number(detail.unitPrice),
-            expiryDate: detail.expiryDate,
-            taxRate: purchaseOrder ? purchaseOrder.taxRate : undefined,
-            supplierId: purchaseOrder ? purchaseOrder.supplierId : undefined,
-          },
-        });
-      }
+      // Removed mapping to product.purchasePrice and expiryDate since those fields 
+      // are no longer stored on the Product model directly.
     }
 
     // Ghi nhận công nợ phải trả cho supplier (nếu là purchase order)
@@ -817,10 +800,20 @@ class StockTransactionService {
 
       if (newQuantity < 0) {
         throw new ValidationError(
-          `Insufficient inventory for product ${detail.product.productName}`
+          `Insufficient inventory for product ${detail.productId}`
         );
       }
 
+      // 1. FEFO Deduction from batches
+      await inventoryService.deductInventoryBatchFEFO(
+        tx,
+        transaction.warehouseId,
+        detail.productId,
+        Number(detail.quantity),
+        userId
+      );
+
+      // 2. Deduct from main inventory
       await tx.inventory.update({
         where: {
           warehouseId_productId: {
@@ -858,6 +851,15 @@ class StockTransactionService {
       if (newSourceQty < 0) {
         throw new ValidationError(`Insufficient inventory in source warehouse`);
       }
+
+      // FEFO Deduction from source warehouse batches
+      const deductedBatches = await inventoryService.deductInventoryBatchFEFO(
+        tx,
+        transaction.sourceWarehouseId,
+        detail.productId,
+        Number(detail.quantity),
+        userId
+      );
 
       await tx.inventory.update({
         where: {
@@ -903,6 +905,46 @@ class StockTransactionService {
           updatedBy: userId,
         },
       });
+
+      // Add the deducted batches from source into the destination warehouse
+      // We must query the newly upserted destInventory id to link batches
+      const updatedDestInventory = await tx.inventory.findUnique({
+        where: {
+          warehouseId_productId: {
+            warehouseId: transaction.destinationWarehouseId,
+            productId: detail.productId,
+          },
+        },
+      });
+
+      if (updatedDestInventory) {
+        for (const batch of deductedBatches) {
+          if (batch.batchNumber && batch.expiryDate) {
+            await tx.inventoryBatch.upsert({
+              where: {
+                inventoryId_batchNumber_expiryDate: {
+                  inventoryId: updatedDestInventory.id,
+                  batchNumber: batch.batchNumber,
+                  expiryDate: new Date(batch.expiryDate),
+                },
+              },
+              create: {
+                inventoryId: updatedDestInventory.id,
+                warehouseId: transaction.destinationWarehouseId,
+                productId: detail.productId,
+                batchNumber: batch.batchNumber,
+                expiryDate: new Date(batch.expiryDate),
+                quantity: batch.quantity,
+                updatedBy: userId,
+              },
+              update: {
+                quantity: { increment: batch.quantity },
+                updatedBy: userId,
+              },
+            });
+          }
+        }
+      }
     }
   }
 

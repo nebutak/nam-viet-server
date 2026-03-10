@@ -80,6 +80,26 @@ class UploadService {
     });
   }
 
+  getProductUploadMiddleware() {
+    return multer({
+      storage: multer.diskStorage({
+        destination: async (_req, _file, cb) => {
+          await this.ensureUploadDirs();
+          cb(null, PRODUCT_DIR);
+        },
+        filename: (_req, file, cb) => {
+          const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+          const ext = path.extname(file.originalname);
+          cb(null, `product-${uniqueSuffix}${ext}`);
+        },
+      }),
+      limits: {
+        fileSize: MAX_FILE_SIZE,
+      },
+      fileFilter: this.fileFilter,
+    });
+  }
+
   getVideoUploadMiddleware() {
     return multer({
       storage: this.getMulterStorage(),

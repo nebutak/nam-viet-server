@@ -12,14 +12,7 @@ export const createCategorySchema = z.object({
     .min(1, 'Category name is required')
     .max(200, 'Category name too long')
     .trim(),
-  slug: z
-    .string()
-    .min(1, 'Slug is required')
-    .max(200, 'Slug too long')
-    .regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens')
-    .trim(),
   parentId: z.number().int().positive('Invalid parent category ID').nullable().optional(),
-  description: z.string().max(500, 'Description too long').optional(),
   status: z.enum(['active', 'inactive']).optional().default('active'),
 });
 
@@ -31,14 +24,7 @@ export const updateCategorySchema = z.object({
     .trim()
     .optional(),
   categoryName: z.string().max(200, 'Category name too long').trim().optional(),
-  slug: z
-    .string()
-    .max(200, 'Slug too long')
-    .regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens')
-    .trim()
-    .optional(),
   parentId: z.number().int().positive('Invalid parent category ID').nullable().optional(),
-  description: z.string().max(500, 'Description too long').nullable().optional(),
   status: z.enum(['active', 'inactive']).optional(),
 });
 

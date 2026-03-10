@@ -4,7 +4,6 @@ import { authentication } from '@middlewares/auth';
 import { authorize, authorizeAny } from '@middlewares/authorize';
 import { validate, validateMultiple } from '@middlewares/validate';
 import { asyncHandler } from '@middlewares/errorHandler';
-import uploadService from '@services/upload.service';
 import {
   createProductSchema,
   updateProductSchema,
@@ -13,6 +12,8 @@ import {
   updateFeaturedSchema,
 } from '@validators/product.validator';
 import { logActivityMiddleware } from '@middlewares/logger';
+import uploadService from '@services/upload.service';
+import { parseFormData } from '@middlewares/parseFormData';
 
 const router = Router();
 
@@ -82,6 +83,8 @@ router.get(
 router.post(
   '/',
   authorize('CREATE_PRODUCT'),
+  uploadService.getProductUploadMiddleware().single('image'),
+  parseFormData,
   validate(createProductSchema, 'body'),
   logActivityMiddleware('create', 'product'),
   asyncHandler(productController.create.bind(productController))
@@ -141,6 +144,8 @@ router.put(
 router.put(
   '/:id',
   authorize('UPDATE_PRODUCT'),
+  uploadService.getProductUploadMiddleware().single('image'),
+  parseFormData,
   validateMultiple({
     params: productIdSchema,
     body: updateProductSchema,
@@ -158,50 +163,6 @@ router.delete(
   asyncHandler(productController.delete.bind(productController))
 );
 
-// Image Upload Routes
-router.post(
-  '/:id/images',
-  authorize('UPDATE_PRODUCT'),
-  validate(productIdSchema, 'params'),
-  uploadService.getUploadMiddleware().array('images', 5),
-  asyncHandler(productController.uploadImages.bind(productController))
-);
-
-// DELETE /api/products/:id/images/:imageId
-router.delete(
-  '/:id/images/:imageId',
-  authorize('UPDATE_PRODUCT'),
-  asyncHandler(productController.deleteImage.bind(productController))
-);
-
-// PATCH /api/products/:id/images/:imageId/primary
-router.patch(
-  '/:id/images/:imageId/primary',
-  authorize('UPDATE_PRODUCT'),
-  asyncHandler(productController.setPrimaryImage.bind(productController))
-);
-
-// Video Upload Routes
-router.post(
-  '/:id/videos',
-  authorize('UPDATE_PRODUCT'),
-  validate(productIdSchema, 'params'),
-  uploadService.getVideoUploadMiddleware().array('videos', 5),
-  asyncHandler(productController.uploadVideos.bind(productController))
-);
-
-// DELETE /api/products/:id/videos/:videoId
-router.delete(
-  '/:id/videos/:videoId',
-  authorize('UPDATE_PRODUCT'),
-  asyncHandler(productController.deleteVideo.bind(productController))
-);
-
-// PATCH /api/products/:id/videos/:videoId/primary
-router.patch(
-  '/:id/videos/:videoId/primary',
-  authorize('UPDATE_PRODUCT'),
-  asyncHandler(productController.setPrimaryVideo.bind(productController))
-);
+// Image and video upload routes removed - use single image field in Product model
 
 export default router;

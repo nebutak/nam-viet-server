@@ -31,10 +31,6 @@ async function main() {
     await prisma.stockTransfer.deleteMany({});
     await prisma.stockTransactionDetail.deleteMany({});
     await prisma.stockTransaction.deleteMany({});
-    await prisma.productionOrderMaterial.deleteMany({});
-    await prisma.productionOrder.deleteMany({});
-    await prisma.bomMaterial.deleteMany({});
-    await prisma.bom.deleteMany({});
     await prisma.invoiceDetail.deleteMany({});
     await prisma.invoice.deleteMany({});
     await prisma.purchaseOrderDetail.deleteMany({});
@@ -52,8 +48,6 @@ async function main() {
     console.log('   ✓ Deleted Suppliers');
 
     await prisma.promotionProduct.deleteMany({});
-    await prisma.productImage.deleteMany({});
-    await prisma.productVideo.deleteMany({});
     await prisma.inventory.deleteMany({});
     await prisma.product.deleteMany({});
     console.log('   ✓ Deleted Products');

@@ -11,12 +11,17 @@ export const createProductSchema = z.object({
   supplierId: z.number().or(z.string().transform(Number)).optional(),
   unitId: z.number().or(z.string().transform(Number)).optional(),
   description: z.string().max(500, 'Mô tả quá dài').optional(),
-  basePrice: z.number().min(0, 'Giá mua không thể âm').optional(),
-  price: z.number().min(0, 'Giá bán lẻ không thể âm').optional(),
-  minStockLevel: z.number().min(0, 'Tồn kho tối thiểu không thể âm').optional().default(0),
-  status: z.enum(['active', 'inactive', 'discontinued']).optional().default('active'),
+  note: z.string().max(500).optional(),
+  basePrice: z.union([z.number(), z.string().transform(Number)]).optional(),
+  price: z.union([z.number(), z.string().transform(Number)]).optional(),
+  minStockLevel: z.union([z.number(), z.string().transform(Number)]).optional().default(0),
+  status: z.enum(['active', 'inactive']).optional().default('active'),
+  image: z.string().optional(),
+  hasExpiry: z.boolean().optional().default(false),
+  manageSerial: z.boolean().optional().default(false),
   // New fields added
   taxIds: z.array(z.number()).optional(),
+  materialIds: z.array(z.number()).optional(),
   attributeIdsWithValue: z.array(z.object({
     attributeId: z.number().or(z.string().transform(Number)),
     value: z.string().optional()
@@ -36,12 +41,17 @@ export const updateProductSchema = z.object({
   supplierId: z.number().or(z.string().transform(Number)).nullable().optional(),
   unitId: z.number().or(z.string().transform(Number)).nullable().optional(),
   description: z.string().max(500).nullable().optional(),
-  basePrice: z.number().min(0, 'Giá mua không thể âm').nullable().optional(),
-  price: z.number().min(0, 'Giá bán lẻ không thể âm').nullable().optional(),
-  minStockLevel: z.number().min(0).optional(),
-  status: z.enum(['active', 'inactive', 'discontinued']).optional(),
+  note: z.string().max(500).nullable().optional(),
+  basePrice: z.union([z.number(), z.string().transform(Number)]).nullable().optional(),
+  price: z.union([z.number(), z.string().transform(Number)]).nullable().optional(),
+  minStockLevel: z.union([z.number(), z.string().transform(Number)]).optional(),
+  status: z.enum(['active', 'inactive']).optional(),
+  image: z.string().optional(),
+  hasExpiry: z.boolean().optional(),
+  manageSerial: z.boolean().optional(),
   // New fields added
   taxIds: z.array(z.number()).optional(),
+  materialIds: z.array(z.number()).optional(),
   attributeIdsWithValue: z.array(z.object({
     attributeId: z.number().or(z.string().transform(Number)),
     value: z.string().optional()
@@ -89,7 +99,7 @@ export const productQuerySchema = z.object({
     .optional()
     .transform((v) => (v ? Number(v) : undefined)),
   status: z
-    .enum(['active', 'inactive', 'discontinued'])
+    .enum(['active', 'inactive'])
     .refine((val) => !!val, { message: 'Trạng thái không hợp lệ!' })
     .optional(),
   sortBy: z.string().optional().default('createdAt'),
@@ -104,57 +114,9 @@ export const productIdSchema = z.object({
   id: z.string().transform(Number),
 });
 
-export const uploadProductImagesSchema = z.object({
-  images: z
-    .array(
-      z.object({
-        imageType: z
-          .enum(['thumbnail', 'gallery', 'main'])
-          .refine((val) => !!val, { message: 'Loại hình ảnh không hợp lệ' })
-          .optional()
-          .default('gallery'),
-        altText: z.string().max(255).optional(),
-        isPrimary: z.boolean().optional().default(false),
-        displayOrder: z.number().int().min(0).optional().default(0),
-      })
-    )
-    .min(1, 'Phải có ít nhất một hình ảnh')
-    .max(5, 'Tối đa 5 hình ảnh'),
-});
-
-export const uploadProductVideosSchema = z.object({
-  videos: z
-    .array(
-      z.object({
-        videoType: z
-          .enum(['demo', 'tutorial', 'review', 'unboxing', 'promotion', 'other'])
-          .refine((val) => !!val, { message: 'Loại video không hợp lệ' })
-          .optional()
-          .default('demo'),
-        title: z.string().max(255).optional(),
-        description: z.string().max(500).optional(),
-        isPrimary: z.boolean().optional().default(false),
-        displayOrder: z.number().int().min(0).optional().default(0),
-      })
-    )
-    .min(1, 'Phải có ít nhất một video')
-    .max(5, 'Tối đa 5 video'),
-});
-
-export const deleteImageSchema = z.object({
-  imageId: z.string().transform(Number),
-});
-
-export const deleteVideoSchema = z.object({
-  videoId: z.string().transform(Number),
-});
-
 export type CreateProductInput = z.infer<typeof createProductSchema>;
 export type UpdateProductInput = z.infer<typeof updateProductSchema>;
 export type UpdateFeaturedInput = z.infer<typeof updateFeaturedSchema>;
 export type ProductQueryInput = z.infer<typeof productQuerySchema>;
 export type ProductIdInput = z.infer<typeof productIdSchema>;
-export type UploadProductImagesInput = z.infer<typeof uploadProductImagesSchema>;
-export type UploadProductVideosInput = z.infer<typeof uploadProductVideosSchema>;
-export type DeleteImageInput = z.infer<typeof deleteImageSchema>;
-export type DeleteVideoInput = z.infer<typeof deleteVideoSchema>;
+// Image and video schemas removed - use single image field in Product model

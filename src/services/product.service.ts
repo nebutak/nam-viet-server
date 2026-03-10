@@ -1,14 +1,11 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import { NotFoundError, ValidationError, ConflictError } from '@utils/errors';
 import { logActivity } from '@utils/logger';
-import uploadService from './upload.service';
 import {
   ProductQueryInput,
   CreateProductInput,
   UpdateProductInput,
 } from '@validators/product.validator';
-import path from 'path';
-import { serializeBigInt } from '@utils/serializer';
 
 const prisma = new PrismaClient();
 
@@ -81,17 +78,7 @@ class ProductService {
             unitName: true,
           },
         },
-        images: {
-          orderBy: { displayOrder: 'asc' },
-          select: {
-            id: true,
-            imageUrl: true,
-            imageType: true,
-            altText: true,
-            isPrimary: true,
-            displayOrder: true,
-          },
-        },
+
         inventory: {
           select: {
             quantity: true,
@@ -164,12 +151,7 @@ class ProductService {
             unitName: true,
           },
         },
-        images: {
-          orderBy: { displayOrder: 'asc' },
-        },
-        videos: {
-          orderBy: { displayOrder: 'asc' },
-        },
+
         creator: {
           select: {
             id: true,
@@ -196,6 +178,18 @@ class ProductService {
             },
           },
         },
+        unitConversions: {
+          select: {
+            unitId: true,
+            conversionFactor: true,
+          },
+        },
+        productHasAttributes: {
+          select: {
+            attributeId: true,
+            value: true,
+          },
+        },
       },
     });
 
@@ -203,13 +197,7 @@ class ProductService {
       throw new NotFoundError('Product');
     }
 
-    // Serialize BigInt in videos before caching/returning
-    const serializedProduct = {
-      ...product,
-      videos: product.videos?.map((video) => serializeBigInt(video)),
-    };
-
-    return serializedProduct;
+    return product;
   }
 
   async create(data: CreateProductInput, userId: number) {
@@ -248,31 +236,45 @@ class ProductService {
         supplierId: data.supplierId,
         unitId: data.unitId,
         description: data.description,
+        note: data.note,
         basePrice: data.basePrice,
         price: data.price,
+        image: data.image,
         taxIds: data.taxIds ? JSON.parse(JSON.stringify(data.taxIds)) : null,
         applyWarranty: data.applyWarranty || false,
         warrantyPolicy: data.warrantyPolicy ? JSON.parse(JSON.stringify(data.warrantyPolicy)) : null,
         minStockLevel: data.minStockLevel,
+        hasExpiry: data.hasExpiry ?? false,
+        manageSerial: data.manageSerial ?? false,
         status: (data.status as any) || 'active',
         createdBy: userId,
-        productHasAttributes: {
-          create: data.attributeIdsWithValue?.map((attr) => ({
-            attributeId: attr.attributeId,
-            value: attr.value,
-          })) || [],
-        },
-        unitConversions: {
-          create: data.unitConversions?.map((uc) => ({
-            unitId: uc.unitId,
-            conversionFactor: uc.conversionFactor,
-          })) || [],
-        },
+        ...(data.attributeIdsWithValue && {
+          productHasAttributes: {
+            create: data.attributeIdsWithValue.map((attr) => ({
+              attributeId: attr.attributeId,
+              value: attr.value,
+            })),
+          },
+        }),
+        ...(data.unitConversions && {
+          unitConversions: {
+            create: data.unitConversions.map((uc) => ({
+              unitId: uc.unitId,
+              conversionFactor: uc.conversionFactor,
+            })),
+          },
+        }),
+        ...(data.materialIds && {
+          materials: {
+            create: data.materialIds.map((id) => ({
+              materialId: id,
+            })),
+          },
+        }),
       },
       include: {
         category: true,
         supplier: true,
-        images: true,
       },
     });
 
@@ -353,11 +355,18 @@ class ProductService {
             })),
           },
         }),
+        ...(restData.materialIds !== undefined && {
+          materials: {
+            deleteMany: {},
+            create: restData.materialIds ? restData.materialIds.map((id: number) => ({
+              materialId: id,
+            })) : [],
+          },
+        }),
       },
       include: {
         category: true,
         supplier: true,
-        images: true,
       },
     });
 
@@ -393,8 +402,6 @@ class ProductService {
     const product = await prisma.product.findUnique({
       where: { id },
       include: {
-        images: true,
-        videos: true,
         inventory: true,
         purchaseOrderDetails: true,
         invoiceDetails: true,
@@ -416,19 +423,9 @@ class ProductService {
 
     if (product.purchaseOrderDetails.length > 0 || product.invoiceDetails.length > 0) {
       throw new ValidationError(
-        'Cannot delete product that has been used in orders. Consider marking it as discontinued instead.'
+        'Cannot delete product that has been used in orders. Consider marking it as inactive instead.'
       );
     }
-
-    // // Delete all image files
-    // for (const image of product.images) {
-    //   await uploadService.deleteFile(image.imageUrl);
-    // }
-
-    // // Delete all video files
-    // for (const video of product.videos) {
-    //   await uploadService.deleteFile(video.videoUrl);
-    // }
 
     // soft delete
     await prisma.product.update({
@@ -492,397 +489,7 @@ class ProductService {
     return [];
   }
 
-  async uploadImages(
-    productId: number,
-    files: Express.Multer.File[],
-    imageMetadata: Array<{
-      imageType?: string;
-      altText?: string;
-      isPrimary?: boolean;
-      displayOrder?: number;
-    }>,
-    userId: number
-  ) {
-    const product = await prisma.product.findUnique({
-      where: { id: productId },
-      include: { images: true },
-    });
-
-    if (!product) {
-      throw new NotFoundError('Product');
-    }
-
-    if (product.images.length + files.length > 5) {
-      throw new ValidationError('Maximum 5 images allowed per product');
-    }
-
-    const uploadedImages = [];
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const metadata = imageMetadata[i] || {};
-
-      const processedPath = await this.processProductImage(file, productId);
-
-      const image = await prisma.productImage.create({
-        data: {
-          productId,
-          imageUrl: processedPath,
-          imageType: (metadata.imageType as any) || 'gallery',
-          altText: metadata.altText,
-          isPrimary: metadata.isPrimary || false,
-          displayOrder: metadata.displayOrder || i,
-          uploadedBy: userId,
-        },
-      });
-
-      uploadedImages.push(image);
-    }
-
-    logActivity('update', userId, 'products', {
-      recordId: productId,
-      action: 'upload_images',
-      newValue: uploadedImages,
-    });
-
-    return uploadedImages;
-  }
-
-  private async processProductImage(file: Express.Multer.File, productId: number): Promise<string> {
-    const uploadDir = path.join(process.env.UPLOAD_DIR || './uploads', 'products');
-    const sharp = require('sharp');
-    const fs = require('fs/promises');
-
-    await fs.mkdir(uploadDir, { recursive: true });
-
-    const ext = path.extname(file.originalname);
-    const filename = `product-${productId}-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
-    const outputPath = path.join(uploadDir, filename);
-
-    await sharp(file.path)
-      .resize(800, 800, {
-        fit: 'inside',
-        withoutEnlargement: true,
-      })
-      .jpeg({ quality: 90 })
-      .toFile(outputPath);
-
-    await uploadService.deleteFile(file.path);
-
-    return `/uploads/products/${filename}`;
-  }
-
-  private async processProductVideo(file: Express.Multer.File, productId: number): Promise<string> {
-    const uploadDir = path.join(process.env.UPLOAD_DIR || './uploads', 'products');
-    const fs = require('fs/promises');
-
-    await fs.mkdir(uploadDir, { recursive: true });
-
-    const ext = path.extname(file.originalname);
-    const filename = `video-${productId}-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
-    const outputPath = path.join(uploadDir, filename);
-
-    // Move file from temp location (AVATAR_DIR) to products directory
-    await fs.rename(file.path, outputPath);
-
-    return `/uploads/products/${filename}`;
-  }
-
-  async deleteImage(productId: number, imageId: number, userId: number) {
-    const product = await prisma.product.findUnique({
-      where: { id: productId },
-    });
-
-    if (!product) {
-      throw new NotFoundError('Product');
-    }
-
-    const image = await prisma.productImage.findFirst({
-      where: {
-        id: imageId,
-        productId,
-      },
-    });
-
-    if (!image) {
-      throw new NotFoundError('Image');
-    }
-
-    await uploadService.deleteFile(image.imageUrl);
-
-    await prisma.productImage.delete({
-      where: { id: imageId },
-    });
-
-    logActivity('update', userId, 'products', {
-      recordId: productId,
-      action: 'delete_image',
-      oldValue: image,
-    });
-
-    return { message: 'Image deleted successfully' };
-  }
-
-  /**
-   * Set primary image for product
-   */
-  async setPrimaryImage(productId: number, imageId: number, userId: number) {
-    const product = await prisma.product.findUnique({
-      where: { id: productId },
-    });
-
-    if (!product) {
-      throw new NotFoundError('Product');
-    }
-
-    const image = await prisma.productImage.findFirst({
-      where: {
-        id: imageId,
-        productId,
-      },
-    });
-
-    if (!image) {
-      throw new NotFoundError('Image');
-    }
-
-    // Reset all images to non-primary
-    await prisma.productImage.updateMany({
-      where: { productId },
-      data: { isPrimary: false },
-    });
-
-    // Set the selected image as primary
-    const updatedImage = await prisma.productImage.update({
-      where: { id: imageId },
-      data: { isPrimary: true },
-    });
-
-    logActivity('update', userId, 'products', {
-      recordId: productId,
-      action: 'set_primary_image',
-      newValue: { imageId },
-    });
-
-    return updatedImage;
-  }
-
-  // ===== VIDEO METHODS =====
-
-  async uploadVideos(
-    productId: number,
-    files: Express.Multer.File[],
-    videoMetadata: Array<{
-      videoType?: string;
-      title?: string;
-      description?: string;
-      isPrimary?: boolean;
-      displayOrder?: number;
-    }>,
-    userId: number
-  ) {
-    // Validate product exists
-    const product = await prisma.product.findUnique({
-      where: { id: productId },
-      include: { videos: true },
-    });
-
-    if (!product) {
-      throw new NotFoundError('Product');
-    }
-
-    // Validate files
-    if (!files || files.length === 0) {
-      throw new ValidationError('At least one video file is required');
-    }
-
-    if (files.length > 5) {
-      throw new ValidationError('Maximum 5 videos allowed per request');
-    }
-
-    // Validate total videos won't exceed limit
-    if (product.videos.length + files.length > 5) {
-      throw new ValidationError('Maximum 5 videos allowed per product');
-    }
-
-    // Validate each file
-    const validVideoMimes = [
-      'video/mp4',
-      'video/quicktime',
-      'video/x-msvideo',
-      'video/x-matroska',
-      'video/webm',
-    ];
-    const maxFileSize = 500 * 1024 * 1024; // 500MB
-
-    for (const file of files) {
-      if (!validVideoMimes.includes(file.mimetype)) {
-        throw new ValidationError(
-          `Invalid video format: ${file.mimetype}. Supported: MP4, MOV, AVI, MKV, WebM`
-        );
-      }
-
-      if (file.size > maxFileSize) {
-        throw new ValidationError(
-          `Video file too large. Maximum size: 500MB, Got: ${(file.size / 1024 / 1024).toFixed(
-            2
-          )}MB`
-        );
-      }
-    }
-
-    // Validate metadata
-    for (let i = 0; i < videoMetadata.length; i++) {
-      const meta = videoMetadata[i];
-
-      if (
-        meta.videoType &&
-        !['demo', 'tutorial', 'review', 'unboxing', 'promotion', 'other'].includes(meta.videoType)
-      ) {
-        throw new ValidationError(`Invalid video type: ${meta.videoType}`);
-      }
-
-      if (meta.title && meta.title.length > 255) {
-        throw new ValidationError(`Video title too long (max 255 characters)`);
-      }
-
-      if (meta.description && meta.description.length > 500) {
-        throw new ValidationError(`Video description too long (max 500 characters)`);
-      }
-
-      if (meta.displayOrder !== undefined && meta.displayOrder < 0) {
-        throw new ValidationError(`Display order cannot be negative`);
-      }
-    }
-
-    const uploadedVideos = [];
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const metadata = videoMetadata[i] || {};
-
-      // Process video: move to products directory and rename
-      const videoPath = await this.processProductVideo(file, productId);
-
-      const video = await prisma.productVideo.create({
-        data: {
-          productId,
-          videoUrl: videoPath,
-          videoType: (metadata.videoType as any) || 'demo',
-          title: metadata.title,
-          description: metadata.description,
-          isPrimary: metadata.isPrimary || false,
-          displayOrder: metadata.displayOrder || i,
-          uploadedBy: userId,
-          fileSize: BigInt(file.size),
-          // TODO: Extract duration and generate thumbnail using ffmpeg
-          duration: null,
-          thumbnail: null,
-        },
-      });
-
-      uploadedVideos.push(video);
-    }
-
-    // Convert BigInt to String for JSON serialization
-    const serializedVideos = serializeBigInt(uploadedVideos);
-
-    logActivity('create', userId, 'product_videos', {
-      recordId: productId,
-      action: 'upload_videos',
-      newValue: serializedVideos,
-    });
-
-    return serializedVideos;
-  }
-
-  async deleteVideo(productId: number, videoId: number, userId: number) {
-    // Validate product exists
-    const product = await prisma.product.findUnique({
-      where: { id: productId },
-    });
-
-    if (!product) {
-      throw new NotFoundError('Product');
-    }
-
-    // Validate video exists and belongs to product
-    const video = await prisma.productVideo.findFirst({
-      where: {
-        id: videoId,
-        productId,
-      },
-    });
-
-    if (!video) {
-      throw new NotFoundError('Video not found for this product');
-    }
-
-    // Delete video file from storage
-    await uploadService.deleteFile(video.videoUrl);
-
-    // Delete from database
-    await prisma.productVideo.delete({
-      where: { id: videoId },
-    });
-
-    logActivity('delete', userId, 'product_videos', {
-      recordId: productId,
-      action: 'delete_video',
-      oldValue: video,
-    });
-
-    return { message: 'Video deleted successfully' };
-  }
-
-  async setPrimaryVideo(productId: number, videoId: number, userId: number) {
-    // Validate product exists
-    const product = await prisma.product.findUnique({
-      where: { id: productId },
-    });
-
-    if (!product) {
-      throw new NotFoundError('Product');
-    }
-
-    // Validate video exists and belongs to product
-    const video = await prisma.productVideo.findFirst({
-      where: {
-        id: videoId,
-        productId,
-      },
-    });
-
-    if (!video) {
-      throw new NotFoundError('Video not found for this product');
-    }
-
-    // Validate video is not already primary
-    if (video.isPrimary) {
-      throw new ValidationError('This video is already set as primary');
-    }
-
-    // Reset all videos to non-primary
-    await prisma.productVideo.updateMany({
-      where: { productId },
-      data: { isPrimary: false },
-    });
-
-    // Set the selected video as primary
-    const updatedVideo = await prisma.productVideo.update({
-      where: { id: videoId },
-      data: { isPrimary: true },
-    });
-
-    logActivity('update', userId, 'products', {
-      recordId: productId,
-      action: 'set_primary_video',
-      newValue: { videoId },
-    });
-
-    // Convert BigInt to String for JSON serialization
-    return serializeBigInt(updatedVideo);
-  }
+  // Image and video upload methods removed - use single image field in Product model instead
 
   async getStats() {
 
@@ -901,7 +508,6 @@ class ProductService {
     const totalProducts = products.length;
     const activeCount = products.filter((p) => p.status === 'active').length;
     const inactiveCount = products.filter((p) => p.status === 'inactive').length;
-    const discontinuedCount = products.filter((p) => p.status === 'discontinued').length;
 
     const withoutSupplier = products.filter((p) => !p.supplierId).length;
     const withoutCategory = products.filter((p) => !p.categoryId).length;
@@ -911,7 +517,6 @@ class ProductService {
       byStatus: {
         active: activeCount,
         inactive: inactiveCount,
-        discontinued: discontinuedCount,
       },
       byType: {
         rawMaterial: 0,
@@ -931,10 +536,9 @@ class ProductService {
   async getRawMaterialStats() {
     return {
       totalRawMaterials: 0,
-      byStatus: { active: 0, inactive: 0, discontinued: 0 },
+      byStatus: { active: 0, inactive: 0 },
       lowStockCount: 0,
       expiringCount: 0,
-      discontinuedCount: 0,
       totalInventoryValue: 0,
     };
   }
@@ -942,10 +546,9 @@ class ProductService {
   async getPackagingStats() {
     return {
       totalPackaging: 0,
-      byStatus: { active: 0, inactive: 0, discontinued: 0 },
+      byStatus: { active: 0, inactive: 0 },
       lowStockCount: 0,
       expiringCount: 0,
-      discontinuedCount: 0,
       totalInventoryValue: 0,
     };
   }
@@ -960,7 +563,6 @@ class ProductService {
     const totalGoods = goods.length;
     const activeCount = goods.filter((p) => p.status === 'active').length;
     const inactiveCount = goods.filter((p) => p.status === 'inactive').length;
-    const discontinuedCount = goods.filter((p) => p.status === 'discontinued').length;
 
     let lowStockCount = 0;
     for (const good of goods) {
@@ -982,11 +584,9 @@ class ProductService {
       byStatus: {
         active: activeCount,
         inactive: inactiveCount,
-        discontinued: discontinuedCount,
       },
       lowStockCount,
       expiringCount: 0,
-      discontinuedCount,
       totalInventoryValue,
     };
 

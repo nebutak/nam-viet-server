@@ -104,7 +104,7 @@ class InventoryService {
       availableQuantity: Number(inv.quantity) - Number(inv.reservedQuantity),
     }));
 
-    // Stas
+    // Stats
     const totalValue = inventories.reduce((sum, item) => {
       const value = Number(item.quantity) * Number(item.product?.basePrice || 0);
       return sum + value;

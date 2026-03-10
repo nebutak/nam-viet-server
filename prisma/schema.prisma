@@ -123,7 +123,6 @@ model User {
   purchaseOrdersApproved     PurchaseOrder[]    @relation("POApprover")
   products                   Product[]          @relation("ProductCreator")
   productsUpdated            Product[]          @relation("ProductUpdater")
-  productImages              ProductImage[]
   stockTransactions          StockTransaction[] @relation("TransactionCreator")
   stockTransactionsApproved  StockTransaction[] @relation("TransactionApprover")
   stockTransactionsCancelled StockTransaction[] @relation("TransactionCanceller")
@@ -166,7 +165,6 @@ model User {
   notificationsSent       Notification[]     @relation("NotificationSender")
   inventoryUpdates        Inventory[]
   verificationCodes       VerificationCode[]
-  productVideos           ProductVideo[]
   newsAuthored            News[]             @relation("NewsAuthor")
   newsCreated             News[]             @relation("NewsCreator")
   newsUpdated             News[]             @relation("NewsUpdater")
@@ -259,9 +257,7 @@ model Category {
   id           Int            @id @default(autoincrement())
   categoryCode String         @unique @map("category_code") @db.VarChar(50)
   categoryName String         @map("category_name") @db.VarChar(200)
-  slug         String         @unique @db.VarChar(200)
   parentId     Int?           @map("parent_id")
-  description  String?        @db.VarChar(500)
   status       CategoryStatus @default(active)
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
@@ -371,12 +367,16 @@ model Product {
   supplierId     Int?          @map("supplier_id")
   unitId         Int?          @map("unit_id")
   description    String?       @db.VarChar(500)
-  basePrice      Decimal?      @map("purchase_price") @db.Decimal(15, 2)
-  price          Decimal?      @map("selling_price_retail") @db.Decimal(15, 2)
+  note           String?       @db.VarChar(500)
+  image          String?       @db.VarChar(500)
+  basePrice      Decimal?      @map("base_price") @db.Decimal(15, 2)
+  price          Decimal?      @db.Decimal(15, 2)
   taxIds         Json?         @map("tax_ids")
   applyWarranty  Boolean       @default(false) @map("apply_warranty")
   warrantyPolicy Json?         @map("warranty_policy")
   minStockLevel  Decimal       @default(0) @map("min_stock_level") @db.Decimal(15, 2)
+  hasExpiry      Boolean       @default(false) @map("has_expiry")
+  manageSerial   Boolean       @default(false) @map("manage_serial")
   status         ProductStatus @default(active)
   createdBy      Int?          @map("created_by")
   updatedBy      Int?          @map("updated_by")
@@ -390,8 +390,6 @@ model Product {
   creator  User?     @relation("ProductCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   updater  User?     @relation("ProductUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
 
-  images                  ProductImage[]
-  videos                  ProductVideo[]
   purchaseOrderDetails    PurchaseOrderDetail[]
   inventory               Inventory[]
   stockTransactionDetails StockTransactionDetail[]
@@ -412,48 +410,6 @@ model Product {
   @@index([status])
   @@index([productName])
   @@map("products")
-}
-
-model ProductImage {
-  id           Int       @id @default(autoincrement())
-  productId    Int       @map("product_id")
-  imageUrl     String    @map("image_url") @db.VarChar(500)
-  imageType    ImageType @default(gallery) @map("image_type")
-  altText      String?   @map("alt_text") @db.VarChar(255)
-  isPrimary    Boolean   @default(false) @map("is_primary")
-  displayOrder Int       @default(0) @map("display_order")
-  uploadedBy   Int?      @map("uploaded_by")
-  createdAt    DateTime  @default(now()) @map("created_at")
-
-  product  Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  uploader User?   @relation(fields: [uploadedBy], references: [id], onDelete: SetNull)
-
-  @@index([productId])
-  @@index([displayOrder])
-  @@map("product_images")
-}
-
-model ProductVideo {
-  id           Int       @id @default(autoincrement())
-  productId    Int       @map("product_id")
-  videoUrl     String    @map("video_url") @db.VarChar(500)
-  videoType    VideoType @default(demo) @map("video_type")
-  title        String?   @db.VarChar(255)
-  description  String?   @db.VarChar(500)
-  thumbnail    String?   @db.VarChar(500)
-  duration     Int?
-  fileSize     BigInt?   @map("file_size")
-  isPrimary    Boolean   @default(false) @map("is_primary")
-  displayOrder Int       @default(0) @map("display_order")
-  uploadedBy   Int?      @map("uploaded_by")
-  createdAt    DateTime  @default(now()) @map("created_at")
-
-  product  Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  uploader User?   @relation(fields: [uploadedBy], references: [id], onDelete: SetNull)
-
-  @@index([productId])
-  @@index([displayOrder])
-  @@map("product_videos")
 }
 
 model Inventory {
@@ -1360,22 +1316,6 @@ enum PurchaseOrderStatus {
 enum ProductStatus {
   active
   inactive
-  discontinued
-}
-
-enum ImageType {
-  thumbnail
-  gallery
-  main
-}
-
-enum VideoType {
-  demo
-  tutorial
-  review
-  unboxing
-  promotion
-  other
 }
 
 enum TransactionType {
