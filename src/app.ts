@@ -224,7 +224,7 @@ app.use('/api/payment-receipts', paymentReceiptRoutes);
 app.use('/api/payment-vouchers', paymentVoucherRoutes);
 // app.use('/api/debt-reconciliation', debtReconciliationRoutes);
 app.use('/api/cash-fund', cashFundRoutes);
-app.use('/api/promotion', promotionRoutes);
+app.use('/api/promotions', promotionRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/salary', salaryRoutes);
 app.use('/api/overtime', overtimeRoutes);

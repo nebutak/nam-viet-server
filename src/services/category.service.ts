@@ -72,7 +72,9 @@ class CategoryService {
               children: {
                 where: { deletedAt: null },
               },
-              products: true,
+              products: {
+                where: { deletedAt: null }
+              },
             },
           },
         },
@@ -105,7 +107,9 @@ class CategoryService {
         parentId: true,
         _count: {
           select: {
-            products: true,
+            products: {
+              where: { deletedAt: null }
+            },
           },
         },
       },
@@ -154,7 +158,9 @@ class CategoryService {
             status: true,
             _count: {
               select: {
-                products: true,
+                products: {
+                  where: { deletedAt: null }
+                },
               },
             },
           },
@@ -164,7 +170,9 @@ class CategoryService {
             children: {
               where: { deletedAt: null },
             },
-            products: true,
+            products: {
+              where: { deletedAt: null }
+            },
           },
         },
       },
@@ -323,7 +331,9 @@ class CategoryService {
             children: {
               where: { deletedAt: null },
             },
-            products: true,
+            products: {
+              where: { deletedAt: null }
+            },
           },
         },
       },
@@ -401,7 +411,9 @@ class CategoryService {
             children: {
               where: { deletedAt: null },
             },
-            products: true,
+            products: {
+              where: { deletedAt: null }
+            },
           },
         },
       },
@@ -701,7 +713,9 @@ class CategoryService {
             children: {
               where: { deletedAt: null },
             },
-            products: true,
+            products: {
+              where: { deletedAt: null }
+            },
           },
         },
       },

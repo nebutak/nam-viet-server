@@ -112,34 +112,35 @@ model User {
   creator   User?      @relation("UserCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   updater   User?      @relation("UserUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
 
-  managedWarehouses          Warehouse[]        @relation("WarehouseManager")
-  createdUsers               User[]             @relation("UserCreator")
-  updatedUsers               User[]             @relation("UserUpdater")
+  managedWarehouses          Warehouse[]           @relation("WarehouseManager")
+  createdUsers               User[]                @relation("UserCreator")
+  updatedUsers               User[]                @relation("UserUpdater")
   activityLogs               ActivityLog[]
-  rolePermissionsAssigned    RolePermission[]   @relation("AssignedBy")
-  suppliers                  Supplier[]         @relation("SupplierCreator")
-  suppliersUpdated           Supplier[]         @relation("SupplierUpdater")
-  purchaseOrders             PurchaseOrder[]    @relation("POCreator")
-  purchaseOrdersApproved     PurchaseOrder[]    @relation("POApprover")
-  products                   Product[]          @relation("ProductCreator")
-  productsUpdated            Product[]          @relation("ProductUpdater")
-  stockTransactions          StockTransaction[] @relation("TransactionCreator")
-  stockTransactionsApproved  StockTransaction[] @relation("TransactionApprover")
-  stockTransactionsCancelled StockTransaction[] @relation("TransactionCanceller")
-  stockTransfers             StockTransfer[]    @relation("TransferRequester")
-  stockTransfersApproved     StockTransfer[]    @relation("TransferApprover")
-  stockTransfersCancelled    StockTransfer[]    @relation("TransferCanceller")
-  customers                  Customer[]         @relation("CustomerCreator")
-  customersUpdated           Customer[]         @relation("CustomerUpdater")
-  invoices                   Invoice[]          @relation("SalesCreator")
-  invoicesApproved           Invoice[]          @relation("SalesApprover")
-  invoicesCancelled          Invoice[]          @relation("SalesCanceller")
-  deliveries                 Delivery[]         @relation("DeliveryStaff")
-  deliveriesSettled          Delivery[]         @relation("DeliverySettler")
-  paymentReceipts            PaymentReceipt[]   @relation("ReceiptCreator")
-  paymentReceiptsApproved    PaymentReceipt[]   @relation("ReceiptApprover")
-  paymentVouchers            PaymentVoucher[]   @relation("VoucherCreator")
-  paymentVouchersApproved    PaymentVoucher[]   @relation("VoucherApprover")
+  rolePermissionsAssigned    RolePermission[]      @relation("AssignedBy")
+  suppliers                  Supplier[]            @relation("SupplierCreator")
+  suppliersUpdated           Supplier[]            @relation("SupplierUpdater")
+  purchaseOrders             PurchaseOrder[]       @relation("POCreator")
+  purchaseOrdersApproved     PurchaseOrder[]       @relation("POApprover")
+  products                   Product[]             @relation("ProductCreator")
+  productsUpdated            Product[]             @relation("ProductUpdater")
+  updatedPriceHistories      ProductPriceHistory[]
+  stockTransactions          StockTransaction[]    @relation("TransactionCreator")
+  stockTransactionsApproved  StockTransaction[]    @relation("TransactionApprover")
+  stockTransactionsCancelled StockTransaction[]    @relation("TransactionCanceller")
+  stockTransfers             StockTransfer[]       @relation("TransferRequester")
+  stockTransfersApproved     StockTransfer[]       @relation("TransferApprover")
+  stockTransfersCancelled    StockTransfer[]       @relation("TransferCanceller")
+  customers                  Customer[]            @relation("CustomerCreator")
+  customersUpdated           Customer[]            @relation("CustomerUpdater")
+  invoices                   Invoice[]             @relation("SalesCreator")
+  invoicesApproved           Invoice[]             @relation("SalesApprover")
+  invoicesCancelled          Invoice[]             @relation("SalesCanceller")
+  deliveries                 Delivery[]            @relation("DeliveryStaff")
+  deliveriesSettled          Delivery[]            @relation("DeliverySettler")
+  paymentReceipts            PaymentReceipt[]      @relation("ReceiptCreator")
+  paymentReceiptsApproved    PaymentReceipt[]      @relation("ReceiptApprover")
+  paymentVouchers            PaymentVoucher[]      @relation("VoucherCreator")
+  paymentVouchersApproved    PaymentVoucher[]      @relation("VoucherApprover")
   // debtReconciliations         DebtReconciliation[] @relation("ReconciliationCreator")
   // debtReconciliationsApproved DebtReconciliation[] @relation("ReconciliationApprover")
 
@@ -263,9 +264,9 @@ model Category {
   updatedAt    DateTime       @updatedAt @map("updated_at")
   deletedAt    DateTime?      @map("deleted_at")
 
-  parent    Category?  @relation("CategoryParent", fields: [parentId], references: [id], onDelete: SetNull)
-  children  Category[] @relation("CategoryParent")
-  products  Product[]
+  parent   Category?  @relation("CategoryParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[] @relation("CategoryParent")
+  products Product[]
 
   @@index([parentId])
   @@index([status])
@@ -290,7 +291,6 @@ model MaterialCategory {
   @@index([status])
   @@map("material_categories")
 }
-
 
 model Supplier {
   id               Int            @id @default(autoincrement())
@@ -421,6 +421,7 @@ model Product {
   productHasAttributes    ProductHasAttribute[]
   unitConversions         ProductUnitConversion[]
   inventoryBatches        InventoryBatch[]
+  priceHistories          ProductPriceHistory[]
 
   @@index([code])
   @@index([categoryId])
@@ -429,6 +430,20 @@ model Product {
   @@index([status])
   @@index([productName])
   @@map("products")
+}
+
+model ProductPriceHistory {
+  id        Int      @id @default(autoincrement())
+  productId Int      @map("product_id")
+  oldPrice  Decimal  @map("old_price") @db.Decimal(15, 2)
+  newPrice  Decimal  @map("new_price") @db.Decimal(15, 2)
+  updatedBy Int?     @map("updated_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  updater User?   @relation(fields: [updatedBy], references: [id])
+
+  @@map("product_price_histories")
 }
 
 model Inventory {

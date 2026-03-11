@@ -54,9 +54,10 @@ class ProductService {
 
     const total = await prisma.product.count({ where });
 
-    const products = await prisma.product.findMany({
-      where,
-      include: {
+    const [products, allTaxes] = await Promise.all([
+      prisma.product.findMany({
+        where,
+        include: {
         category: {
           select: {
             id: true,
@@ -77,6 +78,23 @@ class ProductService {
             unitCode: true,
             unitName: true,
           },
+        },
+        unitConversions: {
+          select: {
+            unitId: true,
+            conversionFactor: true,
+            unit: {
+              select: {
+                id: true,
+                unitCode: true,
+                unitName: true,
+              }
+            }
+          },
+        },
+        priceHistories: {
+          orderBy: { createdAt: 'desc' },
+          include: { updater: { select: { fullName: true } } }
         },
 
         inventory: {
@@ -108,10 +126,25 @@ class ProductService {
       orderBy: { [sortBy]: sortOrder },
       skip: offset,
       take: limit,
-    });
+    }),
+    prisma.tax.findMany()
+  ]);
 
     const result = {
-      products,
+      products: products.map(product => {
+        const totalStock = product.inventory.reduce((sum, item) => sum + Number(item.quantity), 0);
+        
+        let productTaxes: any[] = [];
+        if (product.taxIds && Array.isArray(product.taxIds)) {
+            productTaxes = allTaxes.filter(t => (product.taxIds as number[]).includes(t.id));
+        }
+
+        return {
+          ...product,
+          totalStock,
+          taxes: productTaxes
+        };
+      }),
       pagination: {
         page,
         limit,
@@ -190,6 +223,10 @@ class ProductService {
             value: true,
           },
         },
+        priceHistories: {
+          orderBy: { createdAt: 'desc' },
+          include: { updater: { select: { fullName: true } } }
+        },
       },
     });
 
@@ -197,7 +234,12 @@ class ProductService {
       throw new NotFoundError('Product');
     }
 
-    return product;
+    const totalStock = product.inventory.reduce((sum, item) => sum + Number(item.quantity), 0);
+
+    return {
+      ...product,
+      totalStock
+    };
   }
 
   async create(data: CreateProductInput, userId: number) {
@@ -271,6 +313,13 @@ class ProductService {
             })),
           },
         }),
+        priceHistories: {
+          create: {
+            oldPrice: 0,
+            newPrice: data.price ? Number(data.price) : 0,
+            updatedBy: userId,
+          }
+        }
       },
       include: {
         category: true,
@@ -327,6 +376,7 @@ class ProductService {
       unitConversions,
       taxIds,
       warrantyPolicy,
+      materialIds,
       ...restData
     } = data;
 
@@ -355,14 +405,24 @@ class ProductService {
             })),
           },
         }),
-        ...(restData.materialIds !== undefined && {
+        ...(materialIds !== undefined && {
           materials: {
             deleteMany: {},
-            create: restData.materialIds ? restData.materialIds.map((id: number) => ({
+            create: materialIds ? materialIds.map((id: number) => ({
               materialId: id,
             })) : [],
           },
         }),
+        // Only append to price history if price actually changed
+        ...(restData.price !== undefined && Number(restData.price) !== Number(existingProduct.price) && {
+          priceHistories: {
+            create: {
+              oldPrice: existingProduct.price ? Number(existingProduct.price) : 0,
+              newPrice: Number(restData.price),
+              updatedBy: userId,
+            }
+          }
+        })
       },
       include: {
         category: true,
