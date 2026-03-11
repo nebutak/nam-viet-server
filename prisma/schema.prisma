@@ -1310,9 +1310,7 @@ enum RoleStatus {
 
 enum WarehouseType {
   raw_material
-  packaging
-  finished_product
-  goods
+  product
 }
 
 enum WarehouseStatus {

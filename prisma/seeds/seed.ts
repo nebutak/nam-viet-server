@@ -1,5 +1,12 @@
-import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
+import { PrismaClient } from '@prisma/client';
+import { seedCategories } from './category.seed';
+import { seedWarehouses } from './warehouse.seed';
+import { seedSuppliers } from './supplier.seed';
+import { seedUnits } from './unit.seed';
+import { seedTaxes } from './tax.seed';
+import { seedAttributes } from './attribute.seed';
+import { seedProducts } from './product.seed';
 
 const prisma = new PrismaClient();
 
@@ -381,68 +388,7 @@ async function main() {
   // =====================================================
   // 3. SEED WAREHOUSES
   // =====================================================
-  console.log('📝 Seeding warehouses...');
-
-  const warehouses = await Promise.all([
-    prisma.warehouse.upsert({
-      where: { warehouseCode: 'KNL-001' },
-      update: {},
-      create: {
-        warehouseCode: 'KNL-001',
-        warehouseName: 'Kho nguyên liệu trung tâm',
-        warehouseType: 'raw_material',
-        address: '123 Đường ABC, Quận 1',
-        city: 'Hồ Chí Minh',
-        region: 'Miền Nam',
-        capacity: 1000,
-        status: 'active',
-      },
-    }),
-    prisma.warehouse.upsert({
-      where: { warehouseCode: 'KBB-001' },
-      update: {},
-      create: {
-        warehouseCode: 'KBB-001',
-        warehouseName: 'Kho bao bì trung tâm',
-        warehouseType: 'packaging',
-        address: '456 Đường DEF, Quận 2',
-        city: 'Hồ Chí Minh',
-        region: 'Miền Nam',
-        capacity: 500,
-        status: 'active',
-      },
-    }),
-    prisma.warehouse.upsert({
-      where: { warehouseCode: 'KTP-001' },
-      update: {},
-      create: {
-        warehouseCode: 'KTP-001',
-        warehouseName: 'Kho thành phẩm trung tâm',
-        warehouseType: 'finished_product',
-        address: '789 Đường GHI, Quận 3',
-        city: 'Hồ Chí Minh',
-        region: 'Miền Nam',
-        capacity: 800,
-        status: 'active',
-      },
-    }),
-    prisma.warehouse.upsert({
-      where: { warehouseCode: 'KHH-001' },
-      update: {},
-      create: {
-        warehouseCode: 'KHH-001',
-        warehouseName: 'Kho hàng hóa trung tâm',
-        warehouseType: 'goods',
-        address: '101 Đường JKL, Quận 4',
-        city: 'Hồ Chí Minh',
-        region: 'Miền Nam',
-        capacity: 600,
-        status: 'active',
-      },
-    }),
-  ]);
-
-  console.log(`✅ Created ${warehouses.length} warehouses\n`);
+  const warehouses = await seedWarehouses(prisma);
 
   // =====================================================
   // 4. SEED ADMIN USER
@@ -657,81 +603,33 @@ async function main() {
   // =====================================================
   // 7. SEED CATEGORIES
   // =====================================================
-  console.log('📝 Seeding categories...');
-
-  const categories = await Promise.all([
-    prisma.category.upsert({
-      where: { categoryCode: 'CAT-001' },
-      update: {},
-      create: {
-        categoryCode: 'CAT-001',
-        categoryName: 'Nước giải khát',
-        status: 'active',
-      },
-    }),
-    prisma.category.upsert({
-      where: { categoryCode: 'CAT-002' },
-      update: {},
-      create: {
-        categoryCode: 'CAT-002',
-        categoryName: 'Nguyên liệu',
-        status: 'active',
-      },
-    }),
-    prisma.category.upsert({
-      where: { categoryCode: 'CAT-003' },
-      update: {},
-      create: {
-        categoryCode: 'CAT-003',
-        categoryName: 'Bao bì',
-        status: 'active',
-      },
-    }),
-  ]);
-
-  console.log(`✅ Created ${categories.length} categories\n`);
+  // Gọi hàm seed từ file category.seed.ts
+  await seedCategories(prisma);
 
   // =====================================================
   // 8. SEED SUPPLIERS
   // =====================================================
-  console.log('📝 Seeding suppliers...');
+  await seedSuppliers(prisma, adminUser.id);
 
-  const suppliers = await Promise.all([
-    prisma.supplier.upsert({
-      where: { supplierCode: 'NCC-001' },
-      update: {},
-      create: {
-        supplierCode: 'NCC-001',
-        supplierName: 'Công ty TNHH Nguyên liệu ABC',
-        supplierType: 'local',
-        contactName: 'Nguyễn Văn A',
-        phone: '0987654321',
-        email: 'contact@abc.com',
-        address: '123 Đường XYZ, Quận 5, TP.HCM',
-        taxCode: '0123456789',
-        status: 'active',
-        createdBy: adminUser.id,
-      },
-    }),
-    prisma.supplier.upsert({
-      where: { supplierCode: 'NCC-002' },
-      update: {},
-      create: {
-        supplierCode: 'NCC-002',
-        supplierName: 'Công ty CP Bao bì Việt Nam',
-        supplierType: 'local',
-        contactName: 'Trần Thị B',
-        phone: '0912345678',
-        email: 'info@baobivn.com',
-        address: '456 Đường DEF, Quận 6, TP.HCM',
-        taxCode: '0987654321',
-        status: 'active',
-        createdBy: adminUser.id,
-      },
-    }),
-  ]);
+  // =====================================================
+  // 9. SEED UNITS
+  // =====================================================
+  await seedUnits(prisma, adminUser.id);
 
-  console.log(`✅ Created ${suppliers.length} suppliers\n`);
+  // =====================================================
+  // 10. SEED TAXES
+  // =====================================================
+  await seedTaxes(prisma, adminUser.id);
+
+  // =====================================================
+  // 11. SEED ATTRIBUTES
+  // =====================================================
+  await seedAttributes(prisma, adminUser.id);
+
+  // =====================================================
+  // 12. SEED PRODUCTS
+  // =====================================================
+  await seedProducts(prisma, adminUser.id);
 
   console.log('✅ Database seed completed successfully! 🎉\n');
   console.log('📌 Login Credentials:\n');
