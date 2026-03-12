@@ -70,6 +70,7 @@ import contactRoutes from '@routes/contact.routes';
 
 // Material Routes
 import materialRoutes from '@routes/material.routes';
+import materialCategoryRoutes from '@routes/material-category.routes';
 
 // CRM Routes
 import ticketRoutes from '@routes/ticket.routes';
@@ -252,6 +253,7 @@ app.use('/api/news-categories', newsCategoryRoutes);
 
 // Material Routes
 app.use('/api/materials', materialRoutes);
+app.use('/api/material-categories', materialCategoryRoutes);
 
 // CRM Routes
 app.use('/api/tickets', ticketRoutes);

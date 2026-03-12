@@ -161,7 +161,7 @@ class MaterialService {
         }
 
         if (data.categoryId) {
-            const category = await prisma.category.findUnique({
+            const category = await prisma.materialCategory.findUnique({
                 where: { id: data.categoryId, deletedAt: null },
             });
             if (!category) {
@@ -250,7 +250,7 @@ class MaterialService {
         }
 
         if (data.categoryId) {
-            const category = await prisma.category.findUnique({
+            const category = await prisma.materialCategory.findUnique({
                 where: { id: data.categoryId, deletedAt: null },
             });
             if (!category) {
