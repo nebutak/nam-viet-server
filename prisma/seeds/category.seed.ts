@@ -19,6 +19,7 @@ export async function seedCategories(prisma: PrismaClient) {
       create: {
         categoryCode: pc.code,
         categoryName: pc.name,
+        type: 'PRODUCT',
         status: 'active',
       },
     });
@@ -57,8 +58,29 @@ export async function seedCategories(prisma: PrismaClient) {
       create: {
         categoryCode: cc.code,
         categoryName: cc.name,
+        type: 'PRODUCT',
         status: 'active',
         parentId: parentMap[cc.parentCode],
+      },
+    });
+  }
+
+  // 3. Danh mục nguyên liệu
+  const materialCategories = [
+    { code: 'MCAT-PLASTIC', name: 'Nhựa & Bao bì' },
+    { code: 'MCAT-CHEMICAL', name: 'Hóa chất & Dung môi' },
+    { code: 'MCAT-FABRIC', name: 'Vải & Sợi' },
+  ];
+
+  for (const mc of materialCategories) {
+    await prisma.category.upsert({
+      where: { categoryCode: mc.code },
+      update: { categoryName: mc.name, type: 'MATERIAL' },
+      create: {
+        categoryCode: mc.code,
+        categoryName: mc.name,
+        type: 'MATERIAL',
+        status: 'active',
       },
     });
   }

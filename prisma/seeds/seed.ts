@@ -77,7 +77,6 @@ async function main() {
     await prisma.attendance.deleteMany({});
     await prisma.attendanceMonth.deleteMany({});
     await prisma.promotion.deleteMany({});
-    await prisma.cashFund.deleteMany({});
     await prisma.delivery.deleteMany({});
     await prisma.generalSetting.deleteMany({});
 
@@ -409,7 +408,7 @@ async function main() {
 
   let adminUser = await prisma.user.findFirst({
     where: {
-      OR: [{ email: 'leeminhkang@gmail.com' }, { employeeCode: 'NV-00010' }],
+      OR: [{ email: 'nhoangkha03@gmail.com' }, { employeeCode: 'NV-00010' }],
     },
   });
 
@@ -417,7 +416,7 @@ async function main() {
     adminUser = await prisma.user.create({
       data: {
         employeeCode: 'NV-00010',
-        email: 'leeminhkang@gmail.com',
+        email: 'nhoangkha03@gmail.com',
         passwordHash: hashedPassword,
         fullName: 'Quản trị viên hệ thống',
         phone: '0123456789',

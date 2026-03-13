@@ -29,11 +29,11 @@ router.get(
 /**
  * GET /api/warehouses
  * Get all warehouses with pagination, filters, and search
- * Permission: WAREHOUSE_MANAGEMENT
+ * Permission: GET_WAREHOUSE
  */
 router.get(
   '/',
-  authorize('WAREHOUSE_MANAGEMENT'),
+  authorize('GET_WAREHOUSE'),
   validate(queryWarehousesSchema, 'query'),
   asyncHandler(warehouseController.getAllWarehouses.bind(warehouseController))
 );
@@ -41,34 +41,34 @@ router.get(
 /**
  * GET /api/warehouses/:id
  * Get warehouse by ID with details
- * Permission: WAREHOUSE_MANAGEMENT
+ * Permission: GET_WAREHOUSE
  */
 router.get(
   '/:id',
-  authorize('WAREHOUSE_MANAGEMENT'),
+  authorize('GET_WAREHOUSE'),
   asyncHandler(warehouseController.getWarehouseById.bind(warehouseController))
 );
 
 /**
  * GET /api/warehouses/:id/statistics
  * Get warehouse statistics (inventory, transactions, capacity)
- * Permission: WAREHOUSE_MANAGEMENT
+ * Permission: GET_WAREHOUSE
  */
 router.get(
   '/:id/statistics',
-  authorize('WAREHOUSE_MANAGEMENT'),
+  authorize('GET_WAREHOUSE'),
   asyncHandler(warehouseController.getWarehouseStatistics.bind(warehouseController))
 );
 
 /**
  * POST /api/warehouses
  * Create new warehouse
- * Permission: WAREHOUSE_MANAGEMENT
+ * Permission: CREATE_WAREHOUSE
  * Role: admin, warehouse_manager
  */
 router.post(
   '/',
-  authorize('WAREHOUSE_MANAGEMENT'),
+  authorize('CREATE_WAREHOUSE'),
   validate(createWarehouseSchema),
   logActivityMiddleware('create', 'warehouse'),
   asyncHandler(warehouseController.createWarehouse.bind(warehouseController))
@@ -82,7 +82,7 @@ router.post(
  */
 router.put(
   '/:id',
-  authorize('WAREHOUSE_MANAGEMENT'),
+  authorize('UPDATE_WAREHOUSE'),
   validate(updateWarehouseSchema),
   logActivityMiddleware('update', 'warehouse'),
   asyncHandler(warehouseController.updateWarehouse.bind(warehouseController))
@@ -96,7 +96,7 @@ router.put(
  */
 router.patch(
   '/:id/status',
-  authorize('WAREHOUSE_MANAGEMENT'),
+  authorize('UPDATE_WAREHOUSE'),
   validate(updateWarehouseStatusSchema),
   logActivityMiddleware('update_status', 'warehouse'),
   asyncHandler(warehouseController.updateWarehouseStatus.bind(warehouseController))
@@ -110,7 +110,7 @@ router.patch(
  */
 router.delete(
   '/:id',
-  authorize('WAREHOUSE_MANAGEMENT'),
+  authorize('DELETE_WAREHOUSE'),
   logActivityMiddleware('delete', 'warehouse'),
   asyncHandler(warehouseController.deleteWarehouse.bind(warehouseController))
 );
@@ -122,7 +122,7 @@ router.delete(
  */
 router.post(
   '/import',
-  authorize('WAREHOUSE_MANAGEMENT'),
+  authorize('CREATE_WAREHOUSE'),
   logActivityMiddleware('import', 'warehouse'),
   asyncHandler(warehouseController.importWarehouses.bind(warehouseController))
 );
@@ -134,7 +134,7 @@ router.post(
  */
 router.post(
   '/bulk-delete',
-  authorize('WAREHOUSE_MANAGEMENT'),
+  authorize('DELETE_WAREHOUSE'),
   logActivityMiddleware('bulk_delete', 'warehouse'),
   asyncHandler(warehouseController.bulkDelete.bind(warehouseController))
 );

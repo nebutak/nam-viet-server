@@ -256,6 +256,7 @@ model Category {
   categoryCode String         @unique @map("category_code") @db.VarChar(50)
   categoryName String         @map("category_name") @db.VarChar(200)
   parentId     Int?           @map("parent_id")
+  type         CategoryType   @default(PRODUCT)
   status       CategoryStatus @default(active)
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
@@ -264,30 +265,15 @@ model Category {
   parent   Category?  @relation("CategoryParent", fields: [parentId], references: [id], onDelete: SetNull)
   children Category[] @relation("CategoryParent")
   products Product[]
-
-  @@index([parentId])
-  @@index([status])
-  @@map("categories")
-}
-
-model MaterialCategory {
-  id           Int            @id @default(autoincrement())
-  categoryCode String         @unique @map("category_code") @db.VarChar(50)
-  categoryName String         @map("category_name") @db.VarChar(200)
-  parentId     Int?           @map("parent_id")
-  status       CategoryStatus @default(active)
-  createdAt    DateTime       @default(now()) @map("created_at")
-  updatedAt    DateTime       @updatedAt @map("updated_at")
-  deletedAt    DateTime?      @map("deleted_at")
-
-  parent    MaterialCategory?  @relation("MaterialCategoryParent", fields: [parentId], references: [id], onDelete: SetNull)
-  children  MaterialCategory[] @relation("MaterialCategoryParent")
   materials Material[]
 
   @@index([parentId])
   @@index([status])
-  @@map("material_categories")
+  @@index([type])
+  @@map("categories")
 }
+
+// MaterialCategory model has been unified into Category model
 
 model Supplier {
   id               Int            @id @default(autoincrement())
@@ -1313,6 +1299,11 @@ enum CategoryStatus {
   inactive
 }
 
+enum CategoryType {
+  PRODUCT
+  MATERIAL
+}
+
 enum SupplierType {
   local
   foreign
@@ -1824,7 +1815,7 @@ model Material {
   deletedAt     DateTime? @map("deleted_at")
 
   supplier Supplier?         @relation(fields: [supplierId], references: [id])
-  category MaterialCategory? @relation(fields: [categoryId], references: [id])
+  category Category?         @relation(fields: [categoryId], references: [id])
   products ProductMaterial[]
 
   @@index([supplierId])

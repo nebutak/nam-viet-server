@@ -167,6 +167,9 @@ class MaterialService {
             if (!category) {
                 throw new ValidationError('Danh mục không tồn tại');
             }
+            if (category.type !== 'MATERIAL') {
+                throw new ValidationError('Danh mục phải thuộc loại nguyên liệu');
+            }
         }
 
         const material = await prisma.material.create({
@@ -255,6 +258,9 @@ class MaterialService {
             });
             if (!category) {
                 throw new ValidationError('Danh mục không tồn tại');
+            }
+            if (category.type !== 'MATERIAL') {
+                throw new ValidationError('Danh mục phải thuộc loại nguyên liệu');
             }
         }
 

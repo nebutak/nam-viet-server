@@ -20,6 +20,7 @@ class CategoryService {
       search,
       parentId,
       status,
+      type,
       sortBy = 'createdAt',
       sortOrder = 'desc',
     } = query;
@@ -43,6 +44,7 @@ class CategoryService {
         parentId: parentId === 'null' ? null : parseInt(parentId),
       }),
       ...(status && { status }),
+      ...(type && { type }),
       deletedAt: null, // Exclude soft-deleted items
     };
 
@@ -57,6 +59,7 @@ class CategoryService {
           categoryCode: true,
           categoryName: true,
           parentId: true,
+          type: true,
           status: true,
           createdAt: true,
           updatedAt: true,
@@ -96,10 +99,13 @@ class CategoryService {
     return result;
   }
 
-  async getCategoryTree() {
-
+  async getCategoryTree(type?: 'PRODUCT' | 'MATERIAL') {
     const categories = await prisma.category.findMany({
-      where: { status: 'active', deletedAt: null },
+      where: { 
+        status: 'active', 
+        deletedAt: null,
+        ...(type && { type })
+      },
       select: {
         id: true,
         categoryCode: true,
@@ -139,6 +145,7 @@ class CategoryService {
         categoryCode: true,
         categoryName: true,
         parentId: true,
+        type: true,
         status: true,
         createdAt: true,
         updatedAt: true,
@@ -215,6 +222,7 @@ class CategoryService {
         categoryCode: data.categoryCode,
         categoryName: data.categoryName,
         parentId: data.parentId || null,
+        type: data.type || 'PRODUCT',
         status: data.status || 'active',
       },
       select: {
@@ -294,6 +302,7 @@ class CategoryService {
         ...(data.categoryCode && { categoryCode: data.categoryCode }),
         ...(data.categoryName && { categoryName: data.categoryName }),
         ...(data.parentId !== undefined && { parentId: data.parentId }),
+        ...(data.type && { type: data.type }),
         ...(data.status && { status: data.status }),
       },
       select: {
@@ -301,6 +310,7 @@ class CategoryService {
         categoryCode: true,
         categoryName: true,
         parentId: true,
+        type: true,
         status: true,
         updatedAt: true,
         parent: {
@@ -541,7 +551,7 @@ class CategoryService {
     return Buffer.from(await workbook.xlsx.writeBuffer() as ArrayBuffer);
   }
 
-  async importCategories(items: any[], userId: number): Promise<any> {
+  async importCategories(items: any[], userId: number, defaultType: 'PRODUCT' | 'MATERIAL' = 'PRODUCT'): Promise<any> {
     if (!items || items.length === 0) {
       throw new ValidationError('Không tìm thấy dữ liệu hợp lệ để import');
     }
@@ -555,6 +565,7 @@ class CategoryService {
 
       const categoryName = item.categoryName?.toString().trim();
       const categoryCode = item.categoryCode?.toString().trim();
+      const typeRaw = item.type?.toString().trim().toUpperCase();
       const parentNameRow = item.parentName?.toString().trim() || null;
       const statusRaw = item.status?.toString().trim().toLowerCase();
 
@@ -566,13 +577,21 @@ class CategoryService {
         errors.push({ row: rowNumber, message: 'Thiếu Mã danh mục (*)' });
         continue;
       }
-
-      let status = 'active';
-      if (statusRaw === 'ngừng' || statusRaw === 'ngung' || statusRaw === 'inactive' || statusRaw === 'ngừng hoạt động') {
+      let status: 'active' | 'inactive' = 'active';
+      if (statusRaw === 'hoạt động' || statusRaw === 'active') {
+        status = 'active';
+      } else if (statusRaw === 'ngừng' || statusRaw === 'inactive' || statusRaw === 'ngừng hoạt động') {
         status = 'inactive';
       } else if (!statusRaw && item.status !== undefined) {
         errors.push({ row: rowNumber, message: 'Trạng thái không được bỏ trống' });
         continue;
+      }
+
+      let type: 'PRODUCT' | 'MATERIAL' = defaultType;
+      if (typeRaw === 'MATERIAL' || typeRaw === 'NGUYÊN LIỆU') {
+        type = 'MATERIAL';
+      } else if (typeRaw === 'PRODUCT' || typeRaw === 'SẢN PHẨM') {
+        type = 'PRODUCT';
       }
 
       let parentId: number | null = null;
@@ -598,6 +617,7 @@ class CategoryService {
         categoryName,
         categoryCode,
         parentId,
+        type,
         status,
         rowNumber
       });
@@ -660,6 +680,7 @@ class CategoryService {
           categoryName: c.categoryName,
           categoryCode: c.categoryCode,
           parentId: c.parentId,
+          type: c.type,
           status: c.status,
       })),
       skipDuplicates: true,
@@ -698,11 +719,13 @@ class CategoryService {
 
 
 
-  async getCategoryStats() {
-
+  async getCategoryStats(type?: 'PRODUCT' | 'MATERIAL') {
     // Get all categories with stats
     const categories = await prisma.category.findMany({
-      where: { deletedAt: null },
+      where: { 
+        deletedAt: null,
+        ...(type && { type })
+      },
       select: {
         id: true,
         categoryName: true,
@@ -716,6 +739,9 @@ class CategoryService {
             products: {
               where: { deletedAt: null }
             },
+            materials: {
+              where: { deletedAt: null }
+            }
           },
         },
       },
@@ -726,17 +752,27 @@ class CategoryService {
     const activeCategories = categories.filter((c) => c.status === 'active').length;
     const inactiveCategories = categories.filter((c) => c.status === 'inactive').length;
     const rootCategories = categories.filter((c) => !c.parentId).length;
-    const totalProducts = categories.reduce((sum, c) => sum + c._count.products, 0);
+    
+    // Switch count based on what we are looking for
+    const itemCountLabel = type === 'MATERIAL' ? 'materialCount' : 'productCount';
+    const totalItems = categories.reduce((sum, c) => {
+        const count = type === 'MATERIAL' ? c._count.materials : c._count.products;
+        return sum + (count || 0);
+    }, 0);
 
-    // Get top categories by product count
+    // Get top categories by item count
     const topCategories = categories
-      .filter((c) => c._count.products > 0)
-      .sort((a, b) => b._count.products - a._count.products)
+      .map(c => ({
+          ...c,
+          itemCount: type === 'MATERIAL' ? c._count.materials : c._count.products
+      }))
+      .filter((c) => c.itemCount > 0)
+      .sort((a, b) => b.itemCount - a.itemCount)
       .slice(0, 5)
       .map((c) => ({
         id: c.id,
         categoryName: c.categoryName,
-        productCount: c._count.products,
+        [itemCountLabel]: c.itemCount,
       }));
 
     const stats = {
@@ -744,7 +780,7 @@ class CategoryService {
       activeCategories,
       inactiveCategories,
       rootCategories,
-      totalProducts,
+      totalItems,
       topCategories,
     };
 

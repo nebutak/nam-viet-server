@@ -814,47 +814,14 @@ class InvoiceService {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      // Nếu chuyển sang delivering, phải xuất kho (trừ quantity + reservedQuantity)
-      if (newStatus === 'delivering') {
-        // Trừ inventory
-        for (const detail of order.details) {
-          if (detail.warehouseId) {
-            const inventory = await tx.inventory.findFirst({
-              where: {
-                productId: detail.productId,
-                warehouseId: detail.warehouseId,
-              },
-            });
-
-            if (inventory) {
-              await tx.inventory.update({
-                where: { id: inventory.id },
-                data: {
-                  quantity: {
-                    decrement: detail.quantity,
-                  },
-                  reservedQuantity: {
-                    decrement: detail.quantity,
-                  },
-                  updatedBy: userId,
-                },
-              });
-            }
-          }
-        }
-
-        // Phiếu xuất kho sẽ được tạo thủ công sau, bỏ qua ở đây.
-        // if (order.warehouseId) { ... }
-
-        // Cập nhật Delivery status thành in_transit
-        if (order.deliveries && order.deliveries.length > 0) {
-          await tx.delivery.update({
-            where: { id: order.deliveries[0].id },
-            data: {
-              deliveryStatus: 'in_transit',
-            },
-          });
-        }
+      // Cập nhật Delivery status thành in_transit
+      if (order.deliveries && order.deliveries.length > 0) {
+        await tx.delivery.update({
+          where: { id: order.deliveries[0].id },
+          data: {
+            deliveryStatus: 'in_transit',
+          },
+        });
       }
 
       const updatedOrder = await tx.invoice.update({
@@ -906,33 +873,6 @@ class InvoiceService {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      // Giai đoạn 3: Giao thành công - Giảm quantity và reservedQuantity từ inventory
-      for (const detail of order.details) {
-        if (detail.warehouseId) {
-          const inventory = await tx.inventory.findFirst({
-            where: {
-              productId: detail.productId,
-              warehouseId: detail.warehouseId,
-            },
-          });
-
-          if (inventory) {
-            await tx.inventory.update({
-              where: { id: inventory.id },
-              data: {
-                quantity: {
-                  decrement: detail.quantity,
-                },
-                reservedQuantity: {
-                  decrement: detail.quantity,
-                },
-                updatedBy: userId,
-              },
-            });
-          }
-        }
-      }
-
       const updatedOrder = await tx.invoice.update({
         where: { id },
         data: {
@@ -999,30 +939,6 @@ class InvoiceService {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      // Giải phóng reservedQuantity (nếu là delivery order)
-      for (const detail of order.details) {
-        if (detail.warehouseId) {
-          const inventory = await tx.inventory.findFirst({
-            where: {
-              productId: detail.productId,
-              warehouseId: detail.warehouseId,
-            },
-          });
-
-          if (inventory) {
-            await tx.inventory.update({
-              where: { id: inventory.id },
-              data: {
-                reservedQuantity: {
-                  decrement: detail.quantity,
-                },
-                updatedBy: userId,
-              },
-            });
-          }
-        }
-      }
-
       // Hoàn lại công nợ khách hàng nếu có ghi nợ
       if (order.paymentStatus !== 'paid' && Number(order.paidAmount) === 0) {
         const debtAmount = Number(order.totalAmount) - Number(order.paidAmount);
@@ -1204,29 +1120,6 @@ class InvoiceService {
     }
 
     await prisma.$transaction(async (tx) => {
-      for (const detail of order.details) {
-        if (detail.warehouseId) {
-          const inventory = await tx.inventory.findFirst({
-            where: {
-              productId: detail.productId,
-              warehouseId: detail.warehouseId,
-            },
-          });
-
-          if (inventory) {
-            await tx.inventory.update({
-              where: { id: inventory.id },
-              data: {
-                reservedQuantity: {
-                  decrement: detail.quantity,
-                },
-                updatedBy: userId,
-              },
-            });
-          }
-        }
-      }
-
       await tx.invoice.delete({
         where: { id },
       });

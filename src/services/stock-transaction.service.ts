@@ -361,7 +361,7 @@ class StockTransactionService {
         referenceId: data.referenceId,
         reason: data.reason,
         notes: data.notes,
-        status: 'pending',
+        status: 'draft',
         createdBy: userId,
         details: {
           create: data.details.map((item) => ({
@@ -626,7 +626,7 @@ class StockTransactionService {
   async approve(id: number, userId: number, notes?: string) {
     const transaction = await this.getById(id);
 
-    if (transaction.status !== 'pending') {
+    if (transaction.status !== 'pending' && transaction.status !== 'draft') {
       throw new ValidationError(`Giao dịch không thể phê duyệt. Trạng thái: ${transaction.status}`);
     }
 
