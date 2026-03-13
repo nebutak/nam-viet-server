@@ -288,18 +288,14 @@ async function main() {
     { key: "CREATE_RECEIPT", name: "Thêm", module: "receipt", moduleLabel: "Phiếu thu" },
     { key: "UPDATE_RECEIPT", name: "Sửa", module: "receipt", moduleLabel: "Phiếu thu" },
     { key: "DELETE_RECEIPT", name: "Xóa", module: "receipt", moduleLabel: "Phiếu thu" },
-    { key: "APPROVE_RECEIPT", name: "Duyệt", module: "receipt", moduleLabel: "Phiếu thu" },
     { key: "POSTED_RECEIPT", name: "Ghi sổ", module: "receipt", moduleLabel: "Phiếu thu" },
-    { key: "CANCEL_RECEIPT", name: "Hủy", module: "receipt", moduleLabel: "Phiếu thu" },
 
     // Phiếu chi (Payment Voucher)
     { key: "GET_PAYMENT", name: "Xem", module: "payment", moduleLabel: "Phiếu chi" },
     { key: "CREATE_PAYMENT", name: "Thêm", module: "payment", moduleLabel: "Phiếu chi" },
     { key: "UPDATE_PAYMENT", name: "Sửa", module: "payment", moduleLabel: "Phiếu chi" },
     { key: "DELETE_PAYMENT", name: "Xóa", module: "payment", moduleLabel: "Phiếu chi" },
-    { key: "APPROVE_PAYMENT", name: "Duyệt", module: "payment", moduleLabel: "Phiếu chi" },
     { key: "POSTED_PAYMENT", name: "Ghi sổ", module: "payment", moduleLabel: "Phiếu chi" },
-    { key: "CANCEL_PAYMENT", name: "Hủy", module: "payment", moduleLabel: "Phiếu chi" },
 
     // Thuế
     { key: "GET_TAX", name: "Xem", module: "tax", moduleLabel: "Thuế" },

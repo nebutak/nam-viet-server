@@ -13,6 +13,7 @@ import {
   settleCODSchema,
   deliveryQuerySchema,
 } from '@validators/delivery.validator';
+import { logActivityMiddleware } from '@middlewares/logger';
 
 const router = Router();
 
@@ -30,7 +31,7 @@ router.get(
 router.get(
   '/',
   authorize('VIEW_DELIVERIES'),
-  validate(deliveryQuerySchema),
+  validate(deliveryQuerySchema, 'query'),
   asyncHandler(deliveryController.getAll.bind(deliveryController))
 );
 
@@ -46,6 +47,7 @@ router.post(
   '/',
   authorize('CREATE_DELIVERY'),
   validate(createDeliverySchema),
+  logActivityMiddleware('create', 'delivery'),
   asyncHandler(deliveryController.create.bind(deliveryController))
 );
 

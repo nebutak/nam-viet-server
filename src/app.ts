@@ -41,7 +41,8 @@ import deliveryRoutes from '@routes/delivery.routes';
 import paymentReceiptRoutes from '@routes/payment-receipt.routes';
 import paymentVoucherRoutes from '@routes/payment-voucher.routes';
 // import debtReconciliationRoutes from '@routes/debt-reconciliation.routes';
-import cashFundRoutes from '@routes/cash-fund.routes';
+// import cashFundRoutes from '@routes/cash-fund.routes';
+
 import promotionRoutes from '@routes/promotion.routes';
 import attendanceRoutes from '@routes/attendance.routes';
 import salaryRoutes from '@routes/salary.routes';
@@ -223,7 +224,8 @@ app.use('/api/deliveries', deliveryRoutes);
 app.use('/api/payment-receipts', paymentReceiptRoutes);
 app.use('/api/payment-vouchers', paymentVoucherRoutes);
 // app.use('/api/debt-reconciliation', debtReconciliationRoutes);
-app.use('/api/cash-fund', cashFundRoutes);
+// app.use('/api/cash-fund', cashFundRoutes);
+
 app.use('/api/promotions', promotionRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/salary', salaryRoutes);
@@ -331,7 +333,8 @@ httpServer.listen(PORT, async () => {
 ║   💰 Payment Receipts API: http://localhost:${PORT}/api/payment-receipts ║
 ║   💸 Payment Vouchers API: http://localhost:${PORT}/api/payment-vouchers ║
 ║   📊 Debt Reconciliation API: http://localhost:${PORT}/api/debt-reconciliation ║
-║   💰 Cash Fund API: http://localhost:${PORT}/api/cash-fund  ║
+║   💰 Cash Fund API: REMOVED                              ║
+
 ║   🎁 Promotions API: http://localhost:${PORT}/api/promotions ║
 ║   ⏰ Attendance API: http://localhost:${PORT}/api/attendance ║
 ║   💵 Salary API: http://localhost:${PORT}/api/salary        ║

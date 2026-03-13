@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { Decimal } from '@prisma/client/runtime/library';
+
 
 const prisma = new PrismaClient();
 
@@ -92,32 +92,10 @@ class FinanceService {
     const prevGrossProfit = prevRevenueVal - prevTotalExpenses;
     const grossProfitGrowth = prevGrossProfit > 0 ? ((grossProfit - prevGrossProfit) / prevGrossProfit) * 100 : 0;
 
-    // 6. Tồn quỹ hiện tại (Current Cash Balance)
-    const latestCashFund = await prisma.cashFund.findFirst({
-      where: { fundDate: { lte: end } },
-      orderBy: { fundDate: 'desc' },
-    });
-
+    /*
     const closingBalance = Number(latestCashFund?.closingBalance || 0);
-
-    // If today not yet closed, calculate: previousBalance + today's receipts - today's payments
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    let adjustedBalance = closingBalance;
-    if (!latestCashFund || latestCashFund.fundDate < today) {
-      const todayReceipts = await prisma.paymentReceipt.aggregate({
-        _sum: { amount: true },
-        where: { receiptDate: { gte: today } },
-      });
-      
-      const todayPayments = await prisma.paymentVoucher.aggregate({
-        _sum: { amount: true },
-        where: { paymentDate: { gte: today } },
-      });
-
-      adjustedBalance = closingBalance + Number(todayReceipts._sum.amount || 0) - Number(todayPayments._sum.amount || 0);
-    }
+    ... (legacy cashfund code)
+    */
 
     return {
       period: {
@@ -134,10 +112,11 @@ class FinanceService {
         grossProfit,
         grossProfit_previous: prevGrossProfit,
         grossProfit_growth: grossProfitGrowth,
-        closingBalance: adjustedBalance,
-        lastClosedDate: latestCashFund?.fundDate || null,
+        // closingBalance: adjustedBalance, // Removed CashFund dependency
+        // lastClosedDate: latestCashFund?.fundDate || null, // Removed CashFund dependency
       },
     };
+
   }
 
   /**
@@ -391,13 +370,16 @@ class FinanceService {
     const total = entries.length;
     const paginatedEntries = entries.slice(skip, skip + limit);
 
-    // Calculate running balance
+    // Calculate running balance - ĐÃ LOẠI BỎ DEPENDENCY VÀO CASHFUND
     let balance = 0;
+    /*
     const cashFund = await prisma.cashFund.findFirst({
       where: { fundDate: { lt: start } },
       orderBy: { fundDate: 'desc' },
     });
     balance = Number(cashFund?.closingBalance || 0);
+    */
+
 
     const withBalance = paginatedEntries.reverse().map((entry) => {
       if (entry.type === 'IN') {
@@ -493,86 +475,12 @@ class FinanceService {
    * 4. HÀNH ĐỘNG (ACTIONS)
    */
 
+  /*
   async closeCashFund(fundDate: string, notes: string = '') {
-    const date = new Date(fundDate);
-
-    // Check if already closed
-    const existing = await prisma.cashFund.findUnique({
-      where: { fundDate: date },
-    });
-
-    if (existing?.isLocked) {
-      throw new Error('Ngày này đã được chốt sổ rồi!');
-    }
-
-    // Get opening balance from previous day
-    const previousFund = await prisma.cashFund.findFirst({
-      where: { fundDate: { lt: date } },
-      orderBy: { fundDate: 'desc' },
-    });
-
-    const openingBalance = Number(previousFund?.closingBalance || 0);
-
-    // Calculate receipts today
-    const receiptsToday = await prisma.paymentReceipt.aggregate({
-      _sum: { amount: true },
-      where: {
-        receiptDate: date,
-      },
-    });
-
-    const totalReceipts = Number(receiptsToday._sum.amount || 0);
-
-    // Calculate payments today
-    const paymentsToday = await prisma.paymentVoucher.aggregate({
-      _sum: { amount: true },
-      where: {
-        paymentDate: date,
-      },
-    });
-
-    const totalPayments = Number(paymentsToday._sum.amount || 0);
-
-    // Calculate closing balance
-    const closingBalance = openingBalance + totalReceipts - totalPayments;
-
-    // Upsert cash fund
-    const result = await prisma.cashFund.upsert({
-      where: { fundDate: date },
-      update: {
-        openingBalance: new Decimal(openingBalance),
-        totalReceipts: new Decimal(totalReceipts),
-        totalPayments: new Decimal(totalPayments),
-        closingBalance: new Decimal(closingBalance),
-        isLocked: true,
-        notes,
-      },
-      create: {
-        fundDate: date,
-        openingBalance: new Decimal(openingBalance),
-        totalReceipts: new Decimal(totalReceipts),
-        totalPayments: new Decimal(totalPayments),
-        closingBalance: new Decimal(closingBalance),
-        isLocked: true,
-        notes,
-      },
-    });
-
-    // Log activity
-    // TODO: Log to ActivityLog table
-
-    return {
-      success: true,
-      message: `Đã chốt sổ quỹ ngày ${fundDate}`,
-      data: {
-        fundDate: result.fundDate.toISOString().split('T')[0],
-        openingBalance: Number(result.openingBalance),
-        totalReceipts: Number(result.totalReceipts),
-        totalPayments: Number(result.totalPayments),
-        closingBalance: Number(result.closingBalance),
-      },
-    };
+    ... (removed)
   }
+  */
+
 
   async remindDebts(customerIds: number[], message: string = '') {
     // Get admin user to assign notifications to

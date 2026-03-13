@@ -138,7 +138,6 @@ model User {
   deliveries                 Delivery[]            @relation("DeliveryStaff")
   deliveriesSettled          Delivery[]            @relation("DeliverySettler")
   paymentReceipts            PaymentReceipt[]      @relation("ReceiptCreator")
-  paymentReceiptsApproved    PaymentReceipt[]      @relation("ReceiptApprover")
   paymentVouchers            PaymentVoucher[]      @relation("VoucherCreator")
   paymentVouchersApproved    PaymentVoucher[]      @relation("VoucherApprover")
   // debtReconciliations         DebtReconciliation[] @relation("ReconciliationCreator")
@@ -148,8 +147,6 @@ model User {
   assignedCustomers Customer[] @relation("CustomerManager")
   assignedSuppliers Supplier[] @relation("SupplierManager")
 
-  cashFunds               CashFund[]         @relation("CashFundReconciler")
-  cashFundsApproved       CashFund[]         @relation("CashFundApprover")
   promotions              Promotion[]        @relation("PromotionCreator")
   promotionsApproved      Promotion[]        @relation("PromotionApprover")
   promotionsCancelled     Promotion[]        @relation("PromotionCanceller")
@@ -881,10 +878,7 @@ model PaymentReceipt {
   bankName             String?              @map("bank_name") @db.VarChar(200)
   transactionReference String?              @map("transaction_reference") @db.VarChar(100)
   receiptDate          DateTime             @map("receipt_date") @db.Date
-  approvedBy           Int?                 @map("approved_by")
-  approvedAt           DateTime?            @map("approved_at")
   isPosted             Boolean              @default(false) @map("is_posted")
-  isVerified           Boolean              @default(false) @map("is_verified")
   notes                String?              @db.VarChar(255)
   createdBy            Int                  @map("created_by")
   createdAt            DateTime             @default(now()) @map("created_at")
@@ -893,7 +887,6 @@ model PaymentReceipt {
   customer    Invoice? @relation(fields: [orderId], references: [id])
   customerRef Customer @relation(fields: [customerId], references: [id])
   creator     User     @relation("ReceiptCreator", fields: [createdBy], references: [id])
-  approver    User?    @relation("ReceiptApprover", fields: [approvedBy], references: [id])
 
   @@index([receiptCode])
   @@index([receiptDate])
@@ -1002,28 +995,6 @@ model DebtPeriod {
   @@unique([supplierId, periodName])
   @@index([periodName])
   @@map("debt_periods")
-}
-
-model CashFund {
-  id             Int       @id @default(autoincrement())
-  fundDate       DateTime  @unique @map("fund_date") @db.Date
-  openingBalance Decimal   @default(0) @map("opening_balance") @db.Decimal(15, 2)
-  closingBalance Decimal   @default(0) @map("closing_balance") @db.Decimal(15, 2)
-  totalReceipts  Decimal   @default(0) @map("total_receipts") @db.Decimal(15, 2)
-  totalPayments  Decimal   @default(0) @map("total_payments") @db.Decimal(15, 2)
-  isLocked       Boolean   @default(false) @map("is_locked")
-  lockedAt       DateTime? @map("locked_at")
-  approvedBy     Int?      @map("approved_by")
-  notes          String?   @db.VarChar(255)
-  reconciledBy   Int?      @map("reconciled_by")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  deletedAt      DateTime? @map("deleted_at")
-
-  reconciler User? @relation("CashFundReconciler", fields: [reconciledBy], references: [id])
-  approver   User? @relation("CashFundApprover", fields: [approvedBy], references: [id])
-
-  @@index([fundDate])
-  @@map("cash_fund")
 }
 
 // =====================================================

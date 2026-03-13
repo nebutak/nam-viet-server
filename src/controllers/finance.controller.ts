@@ -143,31 +143,12 @@ class FinanceController {
     });
   }
 
-  // 4. ACTIONS
-
-  /**
-   * POST /api/finance/cash-fund/close
-   * Close cash fund for a day
-   */
+  /*
   async closeCashFund(req: AuthRequest, res: Response) {
-    const { fundDate, notes } = req.body;
-
-    if (!fundDate) {
-      return res.status(400).json({
-        success: false,
-        message: 'fundDate is required',
-      });
-    }
-
-    const result = await financeService.closeCashFund(fundDate, notes || '');
-
-    return res.status(200).json({
-      success: result.success,
-      message: result.message,
-      data: result.data,
-      timestamp: new Date().toISOString(),
-    });
+    ... (removed)
   }
+  */
+
 
   /**
    * POST /api/finance/debts/remind

@@ -6,7 +6,7 @@ export const createPaymentVoucherSchema = z.object({
   expenseAccount: z.string().max(100).optional(),
   amount: z.number().positive('Số tiền phải là số dương'),
   paymentMethod: z.enum(['cash', 'transfer']),
-  bankName: z.string().max(200).optional(),
+  bankName: z.string().max(500).optional(),
   paymentDate: z.string().refine((val) => !isNaN(Date.parse(val)), 'Ngày thanh toán không hợp lệ'),
   notes: z.string().max(255).optional(),
 });
@@ -19,7 +19,7 @@ export const updatePaymentVoucherSchema = z.object({
   expenseAccount: z.string().max(100).optional(),
   amount: z.number().positive('Số tiền phải là số dương').optional(),
   paymentMethod: z.enum(['cash', 'transfer']).optional(),
-  bankName: z.string().max(200).optional(),
+  bankName: z.string().max(500).optional(),
   paymentDate: z
     .string()
     .refine((val) => !isNaN(Date.parse(val)), 'Ngày thanh toán không hợp lệ')

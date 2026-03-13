@@ -100,14 +100,17 @@ class FinancialService {
     const prevTotalReceipts = Number(prevReceipts._sum.amount || 0);
     const prevTotalPayments = Number(prevPayments._sum.amount || 0);
 
-    // Get latest cash fund balance
+    // Get latest cash fund balance - ĐÃ LOẠI BỎ THEO YÊU CẦU
+    /*
     const latestCashFund = await prisma.cashFund.findFirst({
       where: { fundDate: { lte: endDate } },
       orderBy: { fundDate: 'desc' },
     });
+    */
 
-    const openingBalance = Number(latestCashFund?.openingBalance || 0);
-    const closingBalance = Number(latestCashFund?.closingBalance || openingBalance);
+    const openingBalance = 0; // legacy: latestCashFund?.openingBalance || 0
+    const closingBalance = 0; // legacy: latestCashFund?.closingBalance || openingBalance
+
 
     // Calculate growth percentages
     const receiptGrowth = prevTotalReceipts > 0 ? ((totalReceipts - prevTotalReceipts) / prevTotalReceipts) * 100 : 0;
@@ -273,7 +276,8 @@ class FinancialService {
   /**
    * Get daily cash ledger
    */
-  private async getCashLedger(startDate: Date, endDate: Date): Promise<any[]> {
+  private async getCashLedger(_startDate: Date, _endDate: Date): Promise<any[]> {
+    /*
     const cashFunds = await prisma.cashFund.findMany({
       where: {
         fundDate: {
@@ -283,6 +287,9 @@ class FinancialService {
       },
       orderBy: { fundDate: 'asc' },
     });
+    */
+    const cashFunds: any[] = [];
+
 
     const ledger: any[] = [];
 

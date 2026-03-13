@@ -1641,9 +1641,6 @@ class ReportService {
             gte: dateRange.fromDate,
             lte: dateRange.toDate,
           },
-          approvedBy: {
-            not: null,
-          },
         },
         _sum: {
           amount: true,

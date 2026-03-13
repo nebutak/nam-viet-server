@@ -80,11 +80,14 @@ router.get(
  * Close cash fund for a specific day
  * Body: { fundDate, notes }
  */
+/*
 router.post(
   '/cash-fund/close',
   ...requireFinanceEdit,
   asyncHandler(financeController.closeCashFund.bind(financeController))
 );
+*/
+
 
 /**
  * POST /api/finance/debts/remind

@@ -180,7 +180,10 @@ class InvoiceService {
         },
         creator: { select: { id: true, fullName: true, employeeCode: true, email: true } },
         paymentReceipts: {
-          select: { id: true, receiptCode: true, amount: true, receiptDate: true, paymentMethod: true },
+          where: { deletedAt: null },
+          include: {
+            creator: { select: { id: true, fullName: true, email: true } }
+          }
         },
       },
     });
@@ -220,6 +223,7 @@ class InvoiceService {
                 productName: true,
                 image: true,
                 unit: true,
+                note: true,
               },
             },
             warehouse: {
@@ -262,13 +266,10 @@ class InvoiceService {
           },
         },
         paymentReceipts: {
-          select: {
-            id: true,
-            receiptCode: true,
-            amount: true,
-            receiptDate: true,
-            paymentMethod: true,
-          },
+          where: { deletedAt: null },
+          include: {
+            creator: { select: { id: true, fullName: true, email: true } }
+          }
         },
       },
     });
