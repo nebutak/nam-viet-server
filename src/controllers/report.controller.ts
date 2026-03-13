@@ -136,6 +136,21 @@ class ReportController {
     });
   }
 
+  // GET /api/reports/revenue/export - Export revenue report to Excel
+  async exportRevenueReport(req: AuthRequest, res: Response) {
+    const params = {
+      ...req.query,
+      fromDate: req.query.fromDate as string,
+      toDate: req.query.toDate as string,
+    };
+
+    const result = await reportService.exportRevenueReport(params as any);
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=BaoCaoDoanhThu_${new Date().toISOString().split('T')[0]}.xlsx`);
+    res.send(result);
+  }
+
   // GET /api/reports/revenue/by-channel - Revenue by sales channel
   async getRevenueByChannel(req: AuthRequest, res: Response) {
     const { fromDate, toDate } = req.query;
@@ -438,6 +453,23 @@ class ReportController {
       data: warehouses,
       timestamp: new Date().toISOString(),
     });
+  }
+
+  // GET /api/reports/inventory/export - Export inventory report to Excel
+  async exportInventoryReport(req: AuthRequest, res: Response) {
+    const params = {
+      ...req.query,
+      warehouseId: req.query.warehouseId ? Number(req.query.warehouseId) : undefined,
+      categoryId: req.query.categoryId ? Number(req.query.categoryId) : undefined,
+      lowStock: req.query.lowStock === 'true',
+      showExpiring: req.query.showExpiring === 'true',
+    };
+
+    const result = await reportService.exportInventoryReport(params as any);
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=BaoCaoTonKho_${new Date().toISOString().split('T')[0]}.xlsx`);
+    res.send(result);
   }
 }
 

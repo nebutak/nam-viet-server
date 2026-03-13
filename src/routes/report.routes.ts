@@ -94,6 +94,14 @@ router.get(
   asyncHandler(reportController.getRevenueReport.bind(reportController))
 );
 
+// GET /api/reports/revenue/export - Export revenue report to Excel
+router.get(
+  '/revenue/export',
+  authorize('GET_REVENUE_REPORT'),
+  validate(revenueReportSchema, 'query'),
+  asyncHandler(reportController.exportRevenueReport.bind(reportController))
+);
+
 // GET /api/reports/revenue/by-channel - Revenue by sales channel
 router.get(
   '/revenue/by-channel',
@@ -119,6 +127,13 @@ router.get(
   authorize('GET_INVENTORY_REPORT'),
   validate(inventoryReportSchema, 'query'),
   asyncHandler(reportController.getInventoryReport.bind(reportController))
+);
+
+// GET /api/reports/inventory/export - Export inventory report to Excel
+router.get(
+  '/inventory/export',
+  authorize('GET_INVENTORY_REPORT'),
+  asyncHandler(reportController.exportInventoryReport.bind(reportController))
 );
 
 // GET /api/reports/inventory/by-type - Inventory by product type

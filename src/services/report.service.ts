@@ -721,8 +721,8 @@ class ReportService {
 
     // Map to frontend expected summary fields
     const summary = {
-      grossRevenue: totalRevenue,
-      netRevenue: totalRevenue - totalDiscount,
+      grossRevenue: totalRevenue + totalDiscount, // Add back discount to get gross
+      netRevenue: totalRevenue, // totalAmount is already net (after discount)
       totalOrders: orderCount,
       totalDiscount: totalDiscount,
       totalTax: totalTax,
@@ -754,7 +754,7 @@ class ReportService {
       discountAmount: Number(o.discountAmount || 0),
       taxAmount: Number(o.taxAmount || 0),
       shippingFee: Number(o.shippingFee || 0),
-      finalAmount: Number(o.totalAmount) - Number(o.discountAmount || 0) + Number(o.taxAmount || 0) + Number(o.shippingFee || 0),
+      finalAmount: Number(o.totalAmount), // totalAmount already includes all calculations
       paidAmount: Number(o.paidAmount || 0),
       debtAmount: Math.max(0, Number(o.totalAmount) - Number(o.paidAmount || 0)),
       paymentStatus: Number(o.paidAmount || 0) >= Number(o.totalAmount) ? 'paid' : Number(o.paidAmount || 0) > 0 ? 'partial' : 'unpaid',
@@ -940,7 +940,11 @@ class ReportService {
           select: {
             code: true,
             productName: true,
-            unit: true,
+            unit: {
+              select: {
+                unitName: true,
+              },
+            },
             minStockLevel: true,
             basePrice: true,
             category: {
@@ -971,7 +975,7 @@ class ReportService {
         productName: inv.product.productName,
         productType: 'standard', // Hardcode standard as productType was removed
         categoryName: inv.product.category?.categoryName,
-        unit: inv.product.unit,
+        unit: inv.product.unit?.unitName || null,
         quantity: Number(inv.quantity),
         reservedQuantity: Number(inv.reservedQuantity),
         availableQuantity: availableQty,
@@ -1374,20 +1378,40 @@ class ReportService {
     if (customerId) where.customerId = customerId;
     if (createdBy) where.createdBy = createdBy;
 
-    // 1. KPI Summary
+    // 1. KPI Summary + raw orders for detail tables
     const orders = await prisma.invoice.findMany({
       where,
       include: {
         details: {
-          include: { product: { select: { basePrice: true } } },
+          include: { product: { select: { basePrice: true, code: true, productName: true, unit: { select: { unitName: true } } } } },
         },
+        customer: { select: { id: true, customerName: true, customerCode: true, currentDebt: true } },
+        creator: { select: { fullName: true } },
       },
     });
 
     // Calculate KPIs
-    const totalNetRevenue = orders.reduce((sum, o) => sum + Number(o.totalAmount || 0) - Number(o.discountAmount || 0), 0);
+    const totalNetRevenue = orders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
     const totalNewDebt = orders.reduce((sum, o) => sum + (Number(o.totalAmount || 0) - Number(o.paidAmount || 0)), 0);
     const totalOrders = orders.length;
+    
+    // Calculate grossRevenue and totalDiscount from invoice details
+    let grossRevenue = 0;
+    let totalDiscount = 0;
+    let paidAmount = 0;
+    
+    orders.forEach((order) => {
+      paidAmount += Number(order.paidAmount || 0);
+      order.details.forEach((detail: any) => {
+        const lineRevenue = Number(detail.price || 0) * Number(detail.quantity || 0);
+        const lineDiscount = Number(detail.discountAmount || 0);
+        grossRevenue += lineRevenue;
+        totalDiscount += lineDiscount;
+      });
+    });
+    
+    const averageOrderValue = totalOrders > 0 ? totalNetRevenue / totalOrders : 0;
+    
     const cancelledOrders = await prisma.invoice.count({
       where: { ...where, orderStatus: 'cancelled' },
     });
@@ -1395,13 +1419,15 @@ class ReportService {
       where: { ...where, orderStatus: 'completed' },
     });
 
-    // Estimated profit
+    // Estimated profit - Fixed: subtract discount from revenue
     let estimatedProfit = 0;
     orders.forEach((order) => {
       order.details.forEach((detail: any) => {
         const cost = Number(detail.product.basePrice || 0) * Number(detail.quantity || 0);
-        const revenue = Number(detail.price || 0) * Number(detail.quantity || 0);
-        estimatedProfit += revenue - cost;
+        const grossRevenue = Number(detail.price || 0) * Number(detail.quantity || 0);
+        const discountAmount = Number(detail.discountAmount || 0);
+        const netRevenue = grossRevenue - discountAmount;
+        estimatedProfit += netRevenue - cost;
       });
     });
 
@@ -1420,7 +1446,10 @@ class ReportService {
     const debtPercentage = totalNetRevenue > 0 ? (totalNewDebt / totalNetRevenue) * 100 : 0;
 
     const summary = {
+      grossRevenue,
+      totalDiscount,
       netRevenue: totalNetRevenue,
+      paidAmount,
       netRevenueGrowth,
       estimatedProfit,
       profitMargin,
@@ -1428,10 +1457,16 @@ class ReportService {
       cancelledOrders,
       completedOrders,
       newDebt: totalNewDebt,
-      totalDebt: await prisma.customer.aggregate({
-        _sum: { currentDebt: true },
-      }).then(r => Number(r._sum.currentDebt || 0)),
+      totalDebt: customerId 
+        ? await prisma.customer.findUnique({
+            where: { id: customerId },
+            select: { currentDebt: true }
+          }).then(c => Number(c?.currentDebt || 0))
+        : await prisma.customer.aggregate({
+            _sum: { currentDebt: true },
+          }).then(r => Number(r._sum.currentDebt || 0)),
       debtPercentage,
+      averageOrderValue,
     };
 
     // 2. Trend data (by day)
@@ -1476,7 +1511,7 @@ class ReportService {
       }
       const item = byChannelMap.get(channel);
       item.totalRevenue += Number(order.totalAmount || 0);
-      item.netRevenue += Number(order.totalAmount || 0) - Number(order.discountAmount || 0);
+      item.netRevenue += Number(order.totalAmount || 0); // totalAmount is already net revenue
       item.discount += Number(order.discountAmount || 0);
       item.tax += Number(order.taxAmount || 0);
       item.shipping += Number(order.shippingFee || 0);
@@ -1522,6 +1557,13 @@ class ReportService {
       const user = staffUsers.find((u) => u.id === item.createdBy);
       const staffOrders = orders.filter((o) => o.createdBy === item.createdBy);
       const debtAmount = staffOrders.reduce((sum, o) => sum + (Number(o.totalAmount || 0) - Number(o.paidAmount || 0)), 0);
+      
+      // Fixed: Calculate actual completion rate
+      const completedCount = staffOrders.filter(o => o.orderStatus === 'completed').length;
+      const completionRate = item._count.id > 0 
+        ? (completedCount / item._count.id) * 100 
+        : 0;
+      
       return {
         staffId: item.createdBy,
         staffName: user?.fullName || 'Unknown',
@@ -1530,12 +1572,80 @@ class ReportService {
         totalRevenue: Number(item._sum.totalAmount || 0),
         paidRevenue: Number(item._sum.paidAmount || 0),
         debtAmount,
-        completionRate: item._count.id > 0 ? 100 : 0,
+        completionRate: Math.round(completionRate * 100) / 100, // Round to 2 decimal places
       };
     });
 
     // 6. Top Customers
     const topCustomers = await this.getTopCustomers(10, fromDate, toDate);
+
+    // 7. Orders list for "Chi tiết theo Đơn hàng"
+    const ordersDetail = orders.map((o: any) => {
+      const total = Number(o.totalAmount || 0);
+      const discount = Number(o.discountAmount || 0);
+      const finalAmount = total - discount; // Thành tiền = Tổng tiền - Giảm giá
+      return {
+        id: o.id,
+        orderCode: o.orderCode,
+        orderDate: o.orderDate,
+        customerName: o.customer?.customerName || '—',
+        staffName: o.creator?.fullName || '—',
+        totalAmount: total,
+        discountAmount: discount,
+        finalAmount,
+        paymentStatus: Number(o.paidAmount || 0) >= finalAmount ? 'paid' : Number(o.paidAmount || 0) > 0 ? 'partial' : 'unpaid',
+      };
+    });
+
+    // 8. Product performance for "Chi tiết theo Sản phẩm" (from current report orders)
+    const productMap = new Map<number, { productId: number; sku: string; productName: string; unit: string | null; quantity: number; revenue: number }>();
+    orders.forEach((order: any) => {
+      order.details.forEach((d: any) => {
+        const key = d.productId;
+        const rev = Number(d.price || 0) * Number(d.quantity || 0);
+        if (!productMap.has(key)) {
+          productMap.set(key, {
+            productId: key,
+            sku: d.product?.code || '',
+            productName: d.product?.productName || '—',
+            unit: d.product?.unit ?? null,
+            quantity: 0,
+            revenue: 0,
+          });
+        }
+        const row = productMap.get(key)!;
+        row.quantity += Number(d.quantity || 0);
+        row.revenue += rev;
+      });
+    });
+    const totalProductRevenue = Array.from(productMap.values()).reduce((s, p) => s + p.revenue, 0);
+    const productPerformance = Array.from(productMap.values())
+      .map((p) => ({
+        ...p,
+        percentage: totalProductRevenue > 0 ? (p.revenue / totalProductRevenue) * 100 : 0,
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
+
+    // 9. Customer analysis for "Chi tiết theo Khách hàng" (from current report orders)
+    const customerMap = new Map<number, { customerId: number; customerCode: string; customerName: string; orderCount: number; totalRevenue: number; currentDebt: number }>();
+    orders.forEach((order: any) => {
+      const cid = order.customerId;
+      const cust = order.customer;
+      if (!customerMap.has(cid)) {
+        customerMap.set(cid, {
+          customerId: cid,
+          customerCode: cust?.customerCode || '',
+          customerName: cust?.customerName || '—',
+          orderCount: 0,
+          totalRevenue: 0,
+          currentDebt: Number(cust?.currentDebt || 0),
+        });
+      }
+      const row = customerMap.get(cid)!;
+      row.orderCount += 1;
+      row.totalRevenue += Number(order.totalAmount || 0);
+    });
+    const customerAnalysis = Array.from(customerMap.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
 
     return {
       period: {
@@ -1549,6 +1659,9 @@ class ReportService {
       topProducts,
       staffPerformance: staffList,
       topCustomers,
+      orders: ordersDetail,
+      productPerformance,
+      customerAnalysis,
     };
   }
 
@@ -2104,9 +2217,9 @@ class ReportService {
   }
 
   // =====================================================
-  // NEW: API 4 - FILTER OPTIONS (Search Customer, Get Staff)
+  // NEW: API 4 - FILTER OPTIONS (Search Customer, Get Staff, Get Warehouses)
   // =====================================================
-  async getFilterOptions(action: 'search-customer' | 'get-sales-staff', keyword?: string) {
+  async getFilterOptions(action: 'search-customer' | 'get-sales-staff' | 'getWarehouses', keyword?: string) {
     if (action === 'search-customer') {
       const customers = await prisma.customer.findMany({
         where: {
@@ -2133,6 +2246,9 @@ class ReportService {
         select: { id: true, fullName: true, employeeCode: true },
       });
       return staff;
+    } else if (action === 'getWarehouses') {
+      // Get warehouses for filter
+      return await this.getWarehousesForFilter();
     }
     return [];
   }
@@ -2214,6 +2330,449 @@ class ReportService {
     });
 
     return warehouses;
+  }
+
+  // Export inventory report to Excel
+  async exportInventoryReport(params: InventoryReportParams) {
+    const ExcelJS = require('exceljs');
+
+    // Get inventory data using existing method
+    const inventoryData = await this.getInventoryReport(params);
+
+    // Get warehouse and category names from params
+    let warehouseName = 'Tất cả kho';
+    let categoryName = 'Tất cả danh mục';
+
+    if (params.warehouseId) {
+      const warehouse = await prisma.warehouse.findUnique({
+        where: { id: params.warehouseId },
+        select: { warehouseName: true }
+      });
+      warehouseName = warehouse?.warehouseName || `Kho #${params.warehouseId}`;
+    }
+
+    if (params.categoryId) {
+      const category = await prisma.category.findUnique({
+        where: { id: params.categoryId },
+        select: { categoryName: true }
+      });
+      categoryName = category?.categoryName || `Danh mục #${params.categoryId}`;
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Nam Viet App';
+    workbook.created = new Date();
+
+    // Sheet 1: Chi tiết tồn kho
+    const sheet = workbook.addWorksheet('Chi tiết tồn kho');
+
+    // Header style
+    const headerStyle = {
+      fill: {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF4472C4' },
+      },
+      font: { bold: true, size: 12, color: { argb: 'FFFFFFFF' } },
+      alignment: { horizontal: 'center', vertical: 'middle' },
+      border: {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' },
+      },
+    };
+
+    // Add title
+    sheet.mergeCells('A1:J1');
+    sheet.getCell('A1').value = 'BÁO CÁO TỒN KHO';
+    sheet.getCell('A1').font = { bold: true, size: 14 };
+    sheet.getCell('A1').alignment = { horizontal: 'center' };
+
+    // Add date info
+    sheet.mergeCells('A2:J2');
+    sheet.getCell('A2').value = `Ngày xuất báo cáo: ${new Date().toLocaleDateString('vi-VN')}`;
+    sheet.getCell('A2').font = { size: 10, italic: true };
+    sheet.getCell('A2').alignment = { horizontal: 'center' };
+
+    // Add filter info
+    const filterText = [
+      `Kho: ${warehouseName}`,
+      `Danh mục: ${categoryName}`,
+      params.lowStock ? 'Chỉ hiển thị tồn thấp' : '',
+    ].filter(Boolean).join(' | ');
+
+    sheet.mergeCells('A3:J3');
+    sheet.getCell('A3').value = filterText;
+    sheet.getCell('A3').font = { size: 10, italic: true };
+    sheet.getCell('A3').alignment = { horizontal: 'center' };
+
+    // Headers
+    const headers = ['STT', 'Mã SKU', 'Tên sản phẩm', 'Kho', 'Danh mục', 'Số lượng', 'Đơn vị', 'Đơn giá', 'Giá trị', 'Trạng thái'];
+    const headerRow = sheet.addRow(headers);
+    headerRow.eachCell((cell: any) => {
+      cell.style = headerStyle;
+    });
+
+    // Add data - use inventoryData.data instead of inventoryData.items
+    const items = inventoryData.data || [];
+    items.forEach((item: any, index: number) => {
+      const row = [
+        index + 1,
+        item.sku,
+        item.productName,
+        item.warehouseName,
+        item.categoryName || '',
+        item.availableQuantity,
+        item.unit || '',
+        item.unitPrice,
+        item.totalValue,
+        item.isLowStock ? 'Tồn thấp' : '',
+      ];
+      const dataRow = sheet.addRow(row);
+      
+      // Style the quantity and price columns as numbers
+      dataRow.getCell(6).numFmt = '#,##0';
+      dataRow.getCell(8).numFmt = '#,##0 ₫';
+      dataRow.getCell(9).numFmt = '#,##0 ₫';
+      
+      // Highlight low stock rows
+      if (item.isLowStock) {
+        dataRow.eachCell((cell: any) => {
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFFFE699' },
+          };
+        });
+      }
+    });
+
+    // Add summary row
+    sheet.addRow([]);
+    const summaryRow = sheet.addRow([
+      'TỔNG CỘNG',
+      '',
+      '',
+      '',
+      '',
+      inventoryData.summary?.totalQuantity || 0,
+      '',
+      '',
+      inventoryData.summary?.totalValue || 0,
+      '',
+    ]);
+    summaryRow.font = { bold: true };
+    summaryRow.getCell(6).numFmt = '#,##0';
+    summaryRow.getCell(9).numFmt = '#,##0 ₫';
+    summaryRow.eachCell((cell: any) => {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFD9D9D9' },
+      };
+    });
+
+    // Set column widths
+    sheet.getColumn(1).width = 6;
+    sheet.getColumn(2).width = 15;
+    sheet.getColumn(3).width = 30;
+    sheet.getColumn(4).width = 25;
+    sheet.getColumn(5).width = 20;
+    sheet.getColumn(6).width = 12;
+    sheet.getColumn(7).width = 12;
+    sheet.getColumn(8).width = 15;
+    sheet.getColumn(9).width = 15;
+    sheet.getColumn(10).width = 12;
+
+    // Sheet 2: Tổng hợp theo kho - use data to group by warehouse
+    const byWarehouseMap = new Map<string, { warehouseName: string; itemCount: number; totalQuantity: number; totalValue: number }>();
+    items.forEach((item: any) => {
+      const wh = item.warehouseName;
+      if (!byWarehouseMap.has(wh)) {
+        byWarehouseMap.set(wh, { warehouseName: wh, itemCount: 0, totalQuantity: 0, totalValue: 0 });
+      }
+      const entry = byWarehouseMap.get(wh)!;
+      entry.itemCount += 1;
+      entry.totalQuantity += item.availableQuantity || 0;
+      entry.totalValue += item.totalValue || 0;
+    });
+
+    if (byWarehouseMap.size > 0) {
+      const warehouseSheet = workbook.addWorksheet('Tổng hợp theo kho');
+      
+      const whHeaders = ['STT', 'Kho', 'Số SKU', 'Tổng số lượng', 'Giá trị'];
+      const whHeaderRow = warehouseSheet.addRow(whHeaders);
+      whHeaderRow.eachCell((cell: any) => {
+        cell.style = headerStyle;
+      });
+
+      Array.from(byWarehouseMap.values()).forEach((wh: any, index: number) => {
+        const row = warehouseSheet.addRow([
+          index + 1,
+          wh.warehouseName,
+          wh.itemCount,
+          wh.totalQuantity,
+          wh.totalValue,
+        ]);
+        row.getCell(4).numFmt = '#,##0';
+        row.getCell(5).numFmt = '#,##0 ₫';
+      });
+
+      warehouseSheet.getColumn(1).width = 6;
+      warehouseSheet.getColumn(2).width = 30;
+      warehouseSheet.getColumn(3).width = 12;
+      warehouseSheet.getColumn(4).width = 15;
+      warehouseSheet.getColumn(5).width = 18;
+    }
+
+    // Sheet 3: Tổng hợp theo danh mục - use byCategory from inventoryData
+    if (inventoryData.byCategory && inventoryData.byCategory.length > 0) {
+      const categorySheet = workbook.addWorksheet('Tổng hợp theo danh mục');
+      
+      const catHeaders = ['STT', 'Danh mục', 'Số SKU', 'Tổng số lượng', 'Giá trị'];
+      const catHeaderRow = categorySheet.addRow(catHeaders);
+      catHeaderRow.eachCell((cell: any) => {
+        cell.style = headerStyle;
+      });
+
+      inventoryData.byCategory.forEach((cat: any, index: number) => {
+        const row = categorySheet.addRow([
+          index + 1,
+          cat.category || 'Chưa phân loại',
+          cat.itemCount,
+          cat.quantity,
+          cat.value,
+        ]);
+        row.getCell(4).numFmt = '#,##0';
+        row.getCell(5).numFmt = '#,##0 ₫';
+      });
+
+      categorySheet.getColumn(1).width = 6;
+      categorySheet.getColumn(2).width = 30;
+      categorySheet.getColumn(3).width = 12;
+      categorySheet.getColumn(4).width = 15;
+      categorySheet.getColumn(5).width = 18;
+    }
+
+    // Generate buffer
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer);
+  }
+
+  // Export revenue report to Excel
+  async exportRevenueReport(params: RevenueParams) {
+    const ExcelJS = require('exceljs');
+
+    // Get revenue data
+    const data = await this.getRevenueReport(params);
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Nam Viet App';
+    workbook.created = new Date();
+
+    // Sheet 1: Tổng hợp
+    const summarySheet = workbook.addWorksheet('Tổng hợp');
+
+    // Header style
+    const headerStyle = {
+      fill: {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF4472C4' },
+      },
+      font: { bold: true, size: 12, color: { argb: 'FFFFFFFF' } },
+      alignment: { horizontal: 'center', vertical: 'middle' },
+      border: {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' },
+      },
+    };
+
+    // Title
+    summarySheet.mergeCells('A1:D1');
+    summarySheet.getCell('A1').value = 'BÁO CÁO DOANH THU';
+    summarySheet.getCell('A1').font = { bold: true, size: 14 };
+    summarySheet.getCell('A1').alignment = { horizontal: 'center' };
+
+    // Date info
+    summarySheet.mergeCells('A2:D2');
+    summarySheet.getCell('A2').value = `Từ ngày: ${params.fromDate || '...'} - Đến ngày: ${params.toDate || '...'}`;
+    summarySheet.getCell('A2').font = { size: 10, italic: true };
+    summarySheet.getCell('A2').alignment = { horizontal: 'center' };
+
+    // KPI Summary
+    const summaryHeaders = ['Chỉ tiêu', 'Giá trị', 'Đơn vị', 'Ghi chú'];
+    const summaryHeaderRow = summarySheet.addRow(summaryHeaders);
+    summaryHeaderRow.eachCell((cell: any) => {
+      cell.style = headerStyle;
+    });
+
+    const summary = data.summary || {};
+    const summaryData = [
+      ['Doanh thu tổng', summary.grossRevenue || 0, 'VND', 'Trước giảm giá'],
+      ['Doanh thu thuần', summary.netRevenue || 0, 'VND', 'Sau giảm giá'],
+      ['Tổng giảm giá', summary.totalDiscount || 0, 'VND', ''],
+      ['Tổng đơn hàng', summary.totalOrders || 0, 'đơn', ''],
+      ['Giá trị TB/đơn', summary.averageOrderValue || 0, 'VND', ''],
+      ['Đã thanh toán', summary.paidAmount || 0, 'VND', ''],
+      ['Công nợ', summary.debtAmount || 0, 'VND', ''],
+      ['Thuế', summary.totalTax || 0, 'VND', ''],
+    ];
+
+    summaryData.forEach((row: any[]) => {
+      const dataRow = summarySheet.addRow(row);
+      dataRow.getCell(2).numFmt = '#,##0 ₫';
+    });
+
+    // Adjust column widths
+    summarySheet.getColumn(1).width = 25;
+    summarySheet.getColumn(2).width = 18;
+    summarySheet.getColumn(3).width = 12;
+    summarySheet.getColumn(4).width = 20;
+
+    // Sheet 2: Chi tiết Đơn hàng
+    const ordersSheet = workbook.addWorksheet('Chi tiết đơn hàng');
+
+    const orderHeaders = ['STT', 'Mã đơn', 'Ngày bán', 'Khách hàng', 'Tổng tiền', 'Giảm giá', 'Thành tiền', 'Thanh toán', 'Trạng thái'];
+    const orderHeaderRow = ordersSheet.addRow(orderHeaders);
+    orderHeaderRow.eachCell((cell: any) => {
+      cell.style = headerStyle;
+    });
+
+    const orders = data.orders || [];
+    orders.forEach((order: any, index: number) => {
+      const statusMap: Record<string, string> = {
+        paid: 'Đã thanh toán',
+        partial: 'Thanh toán một phần',
+        unpaid: 'Chưa thanh toán',
+      };
+      const row = [
+        index + 1,
+        order.orderCode,
+        order.orderDate ? new Date(order.orderDate).toLocaleDateString('vi-VN') : '',
+        order.customerName,
+        order.totalAmount,
+        order.discountAmount,
+        order.finalAmount,
+        order.paidAmount,
+        statusMap[order.paymentStatus] || order.paymentStatus,
+      ];
+      const dataRow = ordersSheet.addRow(row);
+      dataRow.getCell(5).numFmt = '#,##0 ₫';
+      dataRow.getCell(6).numFmt = '#,##0 ₫';
+      dataRow.getCell(7).numFmt = '#,##0 ₫';
+      dataRow.getCell(8).numFmt = '#,##0 ₫';
+    });
+
+    ordersSheet.getColumn(1).width = 5;
+    ordersSheet.getColumn(2).width = 18;
+    ordersSheet.getColumn(3).width = 12;
+    ordersSheet.getColumn(4).width = 30;
+    ordersSheet.getColumn(5).width = 15;
+    ordersSheet.getColumn(6).width = 12;
+    ordersSheet.getColumn(7).width = 15;
+    ordersSheet.getColumn(8).width = 15;
+    ordersSheet.getColumn(9).width = 20;
+
+    // Sheet 3: Chi tiết Sản phẩm
+    const productsSheet = workbook.addWorksheet('Chi tiết sản phẩm');
+
+    const productHeaders = ['STT', 'Mã SKU', 'Tên sản phẩm', 'Đơn vị', 'Số lượng', 'Doanh số', 'Tỷ trọng'];
+    const productHeaderRow = productsSheet.addRow(productHeaders);
+    productHeaderRow.eachCell((cell: any) => {
+      cell.style = headerStyle;
+    });
+
+    const products = data.productPerformance || [];
+    products.forEach((product: any, index: number) => {
+      const row = [
+        index + 1,
+        product.sku,
+        product.productName,
+        product.unit || '',
+        product.quantity,
+        product.revenue,
+        product.percentage,
+      ];
+      const dataRow = productsSheet.addRow(row);
+      dataRow.getCell(5).numFmt = '#,##0';
+      dataRow.getCell(6).numFmt = '#,##0 ₫';
+      dataRow.getCell(7).numFmt = '0.0"%"';
+    });
+
+    productsSheet.getColumn(1).width = 5;
+    productsSheet.getColumn(2).width = 15;
+    productsSheet.getColumn(3).width = 35;
+    productsSheet.getColumn(4).width = 10;
+    productsSheet.getColumn(5).width = 12;
+    productsSheet.getColumn(6).width = 15;
+    productsSheet.getColumn(7).width = 12;
+
+    // Sheet 4: Chi tiết Khách hàng
+    const customersSheet = workbook.addWorksheet('Chi tiết khách hàng');
+
+    const customerHeaders = ['STT', 'Mã khách', 'Tên khách hàng', 'Số đơn', 'Tổng doanh số', 'Công nợ'];
+    const customerHeaderRow = customersSheet.addRow(customerHeaders);
+    customerHeaderRow.eachCell((cell: any) => {
+      cell.style = headerStyle;
+    });
+
+    const customers = data.customerAnalysis || [];
+    customers.forEach((customer: any, index: number) => {
+      const row = [
+        index + 1,
+        customer.customerCode,
+        customer.customerName,
+        customer.orderCount,
+        customer.totalRevenue,
+        customer.debt,
+      ];
+      const dataRow = customersSheet.addRow(row);
+      dataRow.getCell(4).numFmt = '#,##0';
+      dataRow.getCell(5).numFmt = '#,##0 ₫';
+      dataRow.getCell(6).numFmt = '#,##0 ₫';
+    });
+
+    customersSheet.getColumn(1).width = 5;
+    customersSheet.getColumn(2).width = 15;
+    customersSheet.getColumn(3).width = 35;
+    customersSheet.getColumn(4).width = 10;
+    customersSheet.getColumn(5).width = 18;
+    customersSheet.getColumn(6).width = 15;
+
+    // Sheet 5: Theo Kênh
+    const channelSheet = workbook.addWorksheet('Theo kênh bán hàng');
+
+    const channelHeaders = ['STT', 'Kênh bán hàng', 'Số đơn', 'Doanh thu'];
+    const channelHeaderRow = channelSheet.addRow(channelHeaders);
+    channelHeaderRow.eachCell((cell: any) => {
+      cell.style = headerStyle;
+    });
+
+    const channels = data.byChannel || [];
+    channels.forEach((channel: any, index: number) => {
+      const row = [
+        index + 1,
+        channel.channelName || channel.channel,
+        channel.orderCount,
+        channel.revenue,
+      ];
+      const dataRow = channelSheet.addRow(row);
+      dataRow.getCell(3).numFmt = '#,##0';
+      dataRow.getCell(4).numFmt = '#,##0 ₫';
+    });
+
+    channelSheet.getColumn(1).width = 5;
+    channelSheet.getColumn(2).width = 25;
+    channelSheet.getColumn(3).width = 12;
+    channelSheet.getColumn(4).width = 18;
+
+    // Generate buffer
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer);
   }
 }
 
