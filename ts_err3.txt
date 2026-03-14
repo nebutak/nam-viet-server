@@ -1,0 +1,21 @@
+🌱 Seeding Purchase & Inventory...
+
+PrismaClientKnownRequestError: 
+Invalid `prisma.purchaseOrder.create()` invocation in
+D:\a_themduan\chuyendoireact\LAB-NamViet-SV-V1\nam-viet-server\prisma\seeds\purchase-seed-hovtoi.ts:19:41
+
+  16 }
+  17 
+  18 // 1. Create a Purchase Order
+→ 19 const po = await prisma.purchaseOrder.create(
+Unique constraint failed on the constraint: `purchase_orders_po_code_key`
+    at ei.handleRequestError (D:\a_themduan\chuyendoireact\LAB-NamViet-SV-V1\nam-viet-server\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (D:\a_themduan\chuyendoireact\LAB-NamViet-SV-V1\nam-viet-server\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (D:\a_themduan\chuyendoireact\LAB-NamViet-SV-V1\nam-viet-server\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (D:\a_themduan\chuyendoireact\LAB-NamViet-SV-V1\nam-viet-server\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async seedPurchaseAndInventory (D:\a_themduan\chuyendoireact\LAB-NamViet-SV-V1\nam-viet-server\prisma\seeds\purchase-seed-hovtoi.ts:19:14)
+    at async main (D:\a_themduan\chuyendoireact\LAB-NamViet-SV-V1\nam-viet-server\prisma\seeds\seed-hovtoi.ts:11:3) {
+  code: 'P2002',
+  meta: { modelName: 'PurchaseOrder', target: 'purchase_orders_po_code_key' },
+  clientVersion: '6.19.2'
+}

@@ -18,6 +18,25 @@ const STANDARD_WORK_HOURS = 8;
 const LUNCH_BREAK_HOURS = 1;
 
 class AttendanceService {
+  private parseTimeFromValue(timeValue: Date | string): { h: number, m: number, s: number } {
+    if (timeValue instanceof Date) {
+      return { h: timeValue.getHours(), m: timeValue.getMinutes(), s: timeValue.getSeconds() };
+    }
+    if (typeof timeValue === 'string') {
+      if (timeValue.includes('T')) {
+        const d = new Date(timeValue);
+        return { h: d.getHours(), m: d.getMinutes(), s: d.getSeconds() };
+      }
+      const parts = timeValue.split(':');
+      return {
+        h: parseInt(parts[0] || '0', 10),
+        m: parseInt(parts[1] || '0', 10),
+        s: parseInt(parts[2] || '0', 10)
+      };
+    }
+    return { h: 0, m: 0, s: 0 };
+  }
+
   // Calculate work hours between check-in and check-out
   private calculateWorkHours(checkInTime: Date, checkOutTime: Date): number {
     const diffMs = checkOutTime.getTime() - checkInTime.getTime();
@@ -113,8 +132,28 @@ class AttendanceService {
       prisma.attendance.count({ where }),
     ]);
 
+    const mappedRecords = records.map((record) => {
+      let workHours: number | null = null;
+      if (record.checkInTime && record.checkOutTime) {
+        const checkInDateTime = new Date(record.date);
+        const inTime = this.parseTimeFromValue(record.checkInTime as any);
+        checkInDateTime.setHours(inTime.h, inTime.m, inTime.s);
+
+        const checkOutDateTime = new Date(record.date);
+        const outTime = this.parseTimeFromValue(record.checkOutTime as any);
+        checkOutDateTime.setHours(outTime.h, outTime.m, outTime.s);
+
+        workHours = this.calculateWorkHours(checkInDateTime, checkOutDateTime);
+      }
+
+      return {
+        ...record,
+        workHours,
+      };
+    });
+
     return {
-      data: records,
+      data: mappedRecords,
       meta: {
         page: pageNum,
         limit: limitNum,
@@ -251,12 +290,8 @@ class AttendanceService {
 
     const now = new Date();
     const checkInDateTime = new Date(today);
-    const checkInParts = existing.checkInTime.toString().split(':');
-    checkInDateTime.setHours(
-      parseInt(checkInParts[0]),
-      parseInt(checkInParts[1]),
-      parseInt(checkInParts[2] || '0')
-    );
+    const inTime = this.parseTimeFromValue(existing.checkInTime as any);
+    checkInDateTime.setHours(inTime.h, inTime.m, inTime.s);
 
     const workHours = this.calculateWorkHours(checkInDateTime, now);
     const overtimeHours = this.calculateOvertimeHours(workHours);
@@ -303,36 +338,58 @@ class AttendanceService {
       throw new NotFoundError('Hồ sơ chấm công không tồn tại');
     }
 
-    // If updating times, recalculate work hours and overtime
+    // Parse existing or new checkIn/checkOut times
+    let checkInUpdateVal: Date | null | undefined = data.checkInTime === null ? null : undefined;
+    let checkOutUpdateVal: Date | null | undefined = data.checkOutTime === null ? null : undefined;
+
+    const getFinalDate = (
+      inputTimeStr: string | null | undefined,
+      existingTimeObj: Date | null,
+      baseDate: Date
+    ) => {
+      if (inputTimeStr === null) return null;
+      if (inputTimeStr) {
+        const d = new Date(baseDate);
+        const [h, m, s] = inputTimeStr.split(':').map(Number);
+        d.setHours(h, m, s, 0);
+        return d;
+      }
+      return existingTimeObj;
+    };
+
+    const finalCheckIn = getFinalDate(data.checkInTime, existing.checkInTime, existing.date);
+    const finalCheckOut = getFinalDate(data.checkOutTime, existing.checkOutTime, existing.date);
+
+    if (data.checkInTime !== undefined) checkInUpdateVal = finalCheckIn;
+    if (data.checkOutTime !== undefined) checkOutUpdateVal = finalCheckOut;
+
     let overtimeHours = data.overtimeHours;
+    let computedWorkHours: number | undefined;
 
-    if (data.checkInTime && data.checkOutTime) {
-      const date = new Date(existing.date);
-      const checkIn = new Date(date);
-      const checkOut = new Date(date);
-
-      const [inH, inM, inS] = data.checkInTime.split(':').map(Number);
-      const [outH, outM, outS] = data.checkOutTime.split(':').map(Number);
-
-      checkIn.setHours(inH, inM, inS);
-      checkOut.setHours(outH, outM, outS);
-
-      const workHours = this.calculateWorkHours(checkIn, checkOut);
-      overtimeHours = this.calculateOvertimeHours(workHours);
+    if (finalCheckIn && finalCheckOut) {
+      // Need to use parseTimeFromValue if working with generated Date objects or string dates
+      // But getFinalDate returns a native Date object, so it's safe to directly pass
+      computedWorkHours = this.calculateWorkHours(finalCheckIn, finalCheckOut);
+      if (data.overtimeHours === undefined) {
+        overtimeHours = this.calculateOvertimeHours(computedWorkHours);
+      }
     }
+
+    const updateData: any = {
+      ...(data.status && { status: data.status }),
+      ...(data.leaveType && { leaveType: data.leaveType }),
+      ...(data.checkInLocation && { checkInLocation: data.checkInLocation }),
+      ...(data.checkOutLocation && { checkOutLocation: data.checkOutLocation }),
+      ...(data.notes !== undefined && { notes: data.notes }),
+    };
+
+    if (checkInUpdateVal !== undefined) updateData.checkInTime = checkInUpdateVal;
+    if (checkOutUpdateVal !== undefined) updateData.checkOutTime = checkOutUpdateVal;
+    if (overtimeHours !== undefined) updateData.overtimeHours = overtimeHours;
 
     const attendance = await prisma.attendance.update({
       where: { id },
-      data: {
-        ...(data.status && { status: data.status }),
-        ...(data.leaveType && { leaveType: data.leaveType }),
-        ...(data.checkInTime && { checkInTime: data.checkInTime }),
-        ...(data.checkOutTime && { checkOutTime: data.checkOutTime }),
-        ...(overtimeHours !== undefined && { overtimeHours }),
-        ...(data.checkInLocation && { checkInLocation: data.checkInLocation }),
-        ...(data.checkOutLocation && { checkOutLocation: data.checkOutLocation }),
-        ...(data.notes && { notes: data.notes }),
-      },
+      data: updateData,
       include: {
         user: {
           select: {
@@ -535,20 +592,12 @@ class AttendanceService {
       // Calculate work hours
       if (record.checkInTime && record.checkOutTime) {
         const checkInDateTime = new Date(record.date);
-        const checkInParts = record.checkInTime.toString().split(':');
-        checkInDateTime.setHours(
-          parseInt(checkInParts[0]),
-          parseInt(checkInParts[1]),
-          parseInt(checkInParts[2] || '0')
-        );
+        const inTime = this.parseTimeFromValue(record.checkInTime as any);
+        checkInDateTime.setHours(inTime.h, inTime.m, inTime.s);
 
         const checkOutDateTime = new Date(record.date);
-        const checkOutParts = record.checkOutTime.toString().split(':');
-        checkOutDateTime.setHours(
-          parseInt(checkOutParts[0]),
-          parseInt(checkOutParts[1]),
-          parseInt(checkOutParts[2] || '0')
-        );
+        const outTime = this.parseTimeFromValue(record.checkOutTime as any);
+        checkOutDateTime.setHours(outTime.h, outTime.m, outTime.s);
 
         const workHours = this.calculateWorkHours(checkInDateTime, checkOutDateTime);
         summary.totalWorkHours += workHours;
@@ -611,6 +660,7 @@ class AttendanceService {
       leaveDays: 0,
       wfhDays: 0,
       totalWorkHours: 0,
+      averageWorkHours: 0,
       totalOvertimeHours: 0,
       averageCheckInTime: '',
       averageCheckOutTime: '',
@@ -646,34 +696,26 @@ class AttendanceService {
 
       // Calculate average check-in/out times
       if (record.checkInTime) {
-        const parts = record.checkInTime.toString().split(':');
-        totalCheckInMinutes += parseInt(parts[0]) * 60 + parseInt(parts[1]);
+        const inTime = this.parseTimeFromValue(record.checkInTime as any);
+        totalCheckInMinutes += inTime.h * 60 + inTime.m;
         checkInCount++;
       }
 
       if (record.checkOutTime) {
-        const parts = record.checkOutTime.toString().split(':');
-        totalCheckOutMinutes += parseInt(parts[0]) * 60 + parseInt(parts[1]);
+        const outTime = this.parseTimeFromValue(record.checkOutTime as any);
+        totalCheckOutMinutes += outTime.h * 60 + outTime.m;
         checkOutCount++;
       }
 
       // Calculate work hours if both check-in and check-out exist
       if (record.checkInTime && record.checkOutTime) {
         const checkInDateTime = new Date(record.date);
-        const checkInParts = record.checkInTime.toString().split(':');
-        checkInDateTime.setHours(
-          parseInt(checkInParts[0]),
-          parseInt(checkInParts[1]),
-          parseInt(checkInParts[2] || '0')
-        );
+        const inTime = this.parseTimeFromValue(record.checkInTime as any);
+        checkInDateTime.setHours(inTime.h, inTime.m, inTime.s);
 
         const checkOutDateTime = new Date(record.date);
-        const checkOutParts = record.checkOutTime.toString().split(':');
-        checkOutDateTime.setHours(
-          parseInt(checkOutParts[0]),
-          parseInt(checkOutParts[1]),
-          parseInt(checkOutParts[2] || '0')
-        );
+        const outTime = this.parseTimeFromValue(record.checkOutTime as any);
+        checkOutDateTime.setHours(outTime.h, outTime.m, outTime.s);
 
         stats.totalWorkHours += this.calculateWorkHours(checkInDateTime, checkOutDateTime);
       }
@@ -696,6 +738,11 @@ class AttendanceService {
       stats.averageCheckOutTime = `${hours.toString().padStart(2, '0')}:${mins
         .toString()
         .padStart(2, '0')}`;
+    }
+
+    // Calculate average work hours
+    if (stats.presentDays > 0) {
+      stats.averageWorkHours = stats.totalWorkHours / stats.presentDays;
     }
 
     return stats;

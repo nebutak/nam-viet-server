@@ -44,8 +44,8 @@ export const checkOutSchema = z.object({
 export const updateAttendanceSchema = z.object({
   status: attendanceStatusEnum.optional(),
   leaveType: leaveTypeEnum.optional(),
-  checkInTime: z.string().optional(), // HH:mm:ss format
-  checkOutTime: z.string().optional(), // HH:mm:ss format
+  checkInTime: z.string().nullable().optional(), // HH:mm:ss format or null
+  checkOutTime: z.string().nullable().optional(), // HH:mm:ss format or null
   overtimeHours: z.number().min(0).max(24).optional(),
   checkInLocation: z.string().max(255).optional(),
   checkOutLocation: z.string().max(255).optional(),
