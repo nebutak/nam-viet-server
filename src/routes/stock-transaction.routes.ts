@@ -12,8 +12,7 @@ import {
   createStocktakeSchema,
   transactionQuerySchema,
   transactionIdSchema,
-  approveTransactionSchema,
-  cancelTransactionSchema,
+  postTransactionSchema,
   quickAdjustInventorySchema,
 } from '@validators/stock-transaction.validator';
 import { logActivityMiddleware } from '@middlewares/logger';
@@ -26,7 +25,7 @@ router.use(authentication);
 // POST /api/stock-transactions/import - Create import transaction
 router.post(
   '/import',
-  authorizeAny('CREATE_WAREHOUSE_RECEIPT', 'WAREHOUSE_IMPORT_CREATE', 'STOCK_MANAGEMENT'),
+  authorizeAny('CREATE_WAREHOUSE_IMPORT', 'MANAGE_INVENTORY'),
   validate(createImportSchema, 'body'),
   logActivityMiddleware('import', 'stock_transaction'),
   asyncHandler(stockTransactionController.createImport.bind(stockTransactionController))
@@ -35,7 +34,7 @@ router.post(
 // POST /api/stock-transactions/export - Create export transaction
 router.post(
   '/export',
-  authorizeAny('WAREHOUSE_EXPORT_CREATE', 'STOCK_MANAGEMENT'),
+  authorizeAny('CREATE_WAREHOUSE_EXPORT', 'MANAGE_INVENTORY'),
   validate(createExportSchema, 'body'),
   logActivityMiddleware('export', 'stock_transaction'),
   asyncHandler(stockTransactionController.createExport.bind(stockTransactionController))
@@ -44,7 +43,7 @@ router.post(
 // POST /api/stock-transactions/transfer - Create transfer transaction
 router.post(
   '/transfer',
-  authorizeAny('STOCK_MANAGEMENT'),
+  authorizeAny('MANAGE_INVENTORY'),
   validate(createTransferSchema, 'body'),
   logActivityMiddleware('transfer', 'stock_transaction'),
   asyncHandler(stockTransactionController.createTransfer.bind(stockTransactionController))
@@ -53,7 +52,7 @@ router.post(
 // POST /api/stock-transactions/disposal - Create disposal transaction
 router.post(
   '/disposal',
-  authorizeAny('STOCK_MANAGEMENT'),
+  authorizeAny('MANAGE_INVENTORY'),
   validate(createDisposalSchema, 'body'),
   logActivityMiddleware('disposal', 'stock_transaction'),
   asyncHandler(stockTransactionController.createDisposal.bind(stockTransactionController))
@@ -62,40 +61,29 @@ router.post(
 // POST /api/stock-transactions/stocktake - Create stocktake transaction
 router.post(
   '/stocktake',
-  authorizeAny('STOCK_MANAGEMENT'),
+  authorizeAny('MANAGE_INVENTORY'),
   validate(createStocktakeSchema, 'body'),
   logActivityMiddleware('stocktake', 'stock_transaction'),
   asyncHandler(stockTransactionController.createStocktake.bind(stockTransactionController))
 );
 
-// PUT /api/stock-transactions/:id/approve - Approve transaction
+// PUT /api/stock-transactions/:id/post - Post transaction
 router.put(
-  '/:id/approve',
-  authorizeAny('POST_WAREHOUSE_RECEIPT', 'WAREHOUSE_IMPORT_POST', 'WAREHOUSE_EXPORT_POST', 'STOCK_MANAGEMENT'),
+  '/:id/post',
+  authorizeAny('POSTED_WAREHOUSE_IMPORT', 'POSTED_WAREHOUSE_EXPORT', 'MANAGE_INVENTORY'),
   validateMultiple({
     params: transactionIdSchema,
-    body: approveTransactionSchema,
+    body: postTransactionSchema,
   }),
-  logActivityMiddleware('approve', 'stock_transaction'),
-  asyncHandler(stockTransactionController.approve.bind(stockTransactionController))
+  logActivityMiddleware('post', 'stock_transaction'),
+  asyncHandler(stockTransactionController.post.bind(stockTransactionController))
 );
 
-// PUT /api/stock-transactions/:id/cancel - Cancel transaction
-router.put(
-  '/:id/cancel',
-  authorizeAny('WAREHOUSE_IMPORT_CANCEL', 'WAREHOUSE_EXPORT_CANCEL', 'STOCK_MANAGEMENT'),
-  validateMultiple({
-    params: transactionIdSchema,
-    body: cancelTransactionSchema,
-  }),
-  logActivityMiddleware('cancel', 'stock_transaction'),
-  asyncHandler(stockTransactionController.cancel.bind(stockTransactionController))
-);
 
 // POST /api/stock-transactions/quick-adjust - Quick adjust inventory
 router.post(
   '/quick-adjust',
-  authorizeAny('STOCK_MANAGEMENT'),
+  authorizeAny('MANAGE_INVENTORY'),
   validate(quickAdjustInventorySchema, 'body'),
   logActivityMiddleware('quick adjust', 'stock_transaction'),
   asyncHandler(stockTransactionController.quickAdjustInventory.bind(stockTransactionController))
@@ -104,14 +92,14 @@ router.post(
 // GET /api/stock-transactions/card/:warehouseId/:productId - Get stock card
 router.get(
   '/card/:warehouseId/:productId',
-  authorizeAny('GET_STOCK', 'STOCK_MANAGEMENT', 'INVENTORY_LEDGER_VIEW'),
+  authorizeAny('GET_STOCK', 'MANAGE_INVENTORY', 'INVENTORY_LEDGER_VIEW'),
   asyncHandler(stockTransactionController.getStockCard.bind(stockTransactionController))
 );
 
 // GET /api/stock-transactions/:id - Get transaction by ID
 router.get(
   '/:id',
-  authorizeAny('GET_WAREHOUSE_RECEIPT', 'WAREHOUSE_IMPORT_VIEW_ALL', 'WAREHOUSE_EXPORT_VIEW_ALL', 'GET_STOCK', 'STOCK_MANAGEMENT'),
+  authorizeAny('GET_WAREHOUSE_IMPORT', 'GET_WAREHOUSE_EXPORT', 'GET_STOCK', 'MANAGE_INVENTORY'),
   validate(transactionIdSchema, 'params'),
   asyncHandler(stockTransactionController.getById.bind(stockTransactionController))
 );
@@ -119,7 +107,7 @@ router.get(
 // GET /api/stock-transactions - Get all transactions
 router.get(
   '/',
-  authorizeAny('GET_WAREHOUSE_RECEIPT', 'WAREHOUSE_IMPORT_VIEW_ALL', 'WAREHOUSE_EXPORT_VIEW_ALL', 'GET_STOCK', 'STOCK_MANAGEMENT'),
+  authorizeAny('GET_WAREHOUSE_IMPORT', 'GET_WAREHOUSE_EXPORT', 'GET_STOCK', 'MANAGE_INVENTORY'),
   validate(transactionQuerySchema, 'query'),
   asyncHandler(stockTransactionController.getAll.bind(stockTransactionController))
 );

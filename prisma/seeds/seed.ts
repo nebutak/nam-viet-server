@@ -7,6 +7,7 @@ import { seedUnits } from './unit.seed';
 import { seedTaxes } from './tax.seed';
 import { seedAttributes } from './attribute.seed';
 import { seedProducts } from './product.seed';
+import { seedInventory } from './inventory.seed';
 
 const prisma = new PrismaClient();
 
@@ -291,6 +292,7 @@ async function main() {
 
     // Phiếu chi (Payment Voucher)
     { key: "GET_PAYMENT", name: "Xem", module: "payment", moduleLabel: "Phiếu chi" },
+    { key: "GET_PAYMENT_USER", name: "Xem của tôi", module: "payment", moduleLabel: "Phiếu chi" },
     { key: "CREATE_PAYMENT", name: "Thêm", module: "payment", moduleLabel: "Phiếu chi" },
     { key: "UPDATE_PAYMENT", name: "Sửa", module: "payment", moduleLabel: "Phiếu chi" },
     { key: "DELETE_PAYMENT", name: "Xóa", module: "payment", moduleLabel: "Phiếu chi" },
@@ -325,6 +327,10 @@ async function main() {
     { key: "CREATE_WAREHOUSE", name: "Thêm", module: "warehouse", moduleLabel: "Kho" },
     { key: "UPDATE_WAREHOUSE", name: "Sửa", module: "warehouse", moduleLabel: "Kho" },
     { key: "DELETE_WAREHOUSE", name: "Xóa", module: "warehouse", moduleLabel: "Kho" },
+    
+    // Quản lý tồn kho
+    { key: "GET_INVENTORY", name: "Xem tồn kho", module: "inventory", moduleLabel: "Tồn kho" },
+    { key: "MANAGE_INVENTORY", name: "Quản lý tồn kho", module: "inventory", moduleLabel: "Tồn kho" },
 
     // Nhập kho
     { key: "GET_WAREHOUSE_IMPORT", name: "Xem", module: "warehouse_in", moduleLabel: "Nhập kho" },
@@ -638,6 +644,11 @@ async function main() {
   // 12. SEED PRODUCTS
   // =====================================================
   await seedProducts(prisma, adminUser.id);
+
+  // =====================================================
+  // 13. SEED INVENTORY
+  // =====================================================
+  await seedInventory(prisma, adminUser.id);
 
   console.log('✅ Database seed completed successfully! 🎉\n');
   console.log('📌 Login Credentials:\n');

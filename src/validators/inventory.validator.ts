@@ -6,6 +6,7 @@ export const inventoryQuerySchema = z.object({
   search: z.string().trim().optional(),
   warehouseId: z.string().optional().transform(Number),
   productId: z.string().optional().transform(Number),
+  productIds: z.string().optional(), // Comma-separated product IDs
   productType: z.enum(['raw_material', 'packaging', 'finished_product', 'goods']).optional(),
   warehouseType: z.enum(['raw_material', 'packaging', 'finished_product', 'goods']).optional(),
   categoryId: z.string().optional().transform(Number),

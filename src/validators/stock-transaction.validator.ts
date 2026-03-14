@@ -90,7 +90,7 @@ export const transactionQuerySchema = z.object({
   warehouseId: z.string().optional(),
   referenceType: z.string().max(50).optional(),
   referenceId: z.string().regex(/^\d+$/).optional(),
-  status: z.enum(['draft', 'pending', 'approved', 'completed', 'cancelled']).optional(),
+  isPosted: z.enum(['true', 'false']).optional(),
   fromDate: z.string().optional(),
   toDate: z.string().optional(),
   sortBy: z.string().optional().default('createdAt'),
@@ -101,13 +101,10 @@ export const transactionIdSchema = z.object({
   id: z.string().transform(Number),
 });
 
-export const approveTransactionSchema = z.object({
+export const postTransactionSchema = z.object({
   notes: z.string().max(500).optional(),
 });
 
-export const cancelTransactionSchema = z.object({
-  reason: z.string().min(1, 'Lý do là bắt buộc cho việc hủy bỏ').max(500),
-});
 
 export const quickAdjustInventorySchema = z.object({
   warehouseId: z.number().int().positive('Id kho không hợp lệ'),
@@ -125,6 +122,5 @@ export type CreateDisposalInput = z.infer<typeof createDisposalSchema>;
 export type CreateStocktakeInput = z.infer<typeof createStocktakeSchema>;
 export type TransactionQueryInput = z.infer<typeof transactionQuerySchema>;
 export type TransactionIdInput = z.infer<typeof transactionIdSchema>;
-export type ApproveTransactionInput = z.infer<typeof approveTransactionSchema>;
-export type CancelTransactionInput = z.infer<typeof cancelTransactionSchema>;
+export type PostTransactionInput = z.infer<typeof postTransactionSchema>;
 export type QuickAdjustInventoryInput = z.infer<typeof quickAdjustInventorySchema>;

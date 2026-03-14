@@ -125,8 +125,6 @@ model User {
   productsUpdated            Product[]             @relation("ProductUpdater")
   updatedPriceHistories      ProductPriceHistory[]
   stockTransactions          StockTransaction[]    @relation("TransactionCreator")
-  stockTransactionsApproved  StockTransaction[]    @relation("TransactionApprover")
-  stockTransactionsCancelled StockTransaction[]    @relation("TransactionCanceller")
   stockTransfers             StockTransfer[]       @relation("TransferRequester")
   stockTransfersApproved     StockTransfer[]       @relation("TransferApprover")
   stockTransfersCancelled    StockTransfer[]       @relation("TransferCanceller")
@@ -488,27 +486,21 @@ model StockTransaction {
   totalValue             Decimal           @default(0) @map("total_value") @db.Decimal(15, 2)
   reason                 String?           @db.VarChar(255)
   notes                  String?           @db.VarChar(500)
-  status                 TransactionStatus @default(draft)
+  isPosted               Boolean           @default(false) @map("is_posted")
   createdBy              Int               @map("created_by")
-  approvedBy             Int?              @map("approved_by")
-  cancelledBy            Int?              @map("cancelled_by")
   createdAt              DateTime          @default(now()) @map("created_at")
-  approvedAt             DateTime?         @map("approved_at")
-  cancelledAt            DateTime?         @map("cancelled_at")
   deletedAt              DateTime?         @map("deleted_at")
 
   warehouse            Warehouse  @relation(fields: [warehouseId], references: [id])
   sourceWarehouse      Warehouse? @relation("SourceWarehouse", fields: [sourceWarehouseId], references: [id])
   destinationWarehouse Warehouse? @relation("DestinationWarehouse", fields: [destinationWarehouseId], references: [id])
   creator              User       @relation("TransactionCreator", fields: [createdBy], references: [id])
-  approver             User?      @relation("TransactionApprover", fields: [approvedBy], references: [id])
-  canceller            User?      @relation("TransactionCanceller", fields: [cancelledBy], references: [id])
 
   details StockTransactionDetail[]
 
   @@index([transactionCode])
   @@index([transactionType])
-  @@index([status])
+  @@index([warehouseId, isPosted])
   @@index([createdAt])
   @@map("stock_transactions")
 }

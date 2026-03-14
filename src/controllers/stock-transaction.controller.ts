@@ -124,41 +124,24 @@ class StockTransactionController {
     res.status(201).json(response);
   }
 
-  // PUT /api/stock-transactions/:id/approve
-  async approve(req: AuthRequest, res: Response) {
+  // PUT /api/stock-transactions/:id/post
+  async post(req: AuthRequest, res: Response) {
     const { id } = req.params;
     const userId = req.user!.id;
     const { notes } = req.body;
 
-    const transaction = await stockTransactionService.approve(parseInt(id), userId, notes);
+    const transaction = await stockTransactionService.postTransaction(parseInt(id), userId, notes);
 
     const response: ApiResponse = {
       success: true,
       data: transaction,
-      message: 'Transaction approved and inventory updated successfully',
+      message: 'Giao dịch đã được ghi sổ thành công',
       timestamp: new Date().toISOString(),
     };
 
     res.status(200).json(response);
   }
 
-  // PUT /api/stock-transactions/:id/cancel
-  async cancel(req: AuthRequest, res: Response) {
-    const { id } = req.params;
-    const userId = req.user!.id;
-    const { reason } = req.body;
-
-    const transaction = await stockTransactionService.cancel(parseInt(id), userId, reason);
-
-    const response: ApiResponse = {
-      success: true,
-      data: transaction,
-      message: 'Transaction cancelled successfully',
-      timestamp: new Date().toISOString(),
-    };
-
-    res.status(200).json(response);
-  }
 
   // GET /api/stock-transactions/card/:warehouseId/:productId
   async getStockCard(req: AuthRequest, res: Response) {

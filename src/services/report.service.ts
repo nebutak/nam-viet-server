@@ -1179,7 +1179,7 @@ class ReportService {
       where: {
         transaction: {
           transactionType: 'export',
-          status: 'completed',
+          isPosted: true,
           createdAt: {
             gte: dateRange.fromDate,
             lte: dateRange.toDate,
