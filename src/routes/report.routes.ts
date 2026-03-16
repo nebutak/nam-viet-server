@@ -253,6 +253,13 @@ router.get(
   asyncHandler(reportController.getFinancialReport.bind(reportController))
 );
 
+// GET /api/reports/financial/export - Export financial report to Excel
+router.get(
+  '/financial/export',
+  authorize('GET_FINANCIAL_REPORT'),
+  asyncHandler(reportController.exportFinancialReport.bind(reportController))
+);
+
 // =====================================================
 // FILTER OPTIONS
 // =====================================================

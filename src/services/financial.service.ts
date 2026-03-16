@@ -25,6 +25,8 @@ class FinancialService {
     const cashBookEntries = await this.getCashBookEntries(startDate, endDate);
     const customerDebts = await this.getCustomerDebts(startDate, endDate);
     const supplierDebts = await this.getSupplierDebts(startDate, endDate);
+    const topCustomers = await this.getTopCustomers(startDate, endDate);
+    const topSuppliers = await this.getTopSuppliers(startDate, endDate);
 
     return {
       period: {
@@ -41,6 +43,8 @@ class FinancialService {
       cashBookEntries,
       customerDebts,
       supplierDebts,
+      topCustomers,
+      topSuppliers,
     };
   }
 
@@ -599,6 +603,110 @@ class FinancialService {
     return debts.filter((d) => d.closingPayable > 0);
   }
 
+  /**
+   * Get top customers by payment amount
+   */
+  async getTopCustomers(startDate: Date, endDate: Date, limit: number = 5): Promise<any[]> {
+    const receipts = await prisma.paymentReceipt.findMany({
+      where: {
+        receiptDate: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+      include: {
+        customerRef: {
+          select: {
+            id: true,
+            customerCode: true,
+            customerName: true,
+            classification: true,
+          },
+        },
+      },
+      orderBy: {
+        amount: 'desc',
+      },
+      take: limit,
+    });
+
+    // Group by customer and sum
+    const customerMap = new Map<number, any>();
+    for (const receipt of receipts) {
+      const cid = receipt.customerRef.id;
+      if (!customerMap.has(cid)) {
+        customerMap.set(cid, {
+          customerId: cid,
+          customerCode: receipt.customerRef.customerCode,
+          customerName: receipt.customerRef.customerName,
+          classification: receipt.customerRef.classification,
+          totalAmount: 0,
+          transactionCount: 0,
+        });
+      }
+      const existing = customerMap.get(cid)!;
+      existing.totalAmount += Number(receipt.amount);
+      existing.transactionCount += 1;
+    }
+
+    return Array.from(customerMap.values())
+      .sort((a, b) => b.totalAmount - a.totalAmount)
+      .slice(0, limit);
+  }
+
+  /**
+   * Get top suppliers by payment amount
+   */
+  async getTopSuppliers(startDate: Date, endDate: Date, limit: number = 5): Promise<any[]> {
+    const vouchers = await prisma.paymentVoucher.findMany({
+      where: {
+        supplierId: { not: null },
+        paymentDate: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+      include: {
+        supplier: {
+          select: {
+            id: true,
+            supplierCode: true,
+            supplierName: true,
+            supplierType: true,
+          },
+        },
+      },
+      orderBy: {
+        amount: 'desc',
+      },
+      take: limit * 2, // Get more to filter
+    });
+
+    // Group by supplier and sum
+    const supplierMap = new Map<number, any>();
+    for (const voucher of vouchers) {
+      if (!voucher.supplier) continue;
+      const sid = voucher.supplier.id;
+      if (!supplierMap.has(sid)) {
+        supplierMap.set(sid, {
+          supplierId: sid,
+          supplierCode: voucher.supplier.supplierCode,
+          supplierName: voucher.supplier.supplierName,
+          supplierType: voucher.supplier.supplierType,
+          totalAmount: 0,
+          transactionCount: 0,
+        });
+      }
+      const existing = supplierMap.get(sid)!;
+      existing.totalAmount += Number(voucher.amount);
+      existing.transactionCount += 1;
+    }
+
+    return Array.from(supplierMap.values())
+      .sort((a, b) => b.totalAmount - a.totalAmount)
+      .slice(0, limit);
+  }
+
   // Helper methods
   private getReceiptTypeName(type: string): string {
     const names: Record<string, string> = {
@@ -636,6 +744,257 @@ class FinancialService {
       transfer: 'Chuyển khoản',
     };
     return names[method] || method;
+  }
+
+  /**
+   * Export financial report to Excel
+   */
+  async exportFinancialReport(fromDate: string, toDate: string): Promise<Buffer> {
+    const ExcelJS = require('exceljs');
+
+    // Get financial data
+    const data = await this.getFinancialReport(fromDate, toDate);
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Nam Viet App';
+    workbook.created = new Date();
+
+    // Header style
+    const headerStyle = {
+      fill: {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF4472C4' },
+      },
+      font: { bold: true, size: 12, color: { argb: 'FFFFFFFF' } },
+      alignment: { horizontal: 'center', vertical: 'middle' },
+      border: {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' },
+      },
+    };
+
+    // Sheet 1: Tổng hợp
+    const summarySheet = workbook.addWorksheet('Tổng hợp');
+
+    // Title
+    summarySheet.mergeCells('A1:D1');
+    summarySheet.getCell('A1').value = 'BÁO CÁO TÀI CHÍNH';
+    summarySheet.getCell('A1').font = { bold: true, size: 14 };
+    summarySheet.getCell('A1').alignment = { horizontal: 'center' };
+
+    // Date info
+    summarySheet.mergeCells('A2:D2');
+    summarySheet.getCell('A2').value = `Từ ngày: ${fromDate} - Đến ngày: ${toDate}`;
+    summarySheet.getCell('A2').font = { size: 10, italic: true };
+    summarySheet.getCell('A2').alignment = { horizontal: 'center' };
+
+    // KPI Summary
+    const summaryHeaders = ['Chỉ tiêu', 'Giá trị', 'Đơn vị', 'Ghi chú'];
+    const summaryHeaderRow = summarySheet.addRow(summaryHeaders);
+    summaryHeaderRow.eachCell((cell: any) => {
+      cell.style = headerStyle;
+    });
+
+    const kpi = data.kpi || {};
+    const summaryData = [
+      ['Tổng thu', kpi.totalReceipts || 0, 'VND', ''],
+      ['Tổng chi', kpi.totalPayments || 0, 'VND', ''],
+      ['Dòng tiền ròng', kpi.netCashFlow || 0, 'VND', ''],
+      ['Số dư đầu kỳ', kpi.openingBalance || 0, 'VND', ''],
+      ['Số dư cuối kỳ', kpi.closingBalance || 0, 'VND', ''],
+      ['Tăng trưởng thu', kpi.receiptGrowth || 0, '%', ''],
+      ['Tăng trưởng chi', kpi.paymentGrowth || 0, '%', ''],
+    ];
+
+    summaryData.forEach((row: any[]) => {
+      const dataRow = summarySheet.addRow(row);
+      dataRow.getCell(2).numFmt = '#,##0 ₫';
+    });
+
+    summarySheet.getColumn(1).width = 25;
+    summarySheet.getColumn(2).width = 18;
+    summarySheet.getColumn(3).width = 12;
+    summarySheet.getColumn(4).width = 20;
+
+    // Sheet 2: Báo cáo Lãi/Lỗ
+    const profitLossSheet = workbook.addWorksheet('Lai Lo');
+
+    const plHeaders = ['Chỉ tiêu', 'Kỳ này', 'Kỳ trước', 'Tăng trưởng (%)'];
+    const plHeaderRow = profitLossSheet.addRow(plHeaders);
+    plHeaderRow.eachCell((cell: any) => {
+      cell.style = headerStyle;
+    });
+
+    const profitLoss = data.profitLoss || {};
+    const plLines = profitLoss.lines || [];
+    plLines.forEach((line: any) => {
+      const row = profitLossSheet.addRow([
+        line.label,
+        line.currentPeriod,
+        line.previousPeriod,
+        line.growth,
+      ]);
+      row.getCell(2).numFmt = '#,##0 ₫';
+      row.getCell(3).numFmt = '#,##0 ₫';
+      row.getCell(4).numFmt = '0.00"%"';
+
+      // Bold for subtotals and profit
+      if (line.type === 'subtotal' || line.type === 'profit') {
+        row.font = { bold: true };
+      }
+    });
+
+    profitLossSheet.getColumn(1).width = 30;
+    profitLossSheet.getColumn(2).width = 18;
+    profitLossSheet.getColumn(3).width = 18;
+    profitLossSheet.getColumn(4).width = 18;
+
+    // Sheet 3: Sổ quỹ
+    const cashLedgerSheet = workbook.addWorksheet('Sổ quỹ');
+
+    const cashHeaders = ['Ngày', 'Số dư đầu', 'Thu', 'Chi', 'Số dư cuối'];
+    const cashHeaderRow = cashLedgerSheet.addRow(cashHeaders);
+    cashHeaderRow.eachCell((cell: any) => {
+      cell.style = headerStyle;
+    });
+
+    const cashLedger = data.cashLedger || [];
+    cashLedger.forEach((entry: any) => {
+      const row = cashLedgerSheet.addRow([
+        entry.date,
+        entry.openingBalance,
+        entry.totalReceipts,
+        entry.totalPayments,
+        entry.closingBalance,
+      ]);
+      row.getCell(2).numFmt = '#,##0 ₫';
+      row.getCell(3).numFmt = '#,##0 ₫';
+      row.getCell(4).numFmt = '#,##0 ₫';
+      row.getCell(5).numFmt = '#,##0 ₫';
+    });
+
+    cashLedgerSheet.getColumn(1).width = 12;
+    cashLedgerSheet.getColumn(2).width = 15;
+    cashLedgerSheet.getColumn(3).width = 15;
+    cashLedgerSheet.getColumn(4).width = 15;
+    cashLedgerSheet.getColumn(5).width = 15;
+
+    // Sheet 4: Cơ cấu thu
+    const receiptsSheet = workbook.addWorksheet('Cơ cấu thu');
+
+    const receiptHeaders = ['Loại thu', 'Số tiền', 'Tỷ trọng (%)', 'Số lần'];
+    const receiptHeaderRow = receiptsSheet.addRow(receiptHeaders);
+    receiptHeaderRow.eachCell((cell: any) => {
+      cell.style = headerStyle;
+    });
+
+    const receiptsByType = data.receiptsByType || [];
+    receiptsByType.forEach((item: any) => {
+      const row = receiptsSheet.addRow([
+        item.displayName,
+        item.amount,
+        item.percentage,
+        item.count,
+      ]);
+      row.getCell(2).numFmt = '#,##0 ₫';
+      row.getCell(3).numFmt = '0.00"%"';
+    });
+
+    receiptsSheet.getColumn(1).width = 20;
+    receiptsSheet.getColumn(2).width = 15;
+    receiptsSheet.getColumn(3).width = 15;
+    receiptsSheet.getColumn(4).width = 10;
+
+    // Sheet 5: Cơ cấu chi
+    const paymentsSheet = workbook.addWorksheet('Cơ cấu chi');
+
+    const paymentHeaders = ['Loại chi', 'Số tiền', 'Tỷ trọng (%)', 'Số lần'];
+    const paymentHeaderRow = paymentsSheet.addRow(paymentHeaders);
+    paymentHeaderRow.eachCell((cell: any) => {
+      cell.style = headerStyle;
+    });
+
+    const paymentsByType = data.paymentsByType || [];
+    paymentsByType.forEach((item: any) => {
+      const row = paymentsSheet.addRow([
+        item.displayName,
+        item.amount,
+        item.percentage,
+        item.count,
+      ]);
+      row.getCell(2).numFmt = '#,##0 ₫';
+      row.getCell(3).numFmt = '0.00"%"';
+    });
+
+    paymentsSheet.getColumn(1).width = 20;
+    paymentsSheet.getColumn(2).width = 15;
+    paymentsSheet.getColumn(3).width = 15;
+    paymentsSheet.getColumn(4).width = 10;
+
+    // Sheet 6: Top khách hàng
+    const customersSheet = workbook.addWorksheet('Top khách hàng');
+
+    const customerHeaders = ['STT', 'Mã khách', 'Tên khách hàng', 'Phân loại', 'Số giao dịch', 'Tổng tiền'];
+    const customerHeaderRow = customersSheet.addRow(customerHeaders);
+    customerHeaderRow.eachCell((cell: any) => {
+      cell.style = headerStyle;
+    });
+
+    const topCustomers = data.topCustomers || [];
+    topCustomers.forEach((customer: any, index: number) => {
+      const row = customersSheet.addRow([
+        index + 1,
+        customer.customerCode,
+        customer.customerName,
+        customer.classification,
+        customer.transactionCount,
+        customer.totalAmount,
+      ]);
+      row.getCell(6).numFmt = '#,##0 ₫';
+    });
+
+    customersSheet.getColumn(1).width = 5;
+    customersSheet.getColumn(2).width = 12;
+    customersSheet.getColumn(3).width = 30;
+    customersSheet.getColumn(4).width = 12;
+    customersSheet.getColumn(5).width = 12;
+    customersSheet.getColumn(6).width = 15;
+
+    // Sheet 7: Top nhà cung cấp
+    const suppliersSheet = workbook.addWorksheet('Top NCC');
+
+    const supplierHeaders = ['STT', 'Mã NCC', 'Tên nhà cung cấp', 'Loại', 'Số giao dịch', 'Tổng tiền'];
+    const supplierHeaderRow = suppliersSheet.addRow(supplierHeaders);
+    supplierHeaderRow.eachCell((cell: any) => {
+      cell.style = headerStyle;
+    });
+
+    const topSuppliers = data.topSuppliers || [];
+    topSuppliers.forEach((supplier: any, index: number) => {
+      const row = suppliersSheet.addRow([
+        index + 1,
+        supplier.supplierCode,
+        supplier.supplierName,
+        supplier.supplierType,
+        supplier.transactionCount,
+        supplier.totalAmount,
+      ]);
+      row.getCell(6).numFmt = '#,##0 ₫';
+    });
+
+    suppliersSheet.getColumn(1).width = 5;
+    suppliersSheet.getColumn(2).width = 12;
+    suppliersSheet.getColumn(3).width = 30;
+    suppliersSheet.getColumn(4).width = 12;
+    suppliersSheet.getColumn(5).width = 12;
+    suppliersSheet.getColumn(6).width = 15;
+
+    // Generate buffer
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer);
   }
 }
 
