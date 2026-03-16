@@ -620,7 +620,6 @@ class FinancialService {
             id: true,
             customerCode: true,
             customerName: true,
-            classification: true,
           },
         },
       },
@@ -639,7 +638,6 @@ class FinancialService {
           customerId: cid,
           customerCode: receipt.customerRef.customerCode,
           customerName: receipt.customerRef.customerName,
-          classification: receipt.customerRef.classification,
           totalAmount: 0,
           transactionCount: 0,
         });

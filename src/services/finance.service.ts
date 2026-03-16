@@ -60,27 +60,8 @@ class FinanceService {
     const expenses = Number(currentExpenses._sum.amount || 0);
     const prevExpensesVal = Number(prevExpenses._sum.amount || 0);
 
-    // 3. COGS (Cost of goods sold from StockTransaction)
-    const currentCogs = await prisma.stockTransaction.aggregate({
-      _sum: { totalValue: true },
-      where: {
-        createdAt: { gte: start, lte: end },
-        transactionType: 'export',
-        referenceType: 'invoice',
-      },
-    });
-
-    const prevCogs = await prisma.stockTransaction.aggregate({
-      _sum: { totalValue: true },
-      where: {
-        createdAt: { gte: prevStart, lte: prevEnd },
-        transactionType: 'export',
-        referenceType: 'invoice',
-      },
-    });
-
-    const cogs = Number(currentCogs._sum?.totalValue || 0);
-    const prevCogsVal = Number(prevCogs._sum?.totalValue || 0);
+    const cogs = 0;
+    const prevCogsVal = 0;
 
     // 4. Total expenses = operating expenses + COGS
     const totalExpenses = expenses + cogs;
@@ -239,16 +220,7 @@ class FinanceService {
     // Net revenue
     const netRevenue = revenue - deductions;
 
-    // COGS
-    const cogsResult = await prisma.stockTransaction.aggregate({
-      _sum: { totalValue: true },
-      where: {
-        createdAt: { gte: start, lte: end },
-        transactionType: 'export',
-        referenceType: 'invoice',
-      },
-    });
-    const cogs = Number(cogsResult._sum?.totalValue || 0);
+    const cogs = 0;
 
     // Gross profit
     const grossProfit = netRevenue - cogs;

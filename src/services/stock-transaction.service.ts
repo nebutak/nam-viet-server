@@ -4,6 +4,7 @@ import { logActivity } from '@utils/logger';
 import inventoryService from './inventory.service';
 import {
   type CreateImportInput,
+  type CreateExportInput,
   type TransactionQueryInput,
 } from '@validators/stock-transaction.validator';
 const prisma = new PrismaClient();
@@ -223,11 +224,6 @@ class StockTransactionService {
       }
     }
 
-    const totalValue = data.details.reduce(
-      (sum, item) => sum + (item.unitPrice || 0) * item.quantity,
-      0
-    );
-
     let transactionCode = await this.generateTransactionCode('import');
     let transaction;
     let retries = 3;
@@ -241,17 +237,19 @@ class StockTransactionService {
             warehouseId: data.warehouseId,
             referenceType: data.referenceType,
             referenceId: data.referenceId,
-            totalValue,
+            customerId: data.customerId,
+            supplierId: data.supplierId,
             reason: data.reason,
             notes: data.notes,
+            actualReceiptDate: data.actualReceiptDate ? new Date(data.actualReceiptDate) : null,
             isPosted: false,
             createdBy: userId,
             details: {
               create: data.details.map((item) => ({
                 productId: item.productId,
+                unitId: item.unitId,
                 warehouseId: data.warehouseId,
                 quantity: item.quantity,
-                unitPrice: item.unitPrice,
                 batchNumber: item.batchNumber,
                 expiryDate: item.expiryDate ? new Date(item.expiryDate) : null,
                 notes: item.notes,
@@ -291,22 +289,7 @@ class StockTransactionService {
     return transaction;
   }
 
-  async createExport(
-    data: {
-      warehouseId: number;
-      referenceType?: string;
-      referenceId?: number;
-      reason?: string;
-      notes?: string;
-      details: Array<{
-        productId: number;
-        quantity: number;
-        batchNumber?: string;
-        notes?: string;
-      }>;
-    },
-    userId: number
-  ) {
+  async createExport(data: CreateExportInput, userId: number) {
     const warehouse = await prisma.warehouse.findUnique({
       where: { id: data.warehouseId },
     });
@@ -337,13 +320,17 @@ class StockTransactionService {
         warehouseId: data.warehouseId,
         referenceType: data.referenceType,
         referenceId: data.referenceId,
+        customerId: data.customerId,
+        supplierId: data.supplierId,
         reason: data.reason,
         notes: data.notes,
+        actualReceiptDate: data.actualReceiptDate ? new Date(data.actualReceiptDate) : null,
         isPosted: false,
         createdBy: userId,
         details: {
           create: data.details.map((item) => ({
             productId: item.productId,
+            unitId: item.unitId,
             warehouseId: data.warehouseId,
             quantity: item.quantity,
             batchNumber: item.batchNumber,
@@ -800,6 +787,61 @@ class StockTransactionService {
         },
       });
     }
+
+    // ─── Tự động hoàn thành Invoice nếu đã xuất đủ số lượng ──────────────────
+    if (transaction.referenceType === 'invoice' && transaction.referenceId) {
+      const invoiceId = transaction.referenceId;
+
+      const invoice = await tx.invoice.findUnique({
+        where: { id: invoiceId },
+        include: { details: true },
+      });
+
+      if (invoice) {
+        // Lấy tất cả các PXK đã ghi sổ liên quan đến Invoice này
+        const stockTransactions = await tx.stockTransaction.findMany({
+          where: {
+            referenceType: 'invoice',
+            referenceId: invoiceId,
+            isPosted: true,
+            deletedAt: null,
+          },
+          include: {
+            details: true,
+          },
+        });
+
+        // Tính tổng số lượng đã xuất cho từng sản phẩm
+        const totalExported = new Map<number, number>();
+        for (const st of stockTransactions) {
+          for (const d of st.details) {
+            const current = totalExported.get(d.productId) || 0;
+            totalExported.set(d.productId, current + Number(d.quantity));
+          }
+        }
+
+        // Kiểm tra xem tất cả các mặt hàng trong Invoice đã xuất đủ chưa
+        let isFullyExported = true;
+        for (const detail of invoice.details) {
+          const exportedQty = totalExported.get(detail.productId) || 0;
+          if (exportedQty < Number(detail.quantity)) {
+            isFullyExported = false;
+            break;
+          }
+        }
+
+        if (isFullyExported) {
+          await tx.invoice.update({
+            where: { id: invoiceId },
+            data: {
+              orderStatus: 'completed',
+              completedAt: new Date(),
+            },
+          });
+        }
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
   }
 
   private async processTransfer(tx: any, transaction: any, userId: number) {

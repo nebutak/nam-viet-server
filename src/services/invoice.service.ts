@@ -196,91 +196,120 @@ class InvoiceService {
   }
 
   async getById(id: number) {
-
-    const order = await prisma.invoice.findUnique({
-      where: { id },
-      include: {
-        customer: {
-          select: {
-            id: true,
-            customerCode: true,
-            customerName: true,
-            phone: true,
-            email: true,
-            address: true,
-            creditLimit: true,
-            currentDebt: true,
-            cccd: true,
-            taxCode: true,
-          },
-        },
-        details: {
-          include: {
-            product: {
-              select: {
-                id: true,
-                code: true,
-                productName: true,
-                image: true,
-                unit: true,
-                note: true,
-              },
-            },
-            warehouse: {
-              select: {
-                id: true,
-                warehouseName: true,
-              },
+    const [order, warehouseReceipts] = await Promise.all([
+      prisma.invoice.findUnique({
+        where: { id },
+        include: {
+          customer: {
+            select: {
+              id: true,
+              customerCode: true,
+              customerName: true,
+              phone: true,
+              email: true,
+              address: true,
+              creditLimit: true,
+              currentDebt: true,
+              cccd: true,
+              taxCode: true,
             },
           },
-        },
-        creator: {
-          select: {
-            id: true,
-            fullName: true,
-            employeeCode: true,
-            email: true,
-            phone: true,
+          details: {
+            include: {
+              product: {
+                select: {
+                  id: true,
+                  code: true,
+                  productName: true,
+                  image: true,
+                  unit: true,
+                  note: true,
+                },
+              },
+              warehouse: {
+                select: {
+                  id: true,
+                  warehouseName: true,
+                },
+              },
+            },
+          },
+          creator: {
+            select: {
+              id: true,
+              fullName: true,
+              employeeCode: true,
+              email: true,
+              phone: true,
+            },
+          },
+          approver: {
+            select: {
+              id: true,
+              fullName: true,
+              employeeCode: true,
+            },
+          },
+          canceller: {
+            select: {
+              id: true,
+              fullName: true,
+              employeeCode: true,
+            },
+          },
+          deliveries: {
+            select: {
+              id: true,
+              deliveryCode: true,
+              deliveryStatus: true,
+              deliveryDate: true,
+            },
+          },
+          paymentReceipts: {
+            where: { deletedAt: null },
+            include: {
+              creator: { select: { id: true, fullName: true, email: true } }
+            }
           },
         },
-        approver: {
-          select: {
-            id: true,
-            fullName: true,
-            employeeCode: true,
-          },
+      }),
+      prisma.stockTransaction.findMany({
+        where: {
+          referenceType: 'invoice',
+          referenceId: id,
+          deletedAt: null
         },
-        canceller: {
-          select: {
-            id: true,
-            fullName: true,
-            employeeCode: true,
-          },
-        },
-        deliveries: {
-          select: {
-            id: true,
-            deliveryCode: true,
-            deliveryStatus: true,
-            deliveryDate: true,
-          },
-        },
-        paymentReceipts: {
-          where: { deletedAt: null },
-          include: {
-            creator: { select: { id: true, fullName: true, email: true } }
+        include: {
+          creator: {
+            select: {
+              id: true,
+              fullName: true,
+              employeeCode: true
+            }
           }
         },
-      },
-    });
+        orderBy: { createdAt: 'desc' }
+      })
+    ]);
 
     if (!order) {
       throw new NotFoundError('Không tìm thấy đơn hàng bán');
     }
 
+    // Map stock transactions to the format expected by the frontend
+    const mappedReceipts = warehouseReceipts.map(receipt => ({
+      ...receipt,
+      code: receipt.transactionCode,
+      receiptDate: receipt.createdAt,
+      receiptType: receipt.transactionType === 'import' ? 1 : 2, // 1: import, 2: export
+      createdByUser: receipt.creator,
+      status: receipt.isPosted ? 'posted' : 'draft'
+    }));
+
     const result = {
       ...order,
       remainingAmount: Number(order.totalAmount) - Number(order.paidAmount),
+      warehouseReceipts: mappedReceipts
     };
 
     return result;

@@ -2,9 +2,8 @@ import { z } from 'zod';
 
 const transactionDetailSchema = z.object({
   productId: z.number().int().positive('Id sản phẩm không hợp lệ'),
-  warehouseId: z.number().int().positive('Id kho không hợp lệ').optional(),
+  unitId: z.number().int().positive().optional(),
   quantity: z.number().positive('Số lượng phải là số dương'),
-  unitPrice: z.number().min(0, 'Giá phải lớn hơn 0').optional(),
   batchNumber: z.string().max(100, 'Batch lớn hơn 100').optional(),
   expiryDate: z
     .string()
@@ -18,8 +17,11 @@ export const createImportSchema = z.object({
   warehouseId: z.number().int().positive('Id kho không hợp lệ'),
   referenceType: z.string().max(50).optional(),
   referenceId: z.number().int().positive().optional(),
+  customerId: z.number().int().positive().optional(),
+  supplierId: z.number().int().positive().optional(),
   reason: z.string().max(255).optional(),
   notes: z.string().max(500).optional(),
+  actualReceiptDate: z.string().or(z.date()).optional().nullable(),
   details: z
     .array(transactionDetailSchema)
     .min(1, 'Cần ít nhất một mặt hàng')
@@ -30,8 +32,11 @@ export const createExportSchema = z.object({
   warehouseId: z.number().int().positive('Id kho không hợp lệ'),
   referenceType: z.string().max(50).optional(),
   referenceId: z.number().int().positive().optional(),
+  customerId: z.number().int().positive().optional(),
+  supplierId: z.number().int().positive().optional(),
   reason: z.string().max(255).optional(),
   notes: z.string().max(500).optional(),
+  actualReceiptDate: z.string().or(z.date()).optional().nullable(),
   details: z
     .array(transactionDetailSchema)
     .min(1, 'Cần ít nhất một mặt hàng')

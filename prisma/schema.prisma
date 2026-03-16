@@ -483,12 +483,14 @@ model StockTransaction {
   destinationWarehouseId Int?              @map("destination_warehouse_id")
   referenceType          String?           @map("reference_type") @db.VarChar(50)
   referenceId            Int?              @map("reference_id")
-  totalValue             Decimal           @default(0) @map("total_value") @db.Decimal(15, 2)
+  customerId             Int?              @map("customer_id")
+  supplierId             Int?              @map("supplier_id")
   reason                 String?           @db.VarChar(255)
   notes                  String?           @db.VarChar(500)
   isPosted               Boolean           @default(false) @map("is_posted")
   createdBy              Int               @map("created_by")
   createdAt              DateTime          @default(now()) @map("created_at")
+  actualReceiptDate      DateTime?         @map("actual_receipt_date") @db.Date
   deletedAt              DateTime?         @map("deleted_at")
 
   warehouse            Warehouse  @relation(fields: [warehouseId], references: [id])
@@ -509,10 +511,10 @@ model StockTransactionDetail {
   id            Int       @id @default(autoincrement())
   transactionId Int       @map("transaction_id")
   productId     Int       @map("product_id")
+  unitId        Int?      @map("unit_id")
   warehouseId   Int?      @map("warehouse_id")
   batchNumber   String?   @map("batch_number") @db.VarChar(100)
   quantity      Decimal   @db.Decimal(15, 2)
-  unitPrice     Decimal?  @map("unit_price") @db.Decimal(15, 2)
   expiryDate    DateTime? @map("expiry_date") @db.Date
   notes         String?   @db.VarChar(500)
 
