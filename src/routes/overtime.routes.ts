@@ -8,11 +8,18 @@ const router = Router();
 router.use(authentication);
 
 // Get sessions
+router.get('/stats', requireRole('admin', 'manager', 'hr'), overtimeController.getStats);
 router.get('/', requireRole('admin', 'manager', 'hr'), overtimeController.getAll);
 router.get('/:id', requireRole('admin', 'manager', 'hr'), overtimeController.getById);
 
 // Create session
 router.post('/', requireRole('admin', 'manager', 'hr'), overtimeController.createSession);
+
+// Update session
+router.put('/:id', requireRole('admin', 'manager', 'hr'), overtimeController.updateSession);
+
+// Delete session
+router.delete('/:id', requireRole('admin', 'manager', 'hr'), overtimeController.deleteSession);
 
 // Session actions
 router.post('/:sessionId/employees', requireRole('admin', 'manager', 'hr'), overtimeController.addEmployees);

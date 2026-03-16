@@ -25,6 +25,49 @@ class OvertimeController {
     }
   };
 
+  // Update Session
+  updateSession = async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const session = await overtimeService.updateSession(req.user!.id, Number(id), req.body);
+      
+      const response: ApiResponse = {
+        success: true,
+        data: session,
+        message: 'Cập nhật phiên tăng ca thành công',
+        timestamp: new Date().toISOString(),
+      };
+      res.status(200).json(response);
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Lỗi server',
+        timestamp: new Date().toISOString(),
+      });
+    }
+  };
+
+  // Delete Session
+  deleteSession = async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      await overtimeService.deleteSession(req.user!.id, Number(id));
+      
+      const response: ApiResponse = {
+        success: true,
+        message: 'Xóa phiên tăng ca thành công',
+        timestamp: new Date().toISOString(),
+      };
+      res.status(200).json(response);
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Lỗi server',
+        timestamp: new Date().toISOString(),
+      });
+    }
+  };
+
   // Add Employees
   addEmployees = async (req: AuthRequest, res: Response) => {
     try {
@@ -136,6 +179,26 @@ class OvertimeController {
         success: true,
         data: result,
         message: 'Lấy thông tin thành công',
+        timestamp: new Date().toISOString(),
+      };
+      res.status(200).json(response);
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        message: error.message,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  };
+  // Get Overtime Stats
+  getStats = async (_req: AuthRequest, res: Response) => {
+    try {
+      const result = await overtimeService.getStats();
+      
+      const response: ApiResponse = {
+        success: true,
+        data: result,
+        message: 'Lấy thống kê thành công',
         timestamp: new Date().toISOString(),
       };
       res.status(200).json(response);
