@@ -12,6 +12,7 @@ import {
   approveSalarySchema,
   paySalarySchema,
   recalculateSalarySchema,
+  calculateBatchSalarySchema,
 } from '@validators/salary.validator';
 
 const router = Router();
@@ -55,6 +56,14 @@ router.post(
   authorize('calculate_salary'),
   validate(calculateSalarySchema),
   asyncHandler(salaryController.calculate.bind(salaryController))
+);
+
+// POST /api/salary/calculate-batch - Calculate batch salaries
+router.post(
+  '/calculate-batch',
+  authorize('calculate_salary'),
+  validate(calculateBatchSalarySchema),
+  asyncHandler(salaryController.calculateBatch.bind(salaryController))
 );
 
 // POST /api/salary/:id/recalculate - Recalculate salary

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import warehouseController from '@controllers/warehouse.controller';
 import { authentication } from '@middlewares/auth';
-import { authorize } from '@middlewares/authorize';
+import { authorize, authorizeAny } from '@middlewares/authorize';
 import { validate } from '@middlewares/validate';
 import { asyncHandler } from '@middlewares/errorHandler';
 import {
@@ -33,7 +33,7 @@ router.get(
  */
 router.get(
   '/',
-  authorize('WAREHOUSE_MANAGEMENT'),
+  authorizeAny('WAREHOUSE_MANAGEMENT', 'view_salary'),
   validate(queryWarehousesSchema, 'query'),
   asyncHandler(warehouseController.getAllWarehouses.bind(warehouseController))
 );

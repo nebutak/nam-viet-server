@@ -1,0 +1,3 @@
+﻿src/middlewares/authCustomer.ts(6,40): error TS2307: Cannot find module '@services/cs-auth.service' or its corresponding type declarations.
+src/middlewares/authCustomer.ts(106,17): error TS2353: Object literal may only specify known properties, and 'classification' does not exist in type 'CustomerSelect<DefaultArgs>'.
+src/middlewares/authCustomer.ts(118,38): error TS2339: Property 'classification' does not exist on type '{ id: number; status: CustomerStatus; createdAt: Date; email: string | null; cccd: string | null; issuedAt: Date | null; issuedBy: string | null; phone: string | null; ... 19 more ...; phoneVerifiedAt: Date | null; }'.

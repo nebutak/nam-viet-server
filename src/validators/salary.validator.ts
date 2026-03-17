@@ -45,6 +45,17 @@ export const calculateSalarySchema = z.object({
   notes: z.string().max(255).optional(),
 });
 
+// Calculate Batch Salary Schema
+export const calculateBatchSalarySchema = z.object({
+  month: z.string().regex(/^\d{6}$/, 'Month must be in YYYYMM format'),
+  users: z.array(
+    z.object({
+      userId: z.number().min(1, 'User ID is required'),
+      basicSalary: z.number().min(0, 'Basic salary must be non-negative')
+    })
+  ).min(1, 'At least one user is required')
+});
+
 // Update Salary Schema
 export const updateSalarySchema = z.object({
   basicSalary: z.number().min(0).optional(),
@@ -78,5 +89,6 @@ export const recalculateSalarySchema = z.object({
 
 export type SalaryQueryInput = z.infer<typeof salaryQuerySchema>;
 export type CalculateSalaryInput = z.infer<typeof calculateSalarySchema>;
+export type CalculateBatchSalaryInput = z.infer<typeof calculateBatchSalarySchema>;
 export type UpdateSalaryInput = z.infer<typeof updateSalarySchema>;
 export type PaySalaryInput = z.infer<typeof paySalarySchema>;

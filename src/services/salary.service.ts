@@ -4,6 +4,7 @@ import { logActivity } from '@utils/logger';
 import attendanceService from '@services/attendance.service';
 import {
   CalculateSalaryInput,
+  CalculateBatchSalaryInput,
   UpdateSalaryInput,
   PaySalaryInput,
   SalaryQueryInput,
@@ -320,6 +321,60 @@ class SalaryService {
     return {
       ...salary,
       totalSalary,
+    };
+  }
+
+  // Calculate batch salaries
+  async calculateBatch(data: CalculateBatchSalaryInput, creatorId: number) {
+    const { month, users } = data;
+    const results = [];
+    const errors = [];
+
+    for (const user of users) {
+      try {
+        // Skip if salary already exists
+        const existing = await prisma.salary.findUnique({
+          where: {
+            userId_month: {
+              userId: user.userId,
+              month,
+            },
+          },
+        });
+
+        if (existing) {
+          errors.push({
+            userId: user.userId,
+            message: 'Salary already exists for this month',
+          });
+          continue;
+        }
+
+        const calcData: CalculateSalaryInput = {
+          userId: user.userId,
+          month,
+          basicSalary: user.basicSalary,
+          allowance: 0,
+          bonus: 0,
+          advance: 0,
+          notes: 'Tự động tính lương hàng loạt',
+        };
+
+        const result = await this.calculate(calcData, creatorId);
+        results.push(result);
+      } catch (error: any) {
+        errors.push({
+          userId: user.userId,
+          message: error.message || 'Error calculating salary',
+        });
+      }
+    }
+
+    return {
+      successCount: results.length,
+      errorCount: errors.length,
+      results,
+      errors,
     };
   }
 

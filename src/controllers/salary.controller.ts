@@ -3,6 +3,7 @@ import { ApiResponse, AuthRequest } from '@custom-types/common.type';
 import salaryService from '@services/salary.service';
 import {
   CalculateSalaryInput,
+  CalculateBatchSalaryInput,
   UpdateSalaryInput,
   PaySalaryInput,
 } from '@validators/salary.validator';
@@ -83,6 +84,32 @@ class SalaryController {
         success: true,
         data: result,
         message: 'Salary calculated successfully',
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({
+        success: false,
+        error: {
+          code: error.code || 'INTERNAL_ERROR',
+          message: error.message,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
+  }
+
+  // POST /api/salary/calculate-batch - Calculate batch salaries
+  async calculateBatch(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const data = req.body as CalculateBatchSalaryInput;
+      const creatorId = req.user!.id;
+
+      const result = await salaryService.calculateBatch(data, creatorId);
+
+      res.status(201).json({
+        success: true,
+        data: result,
+        message: 'Batch salaries calculated successfully',
         timestamp: new Date().toISOString(),
       });
     } catch (error: any) {
