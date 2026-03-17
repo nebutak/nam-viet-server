@@ -258,11 +258,13 @@ class InvoiceService {
             },
           },
           deliveries: {
-            select: {
-              id: true,
-              deliveryCode: true,
-              deliveryStatus: true,
-              deliveryDate: true,
+            include: {
+              deliveryStaff: {
+                select: {
+                  id: true,
+                  fullName: true,
+                },
+              },
             },
           },
           paymentReceipts: {
@@ -902,23 +904,6 @@ class InvoiceService {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      const updatedOrder = await tx.invoice.update({
-        where: { id },
-        data: {
-          orderStatus: 'completed',
-          completedAt: new Date(),
-        },
-        include: {
-          customer: true,
-          details: {
-            include: {
-              product: true,
-            },
-          },
-          deliveries: true,
-        },
-      });
-
       // Cập nhật Delivery status thành delivered
       if (order.deliveries && order.deliveries.length > 0) {
         await tx.delivery.update({
@@ -929,7 +914,20 @@ class InvoiceService {
         });
       }
 
-      return updatedOrder;
+      await this.checkAndCompleteOrder(id, userId, tx);
+
+      return await tx.invoice.findUnique({
+        where: { id },
+        include: {
+          customer: true,
+          details: {
+            include: {
+              product: true,
+            },
+          },
+          deliveries: true,
+        },
+      });
     });
 
     logActivity('update', userId, 'invoices', {
@@ -1162,6 +1160,74 @@ class InvoiceService {
     return { message: 'Xóa đơn hàng bán thành công' };
   }
 
+  async checkAndCompleteOrder(invoiceId: number, userId: number, tx: Prisma.TransactionClient) {
+    const order = await tx.invoice.findUnique({
+      where: { id: invoiceId },
+      include: {
+        details: true,
+        deliveries: {
+          where: { deletedAt: null }
+        },
+      },
+    });
+
+    if (!order) return;
+
+    // Condition 1: Fully Paid
+    const isPaid = order.paymentStatus === 'paid';
+
+    // Condition 2: Fully Exported
+    const stockTransactions = await tx.stockTransaction.findMany({
+      where: {
+        referenceType: 'invoice',
+        referenceId: invoiceId,
+        isPosted: true,
+        deletedAt: null,
+      },
+      include: {
+        details: true,
+      },
+    });
+
+    const totalExported = new Map<number, number>();
+    for (const st of stockTransactions) {
+      for (const d of st.details) {
+        const current = totalExported.get(d.productId) || 0;
+        totalExported.set(d.productId, current + Number(d.quantity));
+      }
+    }
+
+    let isFullyExported = true;
+    for (const detail of order.details) {
+      const exportedQty = totalExported.get(detail.productId) || 0;
+      if (exportedQty < Number(detail.quantity)) {
+        isFullyExported = false;
+        break;
+      }
+    }
+
+    // Condition 3: Delivered (if delivery order)
+    let isDelivered = true;
+    if (!order.isPickupOrder && order.deliveries.length > 0) {
+      isDelivered = order.deliveries.every(d => d.deliveryStatus === 'delivered');
+    }
+
+    if (isPaid && isFullyExported && isDelivered) {
+      await tx.invoice.update({
+        where: { id: invoiceId },
+        data: {
+          orderStatus: 'completed',
+          completedAt: new Date(),
+        },
+      });
+
+      logActivity('update', userId, 'invoices', {
+        recordId: invoiceId,
+        action: 'auto_complete_order',
+        orderCode: order.orderCode,
+      });
+    }
+  }
 }
 
 export default new InvoiceService();

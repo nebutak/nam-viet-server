@@ -186,8 +186,8 @@ class DeliveryService {
   async create(data: CreateDeliveryInput) {
     const order = await invoiceService.getById(data.orderId);
 
-    if (order.orderStatus !== 'preparing') {
-      throw new ValidationError('Can only create delivery for orders with preparing status');
+    if (!['preparing', 'delivering'].includes(order.orderStatus)) {
+      throw new ValidationError('Can only create delivery for orders with preparing or delivering status');
     }
 
     const staff = await prisma.user.findUnique({
@@ -387,96 +387,8 @@ class DeliveryService {
         },
       });
 
-      // ─── Trừ tồn kho thực tế khi giao hàng thành công ─────────────────────
-      for (const detail of updatedDelivery.order.details) {
-        const warehouseId = detail.warehouseId ?? delivery.order.warehouseId;
-        if (!warehouseId) continue;
-
-        await tx.inventory.updateMany({
-          where: {
-            productId: detail.productId,
-            warehouseId,
-          },
-          data: {
-            quantity: { decrement: Number(detail.quantity) },
-            reservedQuantity: { decrement: Number(detail.quantity) },
-          },
-        });
-      }
-      // ───────────────────────────────────────────────────────────────────────
-
-      await tx.invoice.update({
-        where: { id: delivery.orderId },
-        data: {
-          orderStatus: 'completed',
-          completedAt: new Date(),
-        },
-      });
-
-      if (collectedAmount > 0) {
-        const newPaidAmount = Number(delivery.order.paidAmount) + collectedAmount;
-        let paymentStatus: 'unpaid' | 'partial' | 'paid';
-
-        if (newPaidAmount >= Number(delivery.order.totalAmount)) {
-          paymentStatus = 'paid';
-        } else if (newPaidAmount > 0) {
-          paymentStatus = 'partial';
-        } else {
-          paymentStatus = 'unpaid';
-        }
-
-        await tx.invoice.update({
-          where: { id: delivery.orderId },
-          data: {
-            paidAmount: newPaidAmount,
-            paymentStatus,
-          },
-        });
-
-        const receiptCode = `PT-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${
-          Date.now() % 1000
-        }`;
-        await tx.paymentReceipt.create({
-          data: {
-            receiptCode,
-            receiptType: 'sales',
-            customerId: delivery.order.customerId,
-            orderId: delivery.orderId,
-            amount: collectedAmount,
-            receiptDate: new Date(),
-            paymentMethod: 'cash',
-            notes: `COD payment for delivery ${delivery.deliveryCode}`,
-            createdBy: userId,
-          },
-        });
-
-        const debtToAdd =
-          Number(delivery.order.totalAmount) - Number(delivery.order.paidAmount) - collectedAmount;
-        if (debtToAdd > 0) {
-          await tx.customer.update({
-            where: { id: delivery.order.customerId },
-            data: {
-              currentDebt: {
-                increment: debtToAdd,
-              },
-              debtUpdatedAt: new Date(),
-            },
-          });
-        }
-      } else {
-        const debtAmount = Number(delivery.order.totalAmount) - Number(delivery.order.paidAmount);
-        if (debtAmount > 0) {
-          await tx.customer.update({
-            where: { id: delivery.order.customerId },
-            data: {
-              currentDebt: {
-                increment: debtAmount,
-              },
-              debtUpdatedAt: new Date(),
-            },
-          });
-        }
-      }
+      // Trạng thái đơn hàng sẽ được cập nhật tập trung qua checkAndCompleteOrder
+      await (invoiceService as any).checkAndCompleteOrder(delivery.orderId, userId, tx);
 
       return updatedDelivery;
     });

@@ -3,6 +3,7 @@ import { NotFoundError, ValidationError } from '@utils/errors';
 import { logActivity } from '@utils/logger';
 import customerService from './customer.service';
 import emailService from './email.service';
+import invoiceService from './invoice.service';
 import {
   CreatePaymentReceiptInput,
   UpdatePaymentReceiptInput,
@@ -104,6 +105,7 @@ class PaymentReceiptService {
               customerCode: true,
               customerName: true,
               phone: true,
+              cccd: true,
             },
           },
           customer: {
@@ -204,6 +206,7 @@ class PaymentReceiptService {
             customerCode: true,
             customerName: true,
             phone: true,
+            cccd: true,
             email: true,
             address: true,
             currentDebt: true,
@@ -294,7 +297,15 @@ class PaymentReceiptService {
           createdBy: userId,
         },
         include: {
-          customerRef: true,
+          customerRef: {
+            select: {
+              id: true,
+              customerCode: true,
+              customerName: true,
+              phone: true,
+              cccd: true,
+            },
+          },
           customer: {
             select: {
               id: true,
@@ -369,7 +380,15 @@ class PaymentReceiptService {
           ...(data.notes !== undefined && { notes: data.notes }),
         },
         include: {
-          customerRef: true,
+          customerRef: {
+            select: {
+              id: true,
+              customerCode: true,
+              customerName: true,
+              phone: true,
+              cccd: true,
+            },
+          },
           customer: true,
         },
       });
@@ -420,6 +439,11 @@ class PaymentReceiptService {
 
       // Áp dụng tác động tài chính: cập nhật paidAmount, paymentStatus, currentDebt
       await this.applyFinancialImpact(posted, userId, tx);
+
+      // Gọi logic kiểm tra hoàn thành tập trung
+      if (posted.orderId) {
+        await (invoiceService as any).checkAndCompleteOrder(posted.orderId, userId, tx);
+      }
 
       return posted;
     });

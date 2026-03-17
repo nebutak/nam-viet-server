@@ -2,6 +2,7 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import { NotFoundError, ValidationError } from '@utils/errors';
 import { logActivity } from '@utils/logger';
 import inventoryService from './inventory.service';
+import invoiceService from './invoice.service';
 import {
   type CreateImportInput,
   type CreateExportInput,
@@ -798,47 +799,14 @@ class StockTransactionService {
       });
 
       if (invoice) {
-        // Lấy tất cả các PXK đã ghi sổ liên quan đến Invoice này
-        const stockTransactions = await tx.stockTransaction.findMany({
-          where: {
-            referenceType: 'invoice',
-            referenceId: invoiceId,
-            isPosted: true,
-            deletedAt: null,
-          },
-          include: {
-            details: true,
-          },
+        // Luôn chuyển sang trạng thái đang giao khi xuất kho (để phù hợp với kịch bản 1, 2, 3)
+        await tx.invoice.update({
+          where: { id: invoiceId },
+          data: { orderStatus: 'delivering' }
         });
 
-        // Tính tổng số lượng đã xuất cho từng sản phẩm
-        const totalExported = new Map<number, number>();
-        for (const st of stockTransactions) {
-          for (const d of st.details) {
-            const current = totalExported.get(d.productId) || 0;
-            totalExported.set(d.productId, current + Number(d.quantity));
-          }
-        }
-
-        // Kiểm tra xem tất cả các mặt hàng trong Invoice đã xuất đủ chưa
-        let isFullyExported = true;
-        for (const detail of invoice.details) {
-          const exportedQty = totalExported.get(detail.productId) || 0;
-          if (exportedQty < Number(detail.quantity)) {
-            isFullyExported = false;
-            break;
-          }
-        }
-
-        if (isFullyExported) {
-          await tx.invoice.update({
-            where: { id: invoiceId },
-            data: {
-              orderStatus: 'completed',
-              completedAt: new Date(),
-            },
-          });
-        }
+        // Gọi logic kiểm tra hoàn thành tập trung
+        await (invoiceService as any).checkAndCompleteOrder(invoiceId, userId, tx);
       }
     }
     // ─────────────────────────────────────────────────────────────────────────
