@@ -84,6 +84,22 @@ export async function seedSuppliers(prisma: PrismaClient, adminUserId: number) {
         createdBy: adminUserId,
       },
     }),
+    prisma.supplier.upsert({
+      where: { supplierCode: 'NCC-VT-002' },
+      update: {},
+      create: {
+        supplierCode: 'NCC-VT-002',
+        supplierName: 'Công ty Bao bì Plastic Việt Nam',
+        supplierType: 'local',
+        contactName: 'Trần Văn Bao',
+        phone: '0908888999',
+        email: 'contact@plasticvn.com',
+        address: 'KCN Sóng Thần, Bình Dương',
+        taxCode: '3700123456',
+        status: 'active',
+        createdBy: adminUserId,
+      },
+    }),
   ]);
 
   console.log(`✅ Created ${suppliers.length} agricultural suppliers\n`);

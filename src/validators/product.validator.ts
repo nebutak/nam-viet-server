@@ -10,6 +10,7 @@ export const createProductSchema = z.object({
   categoryId: z.number().or(z.string().transform(Number)).optional(),
   supplierId: z.number().or(z.string().transform(Number)).optional(),
   unitId: z.number().or(z.string().transform(Number)).optional(),
+  unitValue: z.string().max(50).optional().nullable(),
   description: z.string().max(500, 'Mô tả quá dài').optional(),
   note: z.string().max(500).optional(),
   basePrice: z.union([z.number(), z.string().transform(Number)]).optional(),
@@ -19,6 +20,7 @@ export const createProductSchema = z.object({
   image: z.string().optional(),
   hasExpiry: z.boolean().optional().default(false),
   manageSerial: z.boolean().optional().default(false),
+  type: z.enum(['PRODUCT', 'MATERIAL']).optional().default('PRODUCT'),
   // New fields added
   taxIds: z.array(z.number()).optional(),
   materialIds: z.array(z.number()).optional(),
@@ -40,6 +42,7 @@ export const updateProductSchema = z.object({
   categoryId: z.number().or(z.string().transform(Number)).nullable().optional(),
   supplierId: z.number().or(z.string().transform(Number)).nullable().optional(),
   unitId: z.number().or(z.string().transform(Number)).nullable().optional(),
+  unitValue: z.string().max(50).nullable().optional(),
   description: z.string().max(500).nullable().optional(),
   note: z.string().max(500).nullable().optional(),
   basePrice: z.union([z.number(), z.string().transform(Number)]).nullable().optional(),
@@ -49,6 +52,7 @@ export const updateProductSchema = z.object({
   image: z.string().optional(),
   hasExpiry: z.boolean().optional(),
   manageSerial: z.boolean().optional(),
+  type: z.enum(['PRODUCT', 'MATERIAL']).optional(),
   // New fields added
   taxIds: z.array(z.number()).optional(),
   materialIds: z.array(z.number()).optional(),
@@ -100,8 +104,9 @@ export const productQuerySchema = z.object({
     .transform((v) => (v ? Number(v) : undefined)),
   status: z
     .enum(['active', 'inactive'])
-    .refine((val) => !!val, { message: 'Trạng thái không hợp lệ!' })
+    .refine((val: any) => !!val, { message: 'Trạng thái không hợp lệ!' })
     .optional(),
+  type: z.enum(['PRODUCT', 'MATERIAL']).optional(),
   sortBy: z.string().optional().default('createdAt'),
   sortOrder: z
     .enum(['asc', 'desc'])

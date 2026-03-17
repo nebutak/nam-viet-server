@@ -439,65 +439,12 @@ class PaymentVoucherService {
         },
       });
 
-      // 2. Cập nhật cash_fund (Quỹ tiền mặt)
+      // 2. Cập nhật cash_fund (Quỹ tiền mặt) - ĐÃ LOẠI BỎ THEO YÊU CẦU
+      /*
       const start = new Date(voucher.paymentDate);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(voucher.paymentDate);
-      end.setHours(23, 59, 59, 999);
+      ...
+      */
 
-      let cashFund = await tx.cashFund.findFirst({
-        where: {
-          fundDate: {
-            gte: start,
-            lte: end,
-          },
-        },
-      });
-
-      // Nếu chưa có quỹ cho ngày này, tạo mới
-      if (!cashFund) {
-        const yesterday = new Date(voucher.paymentDate);
-        yesterday.setDate(yesterday.getDate() - 1);
-        yesterday.setHours(0, 0, 0, 0);
-        const yesterdayEnd = new Date(yesterday);
-        yesterdayEnd.setHours(23, 59, 59, 999);
-
-        const prevCashFund = await tx.cashFund.findFirst({
-          where: {
-            fundDate: {
-              gte: yesterday,
-              lte: yesterdayEnd,
-            },
-          },
-        });
-
-        const openingBalance = prevCashFund ? Number(prevCashFund.closingBalance) : 0;
-
-        cashFund = await tx.cashFund.create({
-          data: {
-            fundDate: start,
-            openingBalance,
-            totalReceipts: 0,
-            totalPayments: Number(voucher.amount),
-            closingBalance: openingBalance - Number(voucher.amount),
-          },
-        });
-      } else {
-        // Cập nhật quỹ hiện có
-        const newTotalPayments = Number(cashFund.totalPayments || 0) + Number(voucher.amount);
-        const newClosingBalance =
-          Number(cashFund.openingBalance || 0) +
-          Number(cashFund.totalReceipts || 0) -
-          newTotalPayments;
-
-        await tx.cashFund.update({
-          where: { id: cashFund.id },
-          data: {
-            totalPayments: newTotalPayments,
-            closingBalance: newClosingBalance,
-          },
-        });
-      }
 
       // 3. Cập nhật suppliers (Trừ nợ NCC) - Nếu là supplier_payment
       if (voucher.voucherType === 'supplier_payment' && voucher.supplierId) {
@@ -835,58 +782,12 @@ class PaymentVoucherService {
           },
         });
 
-        // 2. Cập nhật cash_fund (Quỹ tiền mặt)
+        // 2. Cập nhật cash_fund (Quỹ tiền mặt) - ĐÃ LOẠI BỎ THEO YÊU CẦU
+        /*
         const start = new Date(voucher.paymentDate);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(voucher.paymentDate);
-        end.setHours(23, 59, 59, 999);
+        ... (legacy code)
+        */
 
-        let cashFund = await tx.cashFund.findFirst({
-          where: {
-            fundDate: {
-              gte: start,
-              lte: end,
-            },
-          },
-        });
-
-        // Nếu chưa có quỹ cho ngày này, tạo mới
-        if (!cashFund) {
-          const yesterday = new Date(voucher.paymentDate);
-          yesterday.setDate(yesterday.getDate() - 1);
-          yesterday.setHours(0, 0, 0, 0);
-          const yesterdayEnd = new Date(yesterday);
-          yesterdayEnd.setHours(23, 59, 59, 999);
-
-          const prevCashFund = await tx.cashFund.findFirst({
-            where: {
-              fundDate: {
-                gte: yesterday,
-                lte: yesterdayEnd,
-              },
-            },
-          });
-
-          const openingBalance = prevCashFund?.closingBalance || 0;
-
-          cashFund = await tx.cashFund.create({
-            data: {
-              fundDate: new Date(voucher.paymentDate),
-              openingBalance: openingBalance,
-              closingBalance: openingBalance,
-            },
-          });
-        }
-
-        // Cập nhật cashFund: trừ tiền chi
-        await tx.cashFund.update({
-          where: { id: cashFund.id },
-          data: {
-            closingBalance: {
-              decrement: voucher.amount,
-            },
-          },
-        });
 
         // 3. Cập nhật supplier debt (nếu là supplier_payment)
         if (voucher.voucherType === 'supplier_payment' && voucher.supplier) {

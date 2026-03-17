@@ -413,7 +413,7 @@ class SmartDebtService {
           id: r.id,
           code: r.transactionCode,
           date: r.createdAt,
-          amount: Number(r.totalValue),
+          amount: 0, // Stock transactions no longer track price
           note: r.reason || r.notes || 'Khách trả hàng',
           details: r.details
         }));
@@ -488,7 +488,7 @@ class SmartDebtService {
           id: r.id,
           code: r.transactionCode,
           date: r.createdAt,
-          amount: Number(r.totalValue),
+          amount: 0, // Stock transactions no longer track price
           note: r.reason || r.notes || 'Trả hàng NCC',
           details: r.details
         }));
@@ -677,17 +677,7 @@ class SmartDebtService {
         });
         // B2: Tính tổng trả hàng từ kho
         if (pastOrders.length > 0) {
-          const pastOrderIds = pastOrders.map((o: any) => o.id);
-          const stockReturns = await tx.stockTransaction.aggregate({
-            where: {
-              transactionType: 'import',
-              referenceType: 'sale_refunds',
-              referenceId: { in: pastOrderIds },
-              createdAt: { lt: startOfStartYear }
-            },
-            _sum: { totalValue: true }
-          });
-          prevReturnAmount = Number(stockReturns._sum.totalValue || 0);
+          prevReturnAmount = 0; // Stock transactions no longer track price
         }
 
         currentOpeningBalance = Number(prevOrders._sum.totalAmount || 0)
@@ -712,17 +702,7 @@ class SmartDebtService {
           select: { id: true }
         });
         if (pastPOs.length > 0) {
-          const pastPOIds = pastPOs.map((p: any) => p.id);
-          const stockReturns = await tx.stockTransaction.aggregate({
-            where: {
-              transactionType: 'export',
-              referenceType: 'purchase_refunds',
-              referenceId: { in: pastPOIds },
-              createdAt: { lt: startOfStartYear }
-            },
-            _sum: { totalValue: true }
-          });
-          prevReturnAmount = Number(stockReturns._sum.totalValue || 0);
+          prevReturnAmount = 0; // Stock transactions no longer track price
         }
 
         currentOpeningBalance = Number(prevPO._sum.totalAmount || 0)
@@ -869,17 +849,7 @@ class SmartDebtService {
           select: { id: true }
         });
         if (orderList.length > 0) {
-          const ids = orderList.map((o: any) => o.id);
-          const stockReturns = await tx.stockTransaction.aggregate({
-            where: {
-              transactionType: 'import',
-              referenceType: 'sale_refunds',
-              referenceId: { in: ids },
-              createdAt: { gte: startOfYear, lte: endOfYear }
-            },
-            _sum: { totalValue: true }
-          });
-          returnAmount = Number(stockReturns._sum.totalValue || 0);
+          returnAmount = 0; // Stock transactions no longer track price
         }
 
       } else if (supplierId) {
@@ -903,17 +873,7 @@ class SmartDebtService {
           select: { id: true }
         });
         if (poList.length > 0) {
-          const ids = poList.map((p: any) => p.id);
-          const stockReturns = await tx.stockTransaction.aggregate({
-            where: {
-              transactionType: 'export',
-              referenceType: 'purchase_refunds',
-              referenceId: { in: ids },
-              createdAt: { gte: startOfYear, lte: endOfYear }
-            },
-            _sum: { totalValue: true }
-          });
-          returnAmount = Number(stockReturns._sum.totalValue || 0);
+          returnAmount = 0; // Stock transactions no longer track price
         }
       }
 

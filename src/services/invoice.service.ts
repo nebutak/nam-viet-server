@@ -180,7 +180,10 @@ class InvoiceService {
         },
         creator: { select: { id: true, fullName: true, employeeCode: true, email: true } },
         paymentReceipts: {
-          select: { id: true, receiptCode: true, amount: true, receiptDate: true, paymentMethod: true },
+          where: { deletedAt: null },
+          include: {
+            creator: { select: { id: true, fullName: true, email: true } }
+          }
         },
       },
     });
@@ -193,93 +196,122 @@ class InvoiceService {
   }
 
   async getById(id: number) {
-
-    const order = await prisma.invoice.findUnique({
-      where: { id },
-      include: {
-        customer: {
-          select: {
-            id: true,
-            customerCode: true,
-            customerName: true,
-            phone: true,
-            email: true,
-            address: true,
-            creditLimit: true,
-            currentDebt: true,
-            cccd: true,
-            taxCode: true,
-          },
-        },
-        details: {
-          include: {
-            product: {
-              select: {
-                id: true,
-                code: true,
-                productName: true,
-                image: true,
-                unit: true,
-              },
-            },
-            warehouse: {
-              select: {
-                id: true,
-                warehouseName: true,
-              },
+    const [order, warehouseReceipts] = await Promise.all([
+      prisma.invoice.findUnique({
+        where: { id },
+        include: {
+          customer: {
+            select: {
+              id: true,
+              customerCode: true,
+              customerName: true,
+              phone: true,
+              email: true,
+              address: true,
+              creditLimit: true,
+              currentDebt: true,
+              cccd: true,
+              taxCode: true,
             },
           },
-        },
-        creator: {
-          select: {
-            id: true,
-            fullName: true,
-            employeeCode: true,
-            email: true,
-            phone: true,
+          details: {
+            include: {
+              product: {
+                select: {
+                  id: true,
+                  code: true,
+                  productName: true,
+                  image: true,
+                  unit: true,
+                  note: true,
+                },
+              },
+              warehouse: {
+                select: {
+                  id: true,
+                  warehouseName: true,
+                },
+              },
+            },
+          },
+          creator: {
+            select: {
+              id: true,
+              fullName: true,
+              employeeCode: true,
+              email: true,
+              phone: true,
+            },
+          },
+          approver: {
+            select: {
+              id: true,
+              fullName: true,
+              employeeCode: true,
+            },
+          },
+          canceller: {
+            select: {
+              id: true,
+              fullName: true,
+              employeeCode: true,
+            },
+          },
+          deliveries: {
+            include: {
+              deliveryStaff: {
+                select: {
+                  id: true,
+                  fullName: true,
+                },
+              },
+            },
+          },
+          paymentReceipts: {
+            where: { deletedAt: null },
+            include: {
+              creator: { select: { id: true, fullName: true, email: true } }
+            }
           },
         },
-        approver: {
-          select: {
-            id: true,
-            fullName: true,
-            employeeCode: true,
-          },
+      }),
+      prisma.stockTransaction.findMany({
+        where: {
+          referenceType: 'invoice',
+          referenceId: id,
+          deletedAt: null
         },
-        canceller: {
-          select: {
-            id: true,
-            fullName: true,
-            employeeCode: true,
-          },
+        include: {
+          creator: {
+            select: {
+              id: true,
+              fullName: true,
+              employeeCode: true
+            }
+          }
         },
-        deliveries: {
-          select: {
-            id: true,
-            deliveryCode: true,
-            deliveryStatus: true,
-            deliveryDate: true,
-          },
-        },
-        paymentReceipts: {
-          select: {
-            id: true,
-            receiptCode: true,
-            amount: true,
-            receiptDate: true,
-            paymentMethod: true,
-          },
-        },
-      },
-    });
+        orderBy: { createdAt: 'desc' }
+      })
+    ]);
 
     if (!order) {
       throw new NotFoundError('Không tìm thấy đơn hàng bán');
     }
 
+    // Map stock transactions to the format expected by the frontend
+    const mappedReceipts = warehouseReceipts.map(receipt => ({
+      ...receipt,
+      code: receipt.transactionCode,
+      receiptDate: receipt.createdAt,
+      receiptType: receipt.transactionType === 'import' ? 1 : 2, // 1: import, 2: export
+      createdByUser: receipt.creator,
+      status: receipt.isPosted ? 'posted' : 'draft'
+    }));
+
     const result = {
       ...order,
       remainingAmount: Number(order.totalAmount) - Number(order.paidAmount),
+      warehouseReceipts: mappedReceipts
     };
 
     return result;
@@ -813,47 +845,14 @@ class InvoiceService {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      // Nếu chuyển sang delivering, phải xuất kho (trừ quantity + reservedQuantity)
-      if (newStatus === 'delivering') {
-        // Trừ inventory
-        for (const detail of order.details) {
-          if (detail.warehouseId) {
-            const inventory = await tx.inventory.findFirst({
-              where: {
-                productId: detail.productId,
-                warehouseId: detail.warehouseId,
-              },
-            });
-
-            if (inventory) {
-              await tx.inventory.update({
-                where: { id: inventory.id },
-                data: {
-                  quantity: {
-                    decrement: detail.quantity,
-                  },
-                  reservedQuantity: {
-                    decrement: detail.quantity,
-                  },
-                  updatedBy: userId,
-                },
-              });
-            }
-          }
-        }
-
-        // Phiếu xuất kho sẽ được tạo thủ công sau, bỏ qua ở đây.
-        // if (order.warehouseId) { ... }
-
-        // Cập nhật Delivery status thành in_transit
-        if (order.deliveries && order.deliveries.length > 0) {
-          await tx.delivery.update({
-            where: { id: order.deliveries[0].id },
-            data: {
-              deliveryStatus: 'in_transit',
-            },
-          });
-        }
+      // Cập nhật Delivery status thành in_transit
+      if (order.deliveries && order.deliveries.length > 0) {
+        await tx.delivery.update({
+          where: { id: order.deliveries[0].id },
+          data: {
+            deliveryStatus: 'in_transit',
+          },
+        });
       }
 
       const updatedOrder = await tx.invoice.update({
@@ -905,50 +904,6 @@ class InvoiceService {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      // Giai đoạn 3: Giao thành công - Giảm quantity và reservedQuantity từ inventory
-      for (const detail of order.details) {
-        if (detail.warehouseId) {
-          const inventory = await tx.inventory.findFirst({
-            where: {
-              productId: detail.productId,
-              warehouseId: detail.warehouseId,
-            },
-          });
-
-          if (inventory) {
-            await tx.inventory.update({
-              where: { id: inventory.id },
-              data: {
-                quantity: {
-                  decrement: detail.quantity,
-                },
-                reservedQuantity: {
-                  decrement: detail.quantity,
-                },
-                updatedBy: userId,
-              },
-            });
-          }
-        }
-      }
-
-      const updatedOrder = await tx.invoice.update({
-        where: { id },
-        data: {
-          orderStatus: 'completed',
-          completedAt: new Date(),
-        },
-        include: {
-          customer: true,
-          details: {
-            include: {
-              product: true,
-            },
-          },
-          deliveries: true,
-        },
-      });
-
       // Cập nhật Delivery status thành delivered
       if (order.deliveries && order.deliveries.length > 0) {
         await tx.delivery.update({
@@ -959,7 +914,20 @@ class InvoiceService {
         });
       }
 
-      return updatedOrder;
+      await this.checkAndCompleteOrder(id, userId, tx);
+
+      return await tx.invoice.findUnique({
+        where: { id },
+        include: {
+          customer: true,
+          details: {
+            include: {
+              product: true,
+            },
+          },
+          deliveries: true,
+        },
+      });
     });
 
     logActivity('update', userId, 'invoices', {
@@ -998,30 +966,6 @@ class InvoiceService {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      // Giải phóng reservedQuantity (nếu là delivery order)
-      for (const detail of order.details) {
-        if (detail.warehouseId) {
-          const inventory = await tx.inventory.findFirst({
-            where: {
-              productId: detail.productId,
-              warehouseId: detail.warehouseId,
-            },
-          });
-
-          if (inventory) {
-            await tx.inventory.update({
-              where: { id: inventory.id },
-              data: {
-                reservedQuantity: {
-                  decrement: detail.quantity,
-                },
-                updatedBy: userId,
-              },
-            });
-          }
-        }
-      }
-
       // Hoàn lại công nợ khách hàng nếu có ghi nợ
       if (order.paymentStatus !== 'paid' && Number(order.paidAmount) === 0) {
         const debtAmount = Number(order.totalAmount) - Number(order.paidAmount);
@@ -1203,29 +1147,6 @@ class InvoiceService {
     }
 
     await prisma.$transaction(async (tx) => {
-      for (const detail of order.details) {
-        if (detail.warehouseId) {
-          const inventory = await tx.inventory.findFirst({
-            where: {
-              productId: detail.productId,
-              warehouseId: detail.warehouseId,
-            },
-          });
-
-          if (inventory) {
-            await tx.inventory.update({
-              where: { id: inventory.id },
-              data: {
-                reservedQuantity: {
-                  decrement: detail.quantity,
-                },
-                updatedBy: userId,
-              },
-            });
-          }
-        }
-      }
-
       await tx.invoice.delete({
         where: { id },
       });
@@ -1239,6 +1160,74 @@ class InvoiceService {
     return { message: 'Xóa đơn hàng bán thành công' };
   }
 
+  async checkAndCompleteOrder(invoiceId: number, userId: number, tx: Prisma.TransactionClient) {
+    const order = await tx.invoice.findUnique({
+      where: { id: invoiceId },
+      include: {
+        details: true,
+        deliveries: {
+          where: { deletedAt: null }
+        },
+      },
+    });
+
+    if (!order) return;
+
+    // Condition 1: Fully Paid
+    const isPaid = order.paymentStatus === 'paid';
+
+    // Condition 2: Fully Exported
+    const stockTransactions = await tx.stockTransaction.findMany({
+      where: {
+        referenceType: 'invoice',
+        referenceId: invoiceId,
+        isPosted: true,
+        deletedAt: null,
+      },
+      include: {
+        details: true,
+      },
+    });
+
+    const totalExported = new Map<number, number>();
+    for (const st of stockTransactions) {
+      for (const d of st.details) {
+        const current = totalExported.get(d.productId) || 0;
+        totalExported.set(d.productId, current + Number(d.quantity));
+      }
+    }
+
+    let isFullyExported = true;
+    for (const detail of order.details) {
+      const exportedQty = totalExported.get(detail.productId) || 0;
+      if (exportedQty < Number(detail.quantity)) {
+        isFullyExported = false;
+        break;
+      }
+    }
+
+    // Condition 3: Delivered (if delivery order)
+    let isDelivered = true;
+    if (!order.isPickupOrder && order.deliveries.length > 0) {
+      isDelivered = order.deliveries.every(d => d.deliveryStatus === 'delivered');
+    }
+
+    if (isPaid && isFullyExported && isDelivered) {
+      await tx.invoice.update({
+        where: { id: invoiceId },
+        data: {
+          orderStatus: 'completed',
+          completedAt: new Date(),
+        },
+      });
+
+      logActivity('update', userId, 'invoices', {
+        recordId: invoiceId,
+        action: 'auto_complete_order',
+        orderCode: order.orderCode,
+      });
+    }
+  }
 }
 
 export default new InvoiceService();

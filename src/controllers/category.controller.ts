@@ -20,8 +20,9 @@ class CategoryController {
   }
 
   // GET /api/categories/tree
-  async getCategoryTree(_req: AuthRequest, res: Response) {
-    const tree = await categoryService.getCategoryTree();
+  async getCategoryTree(req: AuthRequest, res: Response) {
+    const type = req.query.type as 'PRODUCT' | 'MATERIAL' | undefined;
+    const tree = await categoryService.getCategoryTree(type);
 
     const response: ApiResponse = {
       success: true,
@@ -123,8 +124,9 @@ class CategoryController {
   }
 
   // GET /api/categories/stats/overview
-  async getCategoryStats(_req: AuthRequest, res: Response) {
-    const stats = await categoryService.getCategoryStats();
+  async getCategoryStats(req: AuthRequest, res: Response) {
+    const type = req.query.type as 'PRODUCT' | 'MATERIAL' | undefined;
+    const stats = await categoryService.getCategoryStats(type);
 
     const response: ApiResponse = {
       success: true,
@@ -169,6 +171,7 @@ class CategoryController {
   async import(req: AuthRequest, res: Response) {
     const userId = req.user!.id;
     const items = req.body.items;
+    const type = req.query.type as 'PRODUCT' | 'MATERIAL' | undefined;
 
     if (!items || !Array.isArray(items)) {
         res.status(400).json({
@@ -181,7 +184,7 @@ class CategoryController {
         return;
     }
 
-    const result = await categoryService.importCategories(items, userId);
+    const result = await categoryService.importCategories(items, userId, type);
 
     const response: ApiResponse = {
       success: true,

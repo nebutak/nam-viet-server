@@ -7,7 +7,6 @@ import { asyncHandler } from '@middlewares/errorHandler';
 import {
   createPaymentReceiptSchema,
   updatePaymentReceiptSchema,
-  approveReceiptSchema,
   postReceiptSchema,
   paymentReceiptQuerySchema,
 } from '@validators/payment-receipt.validator';
@@ -54,6 +53,13 @@ router.get(
   asyncHandler(paymentReceiptController.getById.bind(paymentReceiptController))
 );
 
+// GET /api/payment-receipts/:id/qr-code - Get VietQR code link
+router.get(
+  '/:id/qr-code',
+  authorize('GET_RECEIPT'),
+  asyncHandler(paymentReceiptController.getQRCode.bind(paymentReceiptController))
+);
+
 // POST /api/payment-receipts - Create new payment receipt
 router.post(
   '/',
@@ -72,15 +78,6 @@ router.put(
   asyncHandler(paymentReceiptController.update.bind(paymentReceiptController))
 );
 
-// PUT /api/payment-receipts/:id/approve - Approve receipt
-router.put(
-  '/:id/approve',
-  authorize('APPROVE_RECEIPT'),
-  validate(approveReceiptSchema),
-  logActivityMiddleware('approve', 'payment_receipt'),
-  asyncHandler(paymentReceiptController.approve.bind(paymentReceiptController))
-);
-
 // POST /api/payment-receipts/:id/post - Post receipt to accounting
 router.post(
   '/:id/post',
@@ -88,6 +85,14 @@ router.post(
   validate(postReceiptSchema),
   logActivityMiddleware('post', 'payment_receipt'),
   asyncHandler(paymentReceiptController.post.bind(paymentReceiptController))
+);
+
+// POST /api/payment-receipts/:id/unpost - Unpost receipt
+router.post(
+  '/:id/unpost',
+  authorize('POSTED_RECEIPT'), // Use same permission as post
+  logActivityMiddleware('unpost', 'payment_receipt'),
+  asyncHandler(paymentReceiptController.unpost.bind(paymentReceiptController))
 );
 
 // POST /api/payment-receipts/:id/send-email - Send email receipt

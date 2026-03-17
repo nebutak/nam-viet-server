@@ -24,28 +24,28 @@ router.use(authentication);
 // GET /api/inventory/alerts - Get inventory alerts (low stock)
 router.get(
   '/alerts',
-  authorize('view_inventory'),
+  authorize('GET_INVENTORY'),
   asyncHandler(inventoryController.getAlerts.bind(inventoryController))
 );
 
 // GET /api/inventory/low-stock-alerts - Get low stock alerts (alias for /alerts)
 router.get(
   '/low-stock-alerts',
-  authorize('view_inventory'),
+  authorize('GET_INVENTORY'),
   asyncHandler(inventoryController.getAlerts.bind(inventoryController))
 );
 
 // GET /api/inventory/value-report - Get inventory value report
 router.get(
   '/value-report',
-  authorize('view_inventory', 'view_reports'),
+  authorize('GET_INVENTORY', 'GET_REVENUE_REPORT'),
   asyncHandler(inventoryController.getValueReport.bind(inventoryController))
 );
 
 // GET /api/inventory/warehouse/:warehouseId - Get inventory by warehouse
 router.get(
   '/warehouse/:warehouseId',
-  authorize('view_inventory'),
+  authorize('GET_INVENTORY'),
   validate(warehouseInventorySchema, 'params'),
   asyncHandler(inventoryController.getByWarehouse.bind(inventoryController))
 );
@@ -53,7 +53,7 @@ router.get(
 // GET /api/inventory/product/:productId - Get inventory by product
 router.get(
   '/product/:productId',
-  authorize('view_inventory'),
+  authorize('GET_INVENTORY'),
   validate(productInventorySchema, 'params'),
   asyncHandler(inventoryController.getByProduct.bind(inventoryController))
 );
@@ -61,7 +61,7 @@ router.get(
 // POST /api/inventory/check - Check inventory availability
 router.post(
   '/check',
-  authorize('view_inventory'),
+  authorize('GET_INVENTORY'),
   validate(checkInventorySchema, 'body'),
   logActivityMiddleware('check', 'inventory'),
   asyncHandler(inventoryController.checkAvailability.bind(inventoryController))
@@ -70,7 +70,7 @@ router.post(
 // POST /api/inventory/reserve - Reserve inventory (for orders)
 router.post(
   '/reserve',
-  authorize('manage_inventory', 'create_invoices', 'create_production_orders'),
+  authorize('MANAGE_INVENTORY', 'CREATE_INVOICE'),
   validate(reserveInventorySchema, 'body'),
   logActivityMiddleware('reserve', 'inventory'),
   asyncHandler(inventoryController.reserve.bind(inventoryController))
@@ -79,7 +79,7 @@ router.post(
 // POST /api/inventory/release-reserved - Release reserved inventory
 router.post(
   '/release-reserved',
-  authorize('manage_inventory', 'cancel_invoices', 'cancel_production_orders'),
+  authorize('MANAGE_INVENTORY', 'CANCEL_INVOICE'),
   validate(releaseReservedSchema, 'body'),
   logActivityMiddleware('reserve reserved', 'inventory'),
   asyncHandler(inventoryController.releaseReserved.bind(inventoryController))
@@ -88,7 +88,7 @@ router.post(
 // PUT /api/inventory/update - Manual update inventory (admin only)
 router.put(
   '/update',
-  authorize('manage_inventory'),
+  authorize('MANAGE_INVENTORY'),
   validate(updateInventorySchema, 'body'),
   logActivityMiddleware('update', 'inventory'),
   asyncHandler(inventoryController.update.bind(inventoryController))
@@ -97,7 +97,7 @@ router.put(
 // POST /api/inventory/adjust - Adjust inventory (increase/decrease)
 router.post(
   '/adjust',
-  authorize('manage_inventory'),
+  authorize('MANAGE_INVENTORY'),
   validate(adjustInventorySchema, 'body'),
   logActivityMiddleware('adjust', 'inventory'),
   asyncHandler(inventoryController.adjust.bind(inventoryController))
@@ -106,7 +106,7 @@ router.post(
 // GET /api/inventory - Get all inventory with filters
 router.get(
   '/',
-  authorize('view_inventory'),
+  authorize('GET_INVENTORY'),
   validate(inventoryQuerySchema, 'query'),
   asyncHandler(inventoryController.getAll.bind(inventoryController))
 );

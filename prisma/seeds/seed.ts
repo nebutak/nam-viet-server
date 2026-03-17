@@ -7,6 +7,7 @@ import { seedUnits } from './unit.seed';
 import { seedTaxes } from './tax.seed';
 import { seedAttributes } from './attribute.seed';
 import { seedProducts } from './product.seed';
+import { seedInventory } from './inventory.seed';
 
 const prisma = new PrismaClient();
 
@@ -77,7 +78,6 @@ async function main() {
     await prisma.attendance.deleteMany({});
     await prisma.attendanceMonth.deleteMany({});
     await prisma.promotion.deleteMany({});
-    await prisma.cashFund.deleteMany({});
     await prisma.delivery.deleteMany({});
     await prisma.generalSetting.deleteMany({});
 
@@ -288,18 +288,15 @@ async function main() {
     { key: "CREATE_RECEIPT", name: "Thêm", module: "receipt", moduleLabel: "Phiếu thu" },
     { key: "UPDATE_RECEIPT", name: "Sửa", module: "receipt", moduleLabel: "Phiếu thu" },
     { key: "DELETE_RECEIPT", name: "Xóa", module: "receipt", moduleLabel: "Phiếu thu" },
-    { key: "APPROVE_RECEIPT", name: "Duyệt", module: "receipt", moduleLabel: "Phiếu thu" },
     { key: "POSTED_RECEIPT", name: "Ghi sổ", module: "receipt", moduleLabel: "Phiếu thu" },
-    { key: "CANCEL_RECEIPT", name: "Hủy", module: "receipt", moduleLabel: "Phiếu thu" },
 
     // Phiếu chi (Payment Voucher)
     { key: "GET_PAYMENT", name: "Xem", module: "payment", moduleLabel: "Phiếu chi" },
+    { key: "GET_PAYMENT_USER", name: "Xem của tôi", module: "payment", moduleLabel: "Phiếu chi" },
     { key: "CREATE_PAYMENT", name: "Thêm", module: "payment", moduleLabel: "Phiếu chi" },
     { key: "UPDATE_PAYMENT", name: "Sửa", module: "payment", moduleLabel: "Phiếu chi" },
     { key: "DELETE_PAYMENT", name: "Xóa", module: "payment", moduleLabel: "Phiếu chi" },
-    { key: "APPROVE_PAYMENT", name: "Duyệt", module: "payment", moduleLabel: "Phiếu chi" },
     { key: "POSTED_PAYMENT", name: "Ghi sổ", module: "payment", moduleLabel: "Phiếu chi" },
-    { key: "CANCEL_PAYMENT", name: "Hủy", module: "payment", moduleLabel: "Phiếu chi" },
 
     // Thuế
     { key: "GET_TAX", name: "Xem", module: "tax", moduleLabel: "Thuế" },
@@ -330,6 +327,10 @@ async function main() {
     { key: "CREATE_WAREHOUSE", name: "Thêm", module: "warehouse", moduleLabel: "Kho" },
     { key: "UPDATE_WAREHOUSE", name: "Sửa", module: "warehouse", moduleLabel: "Kho" },
     { key: "DELETE_WAREHOUSE", name: "Xóa", module: "warehouse", moduleLabel: "Kho" },
+    
+    // Quản lý tồn kho
+    { key: "GET_INVENTORY", name: "Xem tồn kho", module: "inventory", moduleLabel: "Tồn kho" },
+    { key: "MANAGE_INVENTORY", name: "Quản lý tồn kho", module: "inventory", moduleLabel: "Tồn kho" },
 
     // Nhập kho
     { key: "GET_WAREHOUSE_IMPORT", name: "Xem", module: "warehouse_in", moduleLabel: "Nhập kho" },
@@ -644,10 +645,15 @@ async function main() {
   // =====================================================
   await seedProducts(prisma, adminUser.id);
 
+  // =====================================================
+  // 13. SEED INVENTORY
+  // =====================================================
+  await seedInventory(prisma, adminUser.id);
+
   console.log('✅ Database seed completed successfully! 🎉\n');
   console.log('📌 Login Credentials:\n');
   console.log('👤 Admin:');
-  console.log('   Email: nhoangkha03@gmail.com');
+  console.log('   Email: leeminhkang@gmail.com');
   console.log('   Password: admin123\n');
   console.log('👥 Other Users (password: 123456):');
   console.log('   - manager1@company.com (Nguyễn Văn Quản - Warehouse Manager)');

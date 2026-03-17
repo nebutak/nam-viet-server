@@ -96,20 +96,6 @@ class PaymentReceiptController {
     });
   }
 
-  // PUT /api/payment-receipts/:id/approve - Approve receipt
-  async approve(req: AuthRequest, res: Response) {
-    const id = parseInt(req.params.id);
-    const userId = req.user!.id;
-    const receipt = await paymentReceiptService.approve(id, userId, req.body);
-
-    res.status(200).json({
-      success: true,
-      data: receipt,
-      message: 'Payment receipt approved successfully',
-      timestamp: new Date().toISOString(),
-    });
-  }
-
   // POST /api/payment-receipts/:id/post - Post receipt to accounting
   async post(req: AuthRequest, res: Response) {
     const id = parseInt(req.params.id);
@@ -120,6 +106,20 @@ class PaymentReceiptController {
       success: true,
       data: receipt,
       message: 'Payment receipt posted to accounting successfully',
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // POST /api/payment-receipts/:id/unpost - Unpost receipt
+  async unpost(req: AuthRequest, res: Response) {
+    const id = parseInt(req.params.id);
+    const userId = req.user!.id;
+    const receipt = await paymentReceiptService.unpost(id, userId);
+
+    res.status(200).json({
+      success: true,
+      data: receipt,
+      message: 'Payment receipt unposted successfully',
       timestamp: new Date().toISOString(),
     });
   }
@@ -151,6 +151,17 @@ class PaymentReceiptController {
     });
   }
 
+  // GET /api/payment-receipts/:id/qr-code - Get VietQR code link
+  async getQRCode(req: AuthRequest, res: Response) {
+    const id = parseInt(req.params.id);
+    const result = await paymentReceiptService.getQRCode(id);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString(),
+    });
+  }
 }
 
 export default new PaymentReceiptController();

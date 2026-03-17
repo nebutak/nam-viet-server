@@ -94,6 +94,14 @@ router.get(
   asyncHandler(reportController.getRevenueReport.bind(reportController))
 );
 
+// GET /api/reports/revenue/export - Export revenue report to Excel
+router.get(
+  '/revenue/export',
+  authorize('GET_REVENUE_REPORT'),
+  validate(revenueReportSchema, 'query'),
+  asyncHandler(reportController.exportRevenueReport.bind(reportController))
+);
+
 // GET /api/reports/revenue/by-channel - Revenue by sales channel
 router.get(
   '/revenue/by-channel',
@@ -121,6 +129,13 @@ router.get(
   asyncHandler(reportController.getInventoryReport.bind(reportController))
 );
 
+// GET /api/reports/inventory/export - Export inventory report to Excel
+router.get(
+  '/inventory/export',
+  authorize('GET_INVENTORY_REPORT'),
+  asyncHandler(reportController.exportInventoryReport.bind(reportController))
+);
+
 // GET /api/reports/inventory/by-type - Inventory by product type
 router.get(
   '/inventory/by-type',
@@ -141,6 +156,20 @@ router.get(
   '/inventory/stock-flow',
   authorize('GET_INVENTORY_REPORT'),
   asyncHandler(reportController.getInventoryStockFlow.bind(reportController))
+);
+
+// GET /api/reports/inventory/nxt-report - Inventory summary report (Nhập-Xuất-Tồn)
+router.get(
+  '/inventory/nxt-report',
+  authorize('GET_INVENTORY_REPORT'),
+  asyncHandler(reportController.getInventoryNXTReport.bind(reportController))
+);
+
+// GET /api/reports/inventory/ledger - Inventory detailed ledger (Sổ chi tiết vật tư)
+router.get(
+  '/inventory/ledger',
+  authorize('GET_INVENTORY_REPORT'),
+  asyncHandler(reportController.getInventoryLedger.bind(reportController))
 );
 
 // =====================================================
@@ -236,6 +265,13 @@ router.get(
   '/financial',
   authorize('GET_FINANCIAL_REPORT'),
   asyncHandler(reportController.getFinancialReport.bind(reportController))
+);
+
+// GET /api/reports/financial/export - Export financial report to Excel
+router.get(
+  '/financial/export',
+  authorize('GET_FINANCIAL_REPORT'),
+  asyncHandler(reportController.exportFinancialReport.bind(reportController))
 );
 
 // =====================================================

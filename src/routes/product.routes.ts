@@ -52,14 +52,14 @@ router.get(
 // GET /api/products/low-stock
 router.get(
   '/low-stock',
-  authorizeAny('GET_PRODUCT', 'GET_INVENTORY', 'STOCK_MANAGEMENT'),
+  authorizeAny('GET_PRODUCT', 'GET_INVENTORY', 'MANAGE_INVENTORY'),
   asyncHandler(productController.getLowStock.bind(productController))
 );
 
 // GET /api/products/expiring-soon
 router.get(
   '/expiring-soon',
-  authorizeAny('GET_PRODUCT', 'GET_INVENTORY', 'STOCK_MANAGEMENT'),
+  authorizeAny('GET_PRODUCT', 'GET_INVENTORY', 'MANAGE_INVENTORY'),
   asyncHandler(productController.getExpiringSoon.bind(productController))
 );
 

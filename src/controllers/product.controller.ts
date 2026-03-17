@@ -15,6 +15,7 @@ class ProductController {
       warehouseId,
       supplierId,
       status,
+      type,
       sortBy,
       sortOrder,
     } = req.query as any;
@@ -27,6 +28,7 @@ class ProductController {
       supplierId: supplierId ? parseInt(supplierId) : undefined,
       warehouseId: warehouseId ? parseInt(warehouseId) : undefined,
       status,
+      type,
       sortBy,
       sortOrder,
     });

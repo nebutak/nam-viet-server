@@ -136,6 +136,21 @@ class ReportController {
     });
   }
 
+  // GET /api/reports/revenue/export - Export revenue report to Excel
+  async exportRevenueReport(req: AuthRequest, res: Response) {
+    const params = {
+      ...req.query,
+      fromDate: req.query.fromDate as string,
+      toDate: req.query.toDate as string,
+    };
+
+    const result = await reportService.exportRevenueReport(params as any);
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=BaoCaoDoanhThu_${new Date().toISOString().split('T')[0]}.xlsx`);
+    res.send(result);
+  }
+
   // GET /api/reports/revenue/by-channel - Revenue by sales channel
   async getRevenueByChannel(req: AuthRequest, res: Response) {
     const { fromDate, toDate } = req.query;
@@ -208,6 +223,42 @@ class ReportController {
     const result = await reportService.getInventoryStockFlow(req.query as any);
 
     res.status(200).json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // GET /api/reports/inventory/nxt-report - Inventory summary report
+  async getInventoryNXTReport(req: AuthRequest, res: Response) {
+    const result = await reportService.getInventoryNXTReport(req.query as any);
+
+    return res.status(200).json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // GET /api/reports/inventory/ledger - Inventory detailed ledger
+  async getInventoryLedger(req: AuthRequest, res: Response) {
+    const { productId, fromDate, toDate, warehouseId } = req.query;
+    
+    if (!productId) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'productId is required' }
+      });
+    }
+
+    const result = await reportService.getInventoryLedger({
+      productId: parseInt(productId as string),
+      fromDate: fromDate as string,
+      toDate: toDate as string,
+      warehouseId: warehouseId ? parseInt(warehouseId as string) : undefined
+    });
+
+    return res.status(200).json({
       success: true,
       data: result,
       timestamp: new Date().toISOString(),
@@ -428,6 +479,75 @@ class ReportController {
     });
   }
 
+  // GET /api/reports/financial/export - Export financial report to Excel
+  async exportFinancialReport(req: AuthRequest, res: Response) {
+    try {
+      const { fromDate, toDate, datePreset } = req.query;
+      const today = new Date();
+      const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
+      const subDays = (date: Date, days: number) => new Date(date.getTime() - days * 24 * 60 * 60 * 1000);
+
+      let start = typeof fromDate === 'string' ? fromDate : '';
+      let end = typeof toDate === 'string' ? toDate : '';
+
+      if (datePreset && !start) {
+        switch (datePreset) {
+          case 'today':
+            start = today.toISOString().split('T')[0];
+            end = today.toISOString().split('T')[0];
+            break;
+          case 'yesterday': {
+            const yesterday = subDays(today, 1);
+            start = yesterday.toISOString().split('T')[0];
+            end = yesterday.toISOString().split('T')[0];
+            break;
+          }
+          case 'thisWeek': {
+            const weekStart = subDays(today, today.getDay());
+            start = weekStart.toISOString().split('T')[0];
+            end = today.toISOString().split('T')[0];
+            break;
+          }
+          case 'thisMonth':
+            start = startOfMonth(today).toISOString().split('T')[0];
+            end = today.toISOString().split('T')[0];
+            break;
+          case 'lastMonth': {
+            const lastMonth = subDays(today, today.getDate());
+            start = startOfMonth(lastMonth).toISOString().split('T')[0];
+            end = lastMonth.toISOString().split('T')[0];
+            break;
+          }
+          case 'thisYear':
+            start = new Date(today.getFullYear(), 0, 1).toISOString().split('T')[0];
+            end = today.toISOString().split('T')[0];
+            break;
+          default:
+            start = startOfMonth(today).toISOString().split('T')[0];
+            end = today.toISOString().split('T')[0];
+        }
+      }
+
+      // Default to current month if dates still missing
+      if (!start || !end) {
+        start = start || startOfMonth(today).toISOString().split('T')[0];
+        end = end || today.toISOString().split('T')[0];
+      }
+
+      const result = await financialService.exportFinancialReport(start, end);
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename=BaoCaoTaiChinh_${start}_${end}.xlsx`);
+      res.send(result);
+    } catch (err: any) {
+      console.error('Export financial report error:', err);
+      res.status(500).json({
+        success: false,
+        message: err?.message || 'Không thể xuất file Excel. Vui lòng thử lại.',
+      });
+    }
+  }
+
   // GET /api/reports/filter-options/warehouses - Get warehouses for filter
   async getWarehousesForFilter(_req: AuthRequest, res: Response) {
     const warehouses = await reportService.getWarehousesForFilter();
@@ -438,6 +558,23 @@ class ReportController {
       data: warehouses,
       timestamp: new Date().toISOString(),
     });
+  }
+
+  // GET /api/reports/inventory/export - Export inventory report to Excel
+  async exportInventoryReport(req: AuthRequest, res: Response) {
+    const params = {
+      ...req.query,
+      warehouseId: req.query.warehouseId ? Number(req.query.warehouseId) : undefined,
+      categoryId: req.query.categoryId ? Number(req.query.categoryId) : undefined,
+      lowStock: req.query.lowStock === 'true',
+      showExpiring: req.query.showExpiring === 'true',
+    };
+
+    const result = await reportService.exportInventoryReport(params as any);
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=BaoCaoTonKho_${new Date().toISOString().split('T')[0]}.xlsx`);
+    res.send(result);
   }
 }
 

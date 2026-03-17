@@ -41,7 +41,8 @@ import deliveryRoutes from '@routes/delivery.routes';
 import paymentReceiptRoutes from '@routes/payment-receipt.routes';
 import paymentVoucherRoutes from '@routes/payment-voucher.routes';
 // import debtReconciliationRoutes from '@routes/debt-reconciliation.routes';
-import cashFundRoutes from '@routes/cash-fund.routes';
+// import cashFundRoutes from '@routes/cash-fund.routes';
+
 import promotionRoutes from '@routes/promotion.routes';
 import attendanceRoutes from '@routes/attendance.routes';
 import salaryRoutes from '@routes/salary.routes';
@@ -59,6 +60,7 @@ import attributeRoutes from '@routes/attribute.routes';
 
 import smartDebtRoutes from '@routes/smart-debt.routes';
 import expiryRoutes from '@routes/expiry.routes';
+import warrantyRoutes from '@routes/warranty.routes';
 
 // News routes
 import newsRoutes from '@routes/news.routes';
@@ -67,9 +69,6 @@ import newsCategoryRoutes from '@routes/news-category.routes';
 // Contact routes
 // Contact routes
 import contactRoutes from '@routes/contact.routes';
-
-// Material Routes
-import materialRoutes from '@routes/material.routes';
 
 // CRM Routes
 import ticketRoutes from '@routes/ticket.routes';
@@ -156,7 +155,7 @@ app.use(
     origin: process.env.CORS_ORIGIN?.split(',') || '*',
     credentials: process.env.CORS_CREDENTIALS === 'true',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-XSRF-Token', 'ngrok-skip-browser-warning'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-XSRF-Token', 'ngrok-skip-browser-warning', 'Cache-Control', 'Pragma', 'Expires'],
     exposedHeaders: ['X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset'],
     maxAge: 600, // 10 phút
   })
@@ -223,7 +222,8 @@ app.use('/api/deliveries', deliveryRoutes);
 app.use('/api/payment-receipts', paymentReceiptRoutes);
 app.use('/api/payment-vouchers', paymentVoucherRoutes);
 // app.use('/api/debt-reconciliation', debtReconciliationRoutes);
-app.use('/api/cash-fund', cashFundRoutes);
+// app.use('/api/cash-fund', cashFundRoutes);
+
 app.use('/api/promotions', promotionRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/salary', salaryRoutes);
@@ -243,6 +243,7 @@ app.use('/api/attributes', attributeRoutes);
 
 // Smart Debt routes
 app.use('/api/smart-debt', smartDebtRoutes);
+app.use('/api/warranty', warrantyRoutes);
 
 // News routes
 app.use('/api/news', newsRoutes);
@@ -250,8 +251,6 @@ app.use('/api/news', newsRoutes);
 app.use('/api/news', newsRoutes);
 app.use('/api/news-categories', newsCategoryRoutes);
 
-// Material Routes
-app.use('/api/materials', materialRoutes);
 
 // CRM Routes
 app.use('/api/tickets', ticketRoutes);
@@ -331,7 +330,8 @@ httpServer.listen(PORT, async () => {
 ║   💰 Payment Receipts API: http://localhost:${PORT}/api/payment-receipts ║
 ║   💸 Payment Vouchers API: http://localhost:${PORT}/api/payment-vouchers ║
 ║   📊 Debt Reconciliation API: http://localhost:${PORT}/api/debt-reconciliation ║
-║   💰 Cash Fund API: http://localhost:${PORT}/api/cash-fund  ║
+║   💰 Cash Fund API: REMOVED                              ║
+
 ║   🎁 Promotions API: http://localhost:${PORT}/api/promotions ║
 ║   ⏰ Attendance API: http://localhost:${PORT}/api/attendance ║
 ║   💵 Salary API: http://localhost:${PORT}/api/salary        ║

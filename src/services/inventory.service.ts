@@ -17,6 +17,7 @@ class InventoryService {
       search,
       warehouseId,
       productId,
+      productIds, // Comma-separated product IDs
       warehouseType,
       categoryId,
       lowStock,
@@ -29,6 +30,8 @@ class InventoryService {
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
+    const parsedProductIds = productIds ? productIds.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id)) : [];
+
     const where: Prisma.InventoryWhereInput = {
       ...(search && {
         OR: [
@@ -39,6 +42,7 @@ class InventoryService {
       }),
       ...(warehouseId && { warehouseId: Number(warehouseId) }),
       ...(productId && { productId: Number(productId) }),
+      ...(parsedProductIds.length > 0 && { productId: { in: parsedProductIds } }),
       ...(warehouseType && {
         warehouse: {
           warehouseType: warehouseType as any,
@@ -61,6 +65,8 @@ class InventoryService {
           id: true,
           quantity: true,
           reservedQuantity: true,
+          warehouseId: true,
+          productId: true,
           warehouse: {
             select: {
               id: true,

@@ -2,8 +2,10 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import { NotFoundError, ValidationError } from '@utils/errors';
 import { logActivity } from '@utils/logger';
 import inventoryService from './inventory.service';
+import invoiceService from './invoice.service';
 import {
   type CreateImportInput,
+  type CreateExportInput,
   type TransactionQueryInput,
 } from '@validators/stock-transaction.validator';
 const prisma = new PrismaClient();
@@ -71,7 +73,6 @@ class StockTransactionService {
       warehouseId,
       referenceType,
       referenceId,
-      status,
       fromDate,
       toDate,
       sortBy = 'createdAt',
@@ -90,7 +91,7 @@ class StockTransactionService {
         ],
       }),
       ...(transactionType && { transactionType: transactionType as any }),
-      ...(status && { status: status as any }),
+      ...(typeof (query as any).isPosted !== 'undefined' && { isPosted: (query as any).isPosted === 'true' }),
       ...(warehouseId && { warehouseId: parseInt(warehouseId) }),
       ...(referenceType && { referenceType }),
       ...(referenceId && { referenceId: parseInt(referenceId) }),
@@ -138,13 +139,6 @@ class StockTransactionService {
           },
         },
         details: true,
-        approver: {
-          select: {
-            id: true,
-            fullName: true,
-            employeeCode: true,
-          },
-        },
         _count: {
           select: {
             details: true,
@@ -178,20 +172,6 @@ class StockTransactionService {
         sourceWarehouse: true,
         destinationWarehouse: true,
         creator: {
-          select: {
-            id: true,
-            fullName: true,
-            employeeCode: true,
-          },
-        },
-        approver: {
-          select: {
-            id: true,
-            fullName: true,
-            employeeCode: true,
-          },
-        },
-        canceller: {
           select: {
             id: true,
             fullName: true,
@@ -245,11 +225,6 @@ class StockTransactionService {
       }
     }
 
-    const totalValue = data.details.reduce(
-      (sum, item) => sum + (item.unitPrice || 0) * item.quantity,
-      0
-    );
-
     let transactionCode = await this.generateTransactionCode('import');
     let transaction;
     let retries = 3;
@@ -263,17 +238,19 @@ class StockTransactionService {
             warehouseId: data.warehouseId,
             referenceType: data.referenceType,
             referenceId: data.referenceId,
-            totalValue,
+            customerId: data.customerId,
+            supplierId: data.supplierId,
             reason: data.reason,
             notes: data.notes,
-            status: 'pending',
+            actualReceiptDate: data.actualReceiptDate ? new Date(data.actualReceiptDate) : null,
+            isPosted: false,
             createdBy: userId,
             details: {
               create: data.details.map((item) => ({
                 productId: item.productId,
+                unitId: item.unitId,
                 warehouseId: data.warehouseId,
                 quantity: item.quantity,
-                unitPrice: item.unitPrice,
                 batchNumber: item.batchNumber,
                 expiryDate: item.expiryDate ? new Date(item.expiryDate) : null,
                 notes: item.notes,
@@ -313,22 +290,7 @@ class StockTransactionService {
     return transaction;
   }
 
-  async createExport(
-    data: {
-      warehouseId: number;
-      referenceType?: string;
-      referenceId?: number;
-      reason?: string;
-      notes?: string;
-      details: Array<{
-        productId: number;
-        quantity: number;
-        batchNumber?: string;
-        notes?: string;
-      }>;
-    },
-    userId: number
-  ) {
+  async createExport(data: CreateExportInput, userId: number) {
     const warehouse = await prisma.warehouse.findUnique({
       where: { id: data.warehouseId },
     });
@@ -359,13 +321,17 @@ class StockTransactionService {
         warehouseId: data.warehouseId,
         referenceType: data.referenceType,
         referenceId: data.referenceId,
+        customerId: data.customerId,
+        supplierId: data.supplierId,
         reason: data.reason,
         notes: data.notes,
-        status: 'pending',
+        actualReceiptDate: data.actualReceiptDate ? new Date(data.actualReceiptDate) : null,
+        isPosted: false,
         createdBy: userId,
         details: {
           create: data.details.map((item) => ({
             productId: item.productId,
+            unitId: item.unitId,
             warehouseId: data.warehouseId,
             quantity: item.quantity,
             batchNumber: item.batchNumber,
@@ -450,7 +416,6 @@ class StockTransactionService {
         destinationWarehouseId: data.destinationWarehouseId,
         reason: data.reason,
         notes: data.notes,
-        status: 'pending',
         createdBy: userId,
         details: {
           create: data.details.map((item) => ({
@@ -526,7 +491,6 @@ class StockTransactionService {
         warehouseId: data.warehouseId,
         reason: data.reason,
         notes: data.notes,
-        status: 'pending',
         createdBy: userId,
         details: {
           create: data.details.map((item) => ({
@@ -598,7 +562,6 @@ class StockTransactionService {
         warehouseId: data.warehouseId,
         reason: data.reason,
         notes: data.notes,
-        status: 'pending',
         createdBy: userId,
         details: {
           create: details,
@@ -623,21 +586,19 @@ class StockTransactionService {
     return transaction;
   }
 
-  async approve(id: number, userId: number, notes?: string) {
+  async postTransaction(id: number, userId: number, notes?: string) {
     const transaction = await this.getById(id);
 
-    if (transaction.status !== 'pending') {
-      throw new ValidationError(`Giao dịch không thể phê duyệt. Trạng thái: ${transaction.status}`);
+    if (transaction.isPosted) {
+      throw new ValidationError(`Giao dịch đã được ghi sổ.`);
     }
 
     const result = await prisma.$transaction(async (tx) => {
       const updatedTransaction = await tx.stockTransaction.update({
         where: { id },
         data: {
-          status: 'approved',
-          approvedBy: userId,
-          approvedAt: new Date(),
-          notes: notes ? `${transaction.notes || ''} - Phê duyệt: ${notes}` : transaction.notes,
+          isPosted: true,
+          notes: notes ? `${transaction.notes || ''} - Ghi sổ: ${notes}` : transaction.notes,
         },
         include: {
           details: {
@@ -674,9 +635,9 @@ class StockTransactionService {
 
     logActivity('update', userId, 'stock_transactions', {
       recordId: id,
-      action: 'approve',
-      oldValue: { status: transaction.status },
-      newValue: { status: 'approved' },
+      action: 'post',
+      oldValue: { isPosted: false },
+      newValue: { isPosted: true },
     });
 
     return result;
@@ -827,6 +788,28 @@ class StockTransactionService {
         },
       });
     }
+
+    // ─── Tự động hoàn thành Invoice nếu đã xuất đủ số lượng ──────────────────
+    if (transaction.referenceType === 'invoice' && transaction.referenceId) {
+      const invoiceId = transaction.referenceId;
+
+      const invoice = await tx.invoice.findUnique({
+        where: { id: invoiceId },
+        include: { details: true },
+      });
+
+      if (invoice) {
+        // Luôn chuyển sang trạng thái đang giao khi xuất kho (để phù hợp với kịch bản 1, 2, 3)
+        await tx.invoice.update({
+          where: { id: invoiceId },
+          data: { orderStatus: 'delivering' }
+        });
+
+        // Gọi logic kiểm tra hoàn thành tập trung
+        await (invoiceService as any).checkAndCompleteOrder(invoiceId, userId, tx);
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
   }
 
   private async processTransfer(tx: any, transaction: any, userId: number) {
@@ -999,47 +982,6 @@ class StockTransactionService {
     }
   }
 
-  async cancel(id: number, userId: number, reason: string) {
-    const transaction = await this.getById(id);
-
-    if (transaction.status === 'cancelled') {
-      throw new ValidationError('Transaction is already cancelled');
-    }
-
-    if (transaction.status === 'approved') {
-      throw new ValidationError(
-        'Cannot cancel approved transaction. Please create a reversal transaction instead.'
-      );
-    }
-
-    const updated = await prisma.stockTransaction.update({
-      where: { id },
-      data: {
-        status: 'cancelled',
-        cancelledBy: userId,
-        cancelledAt: new Date(),
-        notes: `${transaction.notes || ''}\nCancellation reason: ${reason}`,
-      },
-      include: {
-        details: {
-          include: {
-            product: true,
-          },
-        },
-        warehouse: true,
-      },
-    });
-
-    logActivity('update', userId, 'stock_transactions', {
-      recordId: id,
-      action: 'cancel',
-      oldValue: { status: transaction.status },
-      newValue: { status: 'cancelled' },
-      reason,
-    });
-
-    return updated;
-  }
 
   async quickAdjustInventory(
     data: {
@@ -1120,10 +1062,8 @@ class StockTransactionService {
           transactionType: data.adjustmentType,
           warehouseId: data.warehouseId,
           reason: data.reason,
-          status: 'approved',
+          isPosted: true,
           createdBy: userId,
-          approvedBy: userId,
-          approvedAt: new Date(),
           details: {
             create: [
               {
@@ -1216,21 +1156,21 @@ class StockTransactionService {
             // Regular transactions (import, export, disposal, stocktake)
             {
               warehouseId,
-              status: 'approved',
+              isPosted: true,
               transactionType: { in: ['import', 'export', 'disposal', 'stocktake'] as any },
               createdAt: { lt: start },
             },
             // Transfer transactions (from this warehouse)
             {
               sourceWarehouseId: warehouseId,
-              status: 'approved',
+              isPosted: true,
               transactionType: 'transfer' as any,
               createdAt: { lt: start },
             },
             // Transfer transactions (to this warehouse)
             {
               destinationWarehouseId: warehouseId,
-              status: 'approved',
+              isPosted: true,
               transactionType: 'transfer' as any,
               createdAt: { lt: start },
             },
@@ -1275,7 +1215,7 @@ class StockTransactionService {
             // Regular transactions
             {
               warehouseId,
-              status: 'approved',
+              isPosted: true,
               transactionType: { in: ['import', 'export', 'disposal', 'stocktake'] as any },
               createdAt: {
                 gte: start,
@@ -1285,7 +1225,7 @@ class StockTransactionService {
             // Transfer transactions (from this warehouse)
             {
               sourceWarehouseId: warehouseId,
-              status: 'approved',
+              isPosted: true,
               transactionType: 'transfer' as any,
               createdAt: {
                 gte: start,
@@ -1295,7 +1235,7 @@ class StockTransactionService {
             // Transfer transactions (to this warehouse)
             {
               destinationWarehouseId: warehouseId,
-              status: 'approved',
+              isPosted: true,
               transactionType: 'transfer' as any,
               createdAt: {
                 gte: start,

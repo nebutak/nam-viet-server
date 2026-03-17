@@ -25,6 +25,7 @@ class ProductService {
       supplierId,
       warehouseId,
       status,
+      type,
       sortBy = 'createdAt',
       sortOrder = 'desc',
     } = params;
@@ -50,6 +51,7 @@ class ProductService {
         },
       }),
       ...(status && { status: status as any }),
+      ...(type && { type: type as any }),
     };
 
     const total = await prisma.product.count({ where });
@@ -289,6 +291,7 @@ class ProductService {
         hasExpiry: data.hasExpiry ?? false,
         manageSerial: data.manageSerial ?? false,
         status: (data.status as any) || 'active',
+        type: (data.type as any) || 'PRODUCT',
         createdBy: userId,
         ...(data.attributeIdsWithValue && {
           productHasAttributes: {
@@ -306,19 +309,17 @@ class ProductService {
             })),
           },
         }),
-        ...(data.materialIds && {
-          materials: {
-            create: data.materialIds.map((id) => ({
-              materialId: id,
-            })),
-          },
-        }),
         priceHistories: {
           create: {
             oldPrice: 0,
             newPrice: data.price ? Number(data.price) : 0,
             updatedBy: userId,
           }
+        },
+        productMaterials: {
+          create: data.materialIds ? data.materialIds.map((id) => ({
+            materialId: id,
+          })) : [],
         }
       },
       include: {
@@ -406,7 +407,7 @@ class ProductService {
           },
         }),
         ...(materialIds !== undefined && {
-          materials: {
+          productMaterials: {
             deleteMany: {},
             create: materialIds ? materialIds.map((id: number) => ({
               materialId: id,
@@ -559,6 +560,7 @@ class ProductService {
         id: true,
         productName: true,
         status: true,
+        type: true,
         supplierId: true,
         categoryId: true,
       },
@@ -579,10 +581,10 @@ class ProductService {
         inactive: inactiveCount,
       },
       byType: {
-        rawMaterial: 0,
+        rawMaterial: products.filter((p) => p.type === 'MATERIAL').length,
         packaging: 0,
         finished: 0,
-        goods: totalProducts,
+        goods: products.filter((p) => p.type === 'PRODUCT').length,
       },
       dataQuality: {
         withoutSupplier,

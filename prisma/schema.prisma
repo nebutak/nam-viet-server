@@ -125,8 +125,6 @@ model User {
   productsUpdated            Product[]             @relation("ProductUpdater")
   updatedPriceHistories      ProductPriceHistory[]
   stockTransactions          StockTransaction[]    @relation("TransactionCreator")
-  stockTransactionsApproved  StockTransaction[]    @relation("TransactionApprover")
-  stockTransactionsCancelled StockTransaction[]    @relation("TransactionCanceller")
   stockTransfers             StockTransfer[]       @relation("TransferRequester")
   stockTransfersApproved     StockTransfer[]       @relation("TransferApprover")
   stockTransfersCancelled    StockTransfer[]       @relation("TransferCanceller")
@@ -138,7 +136,6 @@ model User {
   deliveries                 Delivery[]            @relation("DeliveryStaff")
   deliveriesSettled          Delivery[]            @relation("DeliverySettler")
   paymentReceipts            PaymentReceipt[]      @relation("ReceiptCreator")
-  paymentReceiptsApproved    PaymentReceipt[]      @relation("ReceiptApprover")
   paymentVouchers            PaymentVoucher[]      @relation("VoucherCreator")
   paymentVouchersApproved    PaymentVoucher[]      @relation("VoucherApprover")
   // debtReconciliations         DebtReconciliation[] @relation("ReconciliationCreator")
@@ -148,8 +145,6 @@ model User {
   assignedCustomers Customer[] @relation("CustomerManager")
   assignedSuppliers Supplier[] @relation("SupplierManager")
 
-  cashFunds               CashFund[]         @relation("CashFundReconciler")
-  cashFundsApproved       CashFund[]         @relation("CashFundApprover")
   promotions              Promotion[]        @relation("PromotionCreator")
   promotionsApproved      Promotion[]        @relation("PromotionApprover")
   promotionsCancelled     Promotion[]        @relation("PromotionCanceller")
@@ -183,6 +178,11 @@ model User {
   createdExpiries         Expiry[]           @relation("ExpiryCreator")
   updatedExpiries         Expiry[]           @relation("ExpiryUpdater")
   createdUnits            Unit[]             @relation("UnitCreator")
+
+  warrantiesCreated       Warranty[]            @relation("WarrantyCreator")
+  warrantiesUpdated       Warranty[]            @relation("WarrantyUpdater")
+  warrantyPoliciesCreated WarrantyPolicy[]      @relation("WarrantyPolicyCreator")
+  warrantyPoliciesUpdated WarrantyPolicy[]      @relation("WarrantyPolicyUpdater")
   updatedUnits            Unit[]             @relation("UnitUpdater")
   createdTaxes            Tax[]              @relation("TaxCreator")
   updatedTaxes            Tax[]              @relation("TaxUpdater")
@@ -259,6 +259,7 @@ model Category {
   categoryCode String         @unique @map("category_code") @db.VarChar(50)
   categoryName String         @map("category_name") @db.VarChar(200)
   parentId     Int?           @map("parent_id")
+  type         CategoryType   @default(PRODUCT)
   status       CategoryStatus @default(active)
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
@@ -270,27 +271,11 @@ model Category {
 
   @@index([parentId])
   @@index([status])
+  @@index([type])
   @@map("categories")
 }
 
-model MaterialCategory {
-  id           Int            @id @default(autoincrement())
-  categoryCode String         @unique @map("category_code") @db.VarChar(50)
-  categoryName String         @map("category_name") @db.VarChar(200)
-  parentId     Int?           @map("parent_id")
-  status       CategoryStatus @default(active)
-  createdAt    DateTime       @default(now()) @map("created_at")
-  updatedAt    DateTime       @updatedAt @map("updated_at")
-  deletedAt    DateTime?      @map("deleted_at")
-
-  parent    MaterialCategory?  @relation("MaterialCategoryParent", fields: [parentId], references: [id], onDelete: SetNull)
-  children  MaterialCategory[] @relation("MaterialCategoryParent")
-  materials Material[]
-
-  @@index([parentId])
-  @@index([status])
-  @@map("material_categories")
-}
+// MaterialCategory model has been unified into Category model
 
 model Supplier {
   id               Int            @id @default(autoincrement())
@@ -325,7 +310,6 @@ model Supplier {
   paymentVouchers PaymentVoucher[]
   // debtReconciliations DebtReconciliation[]
   debtPeriods     DebtPeriod[]
-  materials       Material[]
 
   @@index([supplierCode])
   @@index([status])
@@ -397,6 +381,7 @@ model Product {
   hasExpiry      Boolean       @default(false) @map("has_expiry")
   manageSerial   Boolean       @default(false) @map("manage_serial")
   status         ProductStatus @default(active)
+  type           ProductType   @default(PRODUCT)
   createdBy      Int?          @map("created_by")
   updatedBy      Int?          @map("updated_by")
   createdAt      DateTime      @default(now()) @map("created_at")
@@ -416,12 +401,16 @@ model Product {
   invoiceDetails          InvoiceDetail[]
   promotionProducts       PromotionProduct[]
   promotionGifts          PromotionProduct[]       @relation("GiftProduct")
-  materials               ProductMaterial[]
   expiries                Expiry[]
   productHasAttributes    ProductHasAttribute[]
   unitConversions         ProductUnitConversion[]
   inventoryBatches        InventoryBatch[]
   priceHistories          ProductPriceHistory[]
+  productMaterials        ProductMaterial[]     @relation("MainProduct")
+  usedAsMaterial          ProductMaterial[]     @relation("MaterialComponent")
+
+  warranties       Warranty[]
+  warrantyPolicies WarrantyPolicy[]
 
   @@index([code])
   @@index([categoryId])
@@ -502,30 +491,26 @@ model StockTransaction {
   destinationWarehouseId Int?              @map("destination_warehouse_id")
   referenceType          String?           @map("reference_type") @db.VarChar(50)
   referenceId            Int?              @map("reference_id")
-  totalValue             Decimal           @default(0) @map("total_value") @db.Decimal(15, 2)
+  customerId             Int?              @map("customer_id")
+  supplierId             Int?              @map("supplier_id")
   reason                 String?           @db.VarChar(255)
   notes                  String?           @db.VarChar(500)
-  status                 TransactionStatus @default(draft)
+  isPosted               Boolean           @default(false) @map("is_posted")
   createdBy              Int               @map("created_by")
-  approvedBy             Int?              @map("approved_by")
-  cancelledBy            Int?              @map("cancelled_by")
   createdAt              DateTime          @default(now()) @map("created_at")
-  approvedAt             DateTime?         @map("approved_at")
-  cancelledAt            DateTime?         @map("cancelled_at")
+  actualReceiptDate      DateTime?         @map("actual_receipt_date") @db.Date
   deletedAt              DateTime?         @map("deleted_at")
 
   warehouse            Warehouse  @relation(fields: [warehouseId], references: [id])
   sourceWarehouse      Warehouse? @relation("SourceWarehouse", fields: [sourceWarehouseId], references: [id])
   destinationWarehouse Warehouse? @relation("DestinationWarehouse", fields: [destinationWarehouseId], references: [id])
   creator              User       @relation("TransactionCreator", fields: [createdBy], references: [id])
-  approver             User?      @relation("TransactionApprover", fields: [approvedBy], references: [id])
-  canceller            User?      @relation("TransactionCanceller", fields: [cancelledBy], references: [id])
 
   details StockTransactionDetail[]
 
   @@index([transactionCode])
   @@index([transactionType])
-  @@index([status])
+  @@index([warehouseId, isPosted])
   @@index([createdAt])
   @@map("stock_transactions")
 }
@@ -534,10 +519,10 @@ model StockTransactionDetail {
   id            Int       @id @default(autoincrement())
   transactionId Int       @map("transaction_id")
   productId     Int       @map("product_id")
+  unitId        Int?      @map("unit_id")
   warehouseId   Int?      @map("warehouse_id")
   batchNumber   String?   @map("batch_number") @db.VarChar(100)
   quantity      Decimal   @db.Decimal(15, 2)
-  unitPrice     Decimal?  @map("unit_price") @db.Decimal(15, 2)
   expiryDate    DateTime? @map("expiry_date") @db.Date
   notes         String?   @db.VarChar(500)
 
@@ -650,6 +635,7 @@ model Customer {
   tickets         Ticket[]
   crmTasks        CrmTask[]
   expiryAccounts  CustomerExpiryAccount[]
+  warranties      Warranty[]
 
   @@index([customerCode])
   @@index([phone])
@@ -775,6 +761,7 @@ model Invoice {
   deliveries      Delivery[]
   paymentReceipts PaymentReceipt[]
   expiries        Expiry[]
+  warranties      Warranty[]
   warehouse       Warehouse?       @relation(fields: [warehouseId], references: [id])
   warehouseId     Int?
 
@@ -814,6 +801,7 @@ model InvoiceDetail {
   batches     InvoiceBatchDetail[] // Link to batches used to fulfill this detail
   warehouse   Warehouse?           @relation(fields: [warehouseId], references: [id])
   warehouseId Int?
+  warranties  Warranty[]
 
   @@index([orderId])
   @@index([productId])
@@ -881,10 +869,7 @@ model PaymentReceipt {
   bankName             String?              @map("bank_name") @db.VarChar(200)
   transactionReference String?              @map("transaction_reference") @db.VarChar(100)
   receiptDate          DateTime             @map("receipt_date") @db.Date
-  approvedBy           Int?                 @map("approved_by")
-  approvedAt           DateTime?            @map("approved_at")
   isPosted             Boolean              @default(false) @map("is_posted")
-  isVerified           Boolean              @default(false) @map("is_verified")
   notes                String?              @db.VarChar(255)
   createdBy            Int                  @map("created_by")
   createdAt            DateTime             @default(now()) @map("created_at")
@@ -893,7 +878,6 @@ model PaymentReceipt {
   customer    Invoice? @relation(fields: [orderId], references: [id])
   customerRef Customer @relation(fields: [customerId], references: [id])
   creator     User     @relation("ReceiptCreator", fields: [createdBy], references: [id])
-  approver    User?    @relation("ReceiptApprover", fields: [approvedBy], references: [id])
 
   @@index([receiptCode])
   @@index([receiptDate])
@@ -1002,28 +986,6 @@ model DebtPeriod {
   @@unique([supplierId, periodName])
   @@index([periodName])
   @@map("debt_periods")
-}
-
-model CashFund {
-  id             Int       @id @default(autoincrement())
-  fundDate       DateTime  @unique @map("fund_date") @db.Date
-  openingBalance Decimal   @default(0) @map("opening_balance") @db.Decimal(15, 2)
-  closingBalance Decimal   @default(0) @map("closing_balance") @db.Decimal(15, 2)
-  totalReceipts  Decimal   @default(0) @map("total_receipts") @db.Decimal(15, 2)
-  totalPayments  Decimal   @default(0) @map("total_payments") @db.Decimal(15, 2)
-  isLocked       Boolean   @default(false) @map("is_locked")
-  lockedAt       DateTime? @map("locked_at")
-  approvedBy     Int?      @map("approved_by")
-  notes          String?   @db.VarChar(255)
-  reconciledBy   Int?      @map("reconciled_by")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  deletedAt      DateTime? @map("deleted_at")
-
-  reconciler User? @relation("CashFundReconciler", fields: [reconciledBy], references: [id])
-  approver   User? @relation("CashFundApprover", fields: [approvedBy], references: [id])
-
-  @@index([fundDate])
-  @@map("cash_fund")
 }
 
 // =====================================================
@@ -1342,6 +1304,11 @@ enum CategoryStatus {
   inactive
 }
 
+enum CategoryType {
+  PRODUCT
+  MATERIAL
+}
+
 enum SupplierType {
   local
   foreign
@@ -1362,6 +1329,11 @@ enum PurchaseOrderStatus {
 enum ProductStatus {
   active
   inactive
+}
+
+enum ProductType {
+  PRODUCT
+  MATERIAL
 }
 
 enum TransactionType {
@@ -1835,40 +1807,14 @@ enum TaskType {
   other
 }
 
-model Material {
-  id            Int       @id @default(autoincrement())
-  materialCode  String    @unique @map("material_code") @db.VarChar(50)
-  name          String    @db.VarChar(200)
-  cost          Decimal   @db.Decimal(15, 2)
-  supplierId    Int?      @map("supplier_id")
-  categoryId    Int?      @map("category_id")
-  unit          String?   @db.VarChar(50)
-  materialType  String?   @map("material_type") @db.VarChar(100)
-  priority      Int       @default(0)
-  purchaseDate  DateTime? @map("purchase_date") @db.Date
-  effectiveDate DateTime? @map("effective_date") @db.Date
-  imageUrl      String?   @map("image_url") @db.VarChar(500)
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
-  deletedAt     DateTime? @map("deleted_at")
-
-  supplier Supplier?         @relation(fields: [supplierId], references: [id])
-  category MaterialCategory? @relation(fields: [categoryId], references: [id])
-  products ProductMaterial[]
-
-  @@index([supplierId])
-  @@index([categoryId])
-  @@index([materialCode])
-  @@map("materials")
-}
 
 model ProductMaterial {
   productId  Int      @map("product_id")
-  materialId Int      @map("material_id")
+  materialId Int      @map("material_id") // Keep name for now to avoid extensive DB renaming if possible, but map to Product
   createdAt  DateTime @default(now()) @map("created_at")
 
-  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  material Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  product  Product @relation("MainProduct", fields: [productId], references: [id], onDelete: Cascade)
+  material Product @relation("MaterialComponent", fields: [materialId], references: [id], onDelete: Cascade)
 
   @@id([productId, materialId])
   @@index([productId])
@@ -1968,6 +1914,64 @@ model ProductHasAttribute {
   @@index([productId])
   @@index([attributeId])
   @@map("product_has_attributes")
+}
+
+model Warranty {
+  id               Int       @id @default(autoincrement())
+  customerId       Int       @map("customer_id")
+  productId        Int       @map("product_id")
+  invoiceId        Int       @map("invoice_id")
+  invoiceDetailId  Int?      @map("invoice_detail_id")
+  serialNumber     String?   @map("serial_number") @db.VarChar(100)
+  quantity         Decimal   @db.Decimal(15, 2)
+  startDate        DateTime? @map("start_date") @db.Date
+  endDate          DateTime? @map("end_date") @db.Date
+  status           String    @default("pending") @db.VarChar(50)
+  periodMonths     Int       @map("period_months")
+  warrantyCost     Decimal   @default(0) @map("warranty_cost") @db.Decimal(15, 2)
+  subTotal         Decimal   @default(0) @map("sub_total") @db.Decimal(15, 2)
+  amount           Decimal   @default(0) @db.Decimal(15, 2)
+  nextReminderDate DateTime? @map("next_reminder_date") @db.Date
+  lastReminderDate DateTime? @map("last_reminder_date") @db.Date
+  note             String?   @db.Text
+  createdBy        Int?      @map("created_by")
+  updatedBy        Int?      @map("updated_by")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  product       Product        @relation(fields: [productId], references: [id])
+  customer      Customer       @relation(fields: [customerId], references: [id])
+  invoice       Invoice        @relation(fields: [invoiceId], references: [id])
+  invoiceDetail InvoiceDetail? @relation(fields: [invoiceDetailId], references: [id])
+  creator       User?          @relation("WarrantyCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  updater       User?          @relation("WarrantyUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([customerId])
+  @@index([productId])
+  @@index([invoiceId])
+  @@index([status])
+  @@map("warranties")
+}
+
+model WarrantyPolicy {
+  id           Int      @id @default(autoincrement())
+  productId    Int      @map("product_id")
+  periodMonths Int      @map("period_months")
+  conditions   String?  @db.Text
+  warrantyCost Decimal  @default(0) @map("warranty_cost") @db.Decimal(15, 2)
+  status       String   @default("active") @db.VarChar(50)
+  createdBy    Int?     @map("created_by")
+  updatedBy    Int?     @map("updated_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  product Product @relation(fields: [productId], references: [id])
+  creator User?   @relation("WarrantyPolicyCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  updater User?   @relation("WarrantyPolicyUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([productId])
+  @@map("warranty_policies")
 }
 
 model ProductUnitConversion {

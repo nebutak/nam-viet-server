@@ -13,6 +13,7 @@ export const createCategorySchema = z.object({
     .max(200, 'Category name too long')
     .trim(),
   parentId: z.number().int().positive('Invalid parent category ID').nullable().optional(),
+  type: z.enum(['PRODUCT', 'MATERIAL']).optional().default('PRODUCT'),
   status: z.enum(['active', 'inactive']).optional().default('active'),
 });
 
@@ -25,6 +26,7 @@ export const updateCategorySchema = z.object({
     .optional(),
   categoryName: z.string().max(200, 'Category name too long').trim().optional(),
   parentId: z.number().int().positive('Invalid parent category ID').nullable().optional(),
+  type: z.enum(['PRODUCT', 'MATERIAL']).optional(),
   status: z.enum(['active', 'inactive']).optional(),
 });
 
@@ -42,6 +44,7 @@ export const queryCategoriesSchema = z.object({
       message: 'parentId must be a number or "null"',
     })
     .optional(),
+  type: z.enum(['PRODUCT', 'MATERIAL']).optional(),
   status: z.enum(['active', 'inactive']).optional(),
   sortBy: z
     .enum(['createdAt', 'updatedAt', 'categoryName', 'categoryCode'])

@@ -6,23 +6,23 @@ export const createPaymentReceiptSchema = z.object({
   orderId: z.number().int().positive('ID đơn hàng phải là số dương').optional(),
   amount: z.number().positive('Số tiền phải là số dương'),
   paymentMethod: z.enum(['cash', 'transfer', 'card']),
-  bankName: z.string().max(200).optional(),
-  transactionReference: z.string().max(100).optional(),
+  bankName: z.string().max(500).nullable().optional(),
+  transactionReference: z.string().max(100).nullable().optional(),
   receiptDate: z.string().refine((val) => !isNaN(Date.parse(val)), 'Ngày thu tiền không hợp lệ'),
-  notes: z.string().max(255).optional(),
+  notes: z.string().max(255).nullable().optional(),
 });
 
 export const updatePaymentReceiptSchema = z.object({
   receiptType: z.enum(['sales', 'debt_collection', 'refund', 'other']).optional(),
   amount: z.number().positive('Số tiền phải là số dương').optional(),
   paymentMethod: z.enum(['cash', 'transfer', 'card']).optional(),
-  bankName: z.string().max(200).optional(),
-  transactionReference: z.string().max(100).optional(),
+  bankName: z.string().max(500).nullable().optional(),
+  transactionReference: z.string().max(100).nullable().optional(),
   receiptDate: z
     .string()
     .refine((val) => !isNaN(Date.parse(val)), 'Ngày thu tiền không hợp lệ')
     .optional(),
-  notes: z.string().max(255).optional(),
+  notes: z.string().max(255).nullable().optional(),
 });
 
 export const approveReceiptSchema = z.object({
