@@ -738,7 +738,8 @@ class SalaryService {
           amount: totalSalary,
           paymentMethod: data.paymentMethod,
           notes: `Trả lương tháng ${salary.month} cho ${salary.user.fullName}. ${data.notes || ''}`,
-          isPosted: true,
+          status: 'posted',
+          postedAt: new Date(),
           createdBy: payerId,
         },
       });

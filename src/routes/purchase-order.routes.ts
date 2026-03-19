@@ -23,7 +23,7 @@ router.use(authentication);
 // POST /api/purchase-orders - Create purchase order
 router.post(
   '/',
-  authorize('create_purchase_order', 'manage_procurement'),
+  authorize('CREATE_PURCHASE_ORDER'),
   validate(createPurchaseOrderSchema, 'body'),
   logActivityMiddleware('create', 'purchase_order'),
   asyncHandler(purchaseOrderController.create.bind(purchaseOrderController))
@@ -32,7 +32,7 @@ router.post(
 // PUT /api/purchase-orders/:id - Update purchase order
 router.put(
   '/:id',
-  authorize('update_purchase_order', 'manage_procurement'),
+  authorize('UPDATE_PURCHASE_ORDER'),
   validateMultiple({
     params: purchaseOrderIdSchema,
     body: updatePurchaseOrderSchema,
@@ -44,7 +44,7 @@ router.put(
 // PUT /api/purchase-orders/:id/approve - Approve purchase order
 router.put(
   '/:id/approve',
-  authorize('approve_purchase_order', 'manage_procurement'),
+  authorize('APPROVE_PURCHASE_ORDER'),
   validateMultiple({
     params: purchaseOrderIdSchema,
     body: approvePurchaseOrderSchema,
@@ -53,10 +53,19 @@ router.put(
   asyncHandler(purchaseOrderController.approve.bind(purchaseOrderController))
 );
 
+// POST /api/purchase-orders/:id/revert - Revert purchase order to pending
+router.post(
+  '/:id/revert',
+  authorize('APPROVE_PURCHASE_ORDER'),
+  validate(purchaseOrderIdSchema, 'params'),
+  logActivityMiddleware('revert', 'purchase_order'),
+  asyncHandler(purchaseOrderController.revert.bind(purchaseOrderController))
+);
+
 // PUT /api/purchase-orders/:id/send-email - Send email
 router.put(
   '/:id/send-email',
-  authorize('sendEmail_purchase_order', 'manage_procurement'),
+  authorize('UPDATE_PURCHASE_ORDER'),
   validateMultiple({
     params: purchaseOrderIdSchema,
   }),
@@ -67,7 +76,7 @@ router.put(
 // PUT /api/purchase-orders/:id/receive - Receive purchase order
 router.put(
   '/:id/receive',
-  authorize('receive_purchase_order', 'manage_procurement'),
+  authorize('UPDATE_PURCHASE_ORDER'),
   validateMultiple({
     params: purchaseOrderIdSchema,
     body: receivePurchaseOrderSchema,
@@ -79,7 +88,7 @@ router.put(
 // PUT /api/purchase-orders/:id/cancel - Cancel purchase order
 router.put(
   '/:id/cancel',
-  authorize('cancel_purchase_order', 'manage_procurement'),
+  authorize('CANCEL_PURCHASE_ORDER'),
   validateMultiple({
     params: purchaseOrderIdSchema,
     body: cancelPurchaseOrderSchema,
@@ -91,16 +100,24 @@ router.put(
 // DELETE /api/purchase-orders/:id - Delete purchase order
 router.delete(
   '/:id',
-  authorize('delete_purchase_order', 'manage_procurement'),
+  authorize('DELETE_PURCHASE_ORDER'),
   validate(purchaseOrderIdSchema, 'params'),
   logActivityMiddleware('delete', 'purchase_order'),
   asyncHandler(purchaseOrderController.delete.bind(purchaseOrderController))
 );
 
+// GET /api/purchase-orders/by-user - Get purchase orders by current user
+router.get(
+  '/by-user',
+  authorize('GET_PURCHASE_ORDER_USER', 'GET_PURCHASE_ORDER'),
+  validate(purchaseOrderQuerySchema, 'query'),
+  asyncHandler(purchaseOrderController.getByUser.bind(purchaseOrderController))
+);
+
 // GET /api/purchase-orders/:id - Get purchase order by ID
 router.get(
   '/:id',
-  authorize('view_purchase_orders', 'view_procurement'),
+  authorize('GET_PURCHASE_ORDER'),
   validate(purchaseOrderIdSchema, 'params'),
   asyncHandler(purchaseOrderController.getById.bind(purchaseOrderController))
 );
@@ -108,7 +125,7 @@ router.get(
 // GET /api/purchase-orders - Get all purchase orders
 router.get(
   '/',
-  authorize('view_purchase_orders', 'view_procurement'),
+  authorize('GET_PURCHASE_ORDER'),
   validate(purchaseOrderQuerySchema, 'query'),
   asyncHandler(purchaseOrderController.getAll.bind(purchaseOrderController))
 );

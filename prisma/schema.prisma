@@ -66,7 +66,6 @@ model Warehouse {
 
   manager                 User?                    @relation("WarehouseManager", fields: [managerId], references: [id], onDelete: SetNull)
   users                   User[]                   @relation("UserWarehouse")
-  purchaseOrders          PurchaseOrder[]
   inventory               Inventory[]
   stockTransactions       StockTransaction[]
   sourceTransfers         StockTransaction[]       @relation("SourceWarehouse")
@@ -112,32 +111,31 @@ model User {
   creator   User?      @relation("UserCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   updater   User?      @relation("UserUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
 
-  managedWarehouses          Warehouse[]           @relation("WarehouseManager")
-  createdUsers               User[]                @relation("UserCreator")
-  updatedUsers               User[]                @relation("UserUpdater")
-  activityLogs               ActivityLog[]
-  rolePermissionsAssigned    RolePermission[]      @relation("AssignedBy")
-  suppliers                  Supplier[]            @relation("SupplierCreator")
-  suppliersUpdated           Supplier[]            @relation("SupplierUpdater")
-  purchaseOrders             PurchaseOrder[]       @relation("POCreator")
-  purchaseOrdersApproved     PurchaseOrder[]       @relation("POApprover")
-  products                   Product[]             @relation("ProductCreator")
-  productsUpdated            Product[]             @relation("ProductUpdater")
-  updatedPriceHistories      ProductPriceHistory[]
-  stockTransactions          StockTransaction[]    @relation("TransactionCreator")
-  stockTransfers             StockTransfer[]       @relation("TransferRequester")
-  stockTransfersApproved     StockTransfer[]       @relation("TransferApprover")
-  stockTransfersCancelled    StockTransfer[]       @relation("TransferCanceller")
-  customers                  Customer[]            @relation("CustomerCreator")
-  customersUpdated           Customer[]            @relation("CustomerUpdater")
-  invoices                   Invoice[]             @relation("SalesCreator")
-  invoicesApproved           Invoice[]             @relation("SalesApprover")
-  invoicesCancelled          Invoice[]             @relation("SalesCanceller")
-  deliveries                 Delivery[]            @relation("DeliveryStaff")
-  deliveriesSettled          Delivery[]            @relation("DeliverySettler")
-  paymentReceipts            PaymentReceipt[]      @relation("ReceiptCreator")
-  paymentVouchers            PaymentVoucher[]      @relation("VoucherCreator")
-  paymentVouchersApproved    PaymentVoucher[]      @relation("VoucherApprover")
+  managedWarehouses       Warehouse[]           @relation("WarehouseManager")
+  createdUsers            User[]                @relation("UserCreator")
+  updatedUsers            User[]                @relation("UserUpdater")
+  activityLogs            ActivityLog[]
+  rolePermissionsAssigned RolePermission[]      @relation("AssignedBy")
+  suppliers               Supplier[]            @relation("SupplierCreator")
+  suppliersUpdated        Supplier[]            @relation("SupplierUpdater")
+  purchaseOrders          PurchaseOrder[]       @relation("POCreator")
+  purchaseOrdersApproved  PurchaseOrder[]       @relation("POApprover")
+  products                Product[]             @relation("ProductCreator")
+  productsUpdated         Product[]             @relation("ProductUpdater")
+  updatedPriceHistories   ProductPriceHistory[]
+  stockTransactions       StockTransaction[]    @relation("TransactionCreator")
+  stockTransfers          StockTransfer[]       @relation("TransferRequester")
+  stockTransfersApproved  StockTransfer[]       @relation("TransferApprover")
+  stockTransfersCancelled StockTransfer[]       @relation("TransferCanceller")
+  customers               Customer[]            @relation("CustomerCreator")
+  customersUpdated        Customer[]            @relation("CustomerUpdater")
+  invoices                Invoice[]             @relation("SalesCreator")
+  invoicesApproved        Invoice[]             @relation("SalesApprover")
+  invoicesCancelled       Invoice[]             @relation("SalesCanceller")
+  deliveries              Delivery[]            @relation("DeliveryStaff")
+  deliveriesSettled       Delivery[]            @relation("DeliverySettler")
+  paymentReceipts         PaymentReceipt[]      @relation("ReceiptCreator")
+  paymentVouchers         PaymentVoucher[]      @relation("VoucherCreator")
   // debtReconciliations         DebtReconciliation[] @relation("ReconciliationCreator")
   // debtReconciliationsApproved DebtReconciliation[] @relation("ReconciliationApprover")
 
@@ -179,15 +177,15 @@ model User {
   updatedExpiries         Expiry[]           @relation("ExpiryUpdater")
   createdUnits            Unit[]             @relation("UnitCreator")
 
-  warrantiesCreated       Warranty[]            @relation("WarrantyCreator")
-  warrantiesUpdated       Warranty[]            @relation("WarrantyUpdater")
-  warrantyPoliciesCreated WarrantyPolicy[]      @relation("WarrantyPolicyCreator")
-  warrantyPoliciesUpdated WarrantyPolicy[]      @relation("WarrantyPolicyUpdater")
-  updatedUnits            Unit[]             @relation("UnitUpdater")
-  createdTaxes            Tax[]              @relation("TaxCreator")
-  updatedTaxes            Tax[]              @relation("TaxUpdater")
-  createdAttributes       Attribute[]        @relation("AttributeCreator")
-  updatedAttributes       Attribute[]        @relation("AttributeUpdater")
+  warrantiesCreated       Warranty[]       @relation("WarrantyCreator")
+  warrantiesUpdated       Warranty[]       @relation("WarrantyUpdater")
+  warrantyPoliciesCreated WarrantyPolicy[] @relation("WarrantyPolicyCreator")
+  warrantyPoliciesUpdated WarrantyPolicy[] @relation("WarrantyPolicyUpdater")
+  updatedUnits            Unit[]           @relation("UnitUpdater")
+  createdTaxes            Tax[]            @relation("TaxCreator")
+  updatedTaxes            Tax[]            @relation("TaxUpdater")
+  createdAttributes       Attribute[]      @relation("AttributeCreator")
+  updatedAttributes       Attribute[]      @relation("AttributeUpdater")
   inventoryBatches        InventoryBatch[]
 
   @@index([roleId, status])
@@ -320,25 +318,27 @@ model PurchaseOrder {
   id                   Int                 @id @default(autoincrement())
   poCode               String              @unique @map("po_code") @db.VarChar(50)
   supplierId           Int                 @map("supplier_id")
-  warehouseId          Int                 @map("warehouse_id")
   orderDate            DateTime            @map("order_date") @db.Date
   expectedDeliveryDate DateTime?           @map("expected_delivery_date") @db.Date
   subTotal             Decimal             @default(0) @map("sub_total") @db.Decimal(15, 2)
-  taxRate              Decimal             @default(0) @map("tax_rate") @db.Decimal(5, 2)
+  taxAmount            Decimal             @default(0) @map("tax_amount") @db.Decimal(15, 2)
+  discountAmount       Decimal             @default(0) @map("discount_amount") @db.Decimal(15, 2)
+  otherCosts           Decimal             @default(0) @map("other_costs") @db.Decimal(15, 2)
   totalAmount          Decimal             @default(0) @map("total_amount") @db.Decimal(15, 2)
   status               PurchaseOrderStatus @default(pending)
+  paidAmount           Decimal             @default(0) @map("paid_amount") @db.Decimal(15, 2)
+  paymentStatus        PaymentStatus       @default(unpaid) @map("payment_status")
   notes                String?             @db.VarChar(255)
-  sendNumber           Int?                @map("send_number")
   createdBy            Int                 @map("created_by")
   approvedBy           Int?                @map("approved_by")
   createdAt            DateTime            @default(now()) @map("created_at")
   deletedAt            DateTime?           @map("deleted_at")
 
-  supplier  Supplier              @relation(fields: [supplierId], references: [id])
-  warehouse Warehouse             @relation(fields: [warehouseId], references: [id])
-  creator   User                  @relation("POCreator", fields: [createdBy], references: [id])
-  approver  User?                 @relation("POApprover", fields: [approvedBy], references: [id])
-  details   PurchaseOrderDetail[]
+  supplier Supplier              @relation(fields: [supplierId], references: [id])
+  creator  User                  @relation("POCreator", fields: [createdBy], references: [id])
+  approver User?                 @relation("POApprover", fields: [approvedBy], references: [id])
+  details  PurchaseOrderDetail[]
+  paymentVouchers PaymentVoucher[] @relation("PurchaseOrderPayment")
 
   @@index([poCode])
   @@index([status])
@@ -347,12 +347,25 @@ model PurchaseOrder {
 }
 
 model PurchaseOrderDetail {
-  id        Int     @id @default(autoincrement())
-  poId      Int     @map("po_id")
-  productId Int     @map("product_id")
-  quantity  Decimal @db.Decimal(15, 2)
-  unitPrice Decimal @map("unit_price") @db.Decimal(15, 2)
-  notes     String? @db.VarChar(255)
+  id               Int     @id @default(autoincrement())
+  poId             Int     @map("po_id")
+  productId        Int     @map("product_id")
+  quantity         Decimal @db.Decimal(15, 2)
+  baseQuantity     Decimal @default(0) @map("base_quantity") @db.Decimal(15, 2)
+  conversionFactor Decimal @default(1) @map("conversion_factor") @db.Decimal(10, 2)
+  price            Decimal @default(0) @map("price") @db.Decimal(15, 2)
+  discountRate     Decimal @default(0) @map("discount_rate") @db.Decimal(5, 2)
+  discountAmount   Decimal @default(0) @map("discount_amount") @db.Decimal(15, 2)
+  taxRate          String? @map("tax_rate") @db.VarChar(50)
+  taxIds           Json?   @map("tax_ids")
+  taxAmount        Decimal @default(0) @map("tax_amount") @db.Decimal(15, 2)
+  total            Decimal @default(0) @map("total") @db.Decimal(15, 2)
+  periodMonths     String? @map("period_months") @db.VarChar(50)
+  warrantyCost     Decimal @default(0) @map("warranty_cost") @db.Decimal(15, 2)
+  applyWarranty    Boolean @default(false) @map("apply_warranty")
+  unitId           Int?    @map("unit_id")
+  unitName         String? @map("unit_name") @db.VarChar(50)
+  notes            String? @map("notes") @db.VarChar(255)
 
   purchaseOrder PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
   product       Product       @relation(fields: [productId], references: [id])
@@ -406,8 +419,8 @@ model Product {
   unitConversions         ProductUnitConversion[]
   inventoryBatches        InventoryBatch[]
   priceHistories          ProductPriceHistory[]
-  productMaterials        ProductMaterial[]     @relation("MainProduct")
-  usedAsMaterial          ProductMaterial[]     @relation("MaterialComponent")
+  productMaterials        ProductMaterial[]        @relation("MainProduct")
+  usedAsMaterial          ProductMaterial[]        @relation("MaterialComponent")
 
   warranties       Warranty[]
   warrantyPolicies WarrantyPolicy[]
@@ -483,23 +496,23 @@ model InventoryBatch {
 }
 
 model StockTransaction {
-  id                     Int               @id @default(autoincrement())
-  transactionCode        String            @unique @map("transaction_code") @db.VarChar(50)
-  transactionType        TransactionType   @map("transaction_type")
-  warehouseId            Int               @map("warehouse_id")
-  sourceWarehouseId      Int?              @map("source_warehouse_id")
-  destinationWarehouseId Int?              @map("destination_warehouse_id")
-  referenceType          String?           @map("reference_type") @db.VarChar(50)
-  referenceId            Int?              @map("reference_id")
-  customerId             Int?              @map("customer_id")
-  supplierId             Int?              @map("supplier_id")
-  reason                 String?           @db.VarChar(255)
-  notes                  String?           @db.VarChar(500)
-  isPosted               Boolean           @default(false) @map("is_posted")
-  createdBy              Int               @map("created_by")
-  createdAt              DateTime          @default(now()) @map("created_at")
-  actualReceiptDate      DateTime?         @map("actual_receipt_date") @db.Date
-  deletedAt              DateTime?         @map("deleted_at")
+  id                     Int             @id @default(autoincrement())
+  transactionCode        String          @unique @map("transaction_code") @db.VarChar(50)
+  transactionType        TransactionType @map("transaction_type")
+  warehouseId            Int             @map("warehouse_id")
+  sourceWarehouseId      Int?            @map("source_warehouse_id")
+  destinationWarehouseId Int?            @map("destination_warehouse_id")
+  referenceType          String?         @map("reference_type") @db.VarChar(50)
+  referenceId            Int?            @map("reference_id")
+  customerId             Int?            @map("customer_id")
+  supplierId             Int?            @map("supplier_id")
+  reason                 String?         @db.VarChar(255)
+  notes                  String?         @db.VarChar(500)
+  isPosted               Boolean         @default(false) @map("is_posted")
+  createdBy              Int             @map("created_by")
+  createdAt              DateTime        @default(now()) @map("created_at")
+  actualReceiptDate      DateTime?       @map("actual_receipt_date") @db.Date
+  deletedAt              DateTime?       @map("deleted_at")
 
   warehouse            Warehouse  @relation(fields: [warehouseId], references: [id])
   sourceWarehouse      Warehouse? @relation("SourceWarehouse", fields: [sourceWarehouseId], references: [id])
@@ -889,27 +902,29 @@ model PaymentVoucher {
   voucherCode    String               @unique @map("voucher_code") @db.VarChar(50)
   voucherType    VoucherType          @map("voucher_type")
   supplierId     Int?                 @map("supplier_id")
-  expenseAccount String?              @map("expense_account") @db.VarChar(100)
   amount         Decimal              @db.Decimal(15, 2)
   paymentMethod  VoucherPaymentMethod @map("payment_method")
   bankName       String?              @map("bank_name") @db.VarChar(200)
   paymentDate    DateTime             @map("payment_date") @db.Date
-  approvedBy     Int?                 @map("approved_by")
-  approvedAt     DateTime?            @map("approved_at")
-  isPosted       Boolean              @default(false) @map("is_posted")
+  status         PaymentVoucherStatus @default(draft)
+  postedAt       DateTime?            @map("posted_at")
+  cancelledAt    DateTime?            @map("cancelled_at")
+  reason         String?              @db.VarChar(500)
   notes          String?              @db.VarChar(255)
   createdBy      Int                  @map("created_by")
+  purchaseOrderId Int?                @map("purchase_order_id")
   createdAt      DateTime             @default(now()) @map("created_at")
   deletedAt      DateTime?            @map("deleted_at")
 
   supplier Supplier? @relation(fields: [supplierId], references: [id])
   creator  User      @relation("VoucherCreator", fields: [createdBy], references: [id])
-  approver User?     @relation("VoucherApprover", fields: [approvedBy], references: [id])
+  purchaseOrder PurchaseOrder? @relation("PurchaseOrderPayment", fields: [purchaseOrderId], references: [id])
 
   salaries Salary[]
 
   @@index([voucherCode])
   @@index([paymentDate])
+  @@index([status])
   @@map("payment_vouchers")
 }
 
@@ -1441,6 +1456,12 @@ enum VoucherPaymentMethod {
   transfer
 }
 
+enum PaymentVoucherStatus {
+  draft
+  posted
+  cancelled
+}
+
 enum ReconciliationType {
   monthly
   quarterly
@@ -1806,7 +1827,6 @@ enum TaskType {
   meeting
   other
 }
-
 
 model ProductMaterial {
   productId  Int      @map("product_id")

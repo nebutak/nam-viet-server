@@ -20,6 +20,23 @@ class PurchaseOrderController {
     res.status(200).json(response);
   }
 
+  // GET /api/purchase-orders/by-user
+  async getByUser(req: AuthRequest, res: Response) {
+    const userId = req.user!.id;
+    const result = await purchaseOrderService.getByUser(req.query as any, userId);
+
+    const response: ApiResponse = {
+      success: true,
+      data: result.data,
+      meta: result.meta,
+      message: result.message,
+      cards: result.cards,
+      timestamp: new Date().toISOString(),
+    };
+
+    res.status(200).json(response);
+  }
+
   // GET /api/purchase-orders/:id
   async getById(req: AuthRequest, res: Response) {
     const { id } = req.params;
@@ -152,6 +169,23 @@ class PurchaseOrderController {
       message: result.message,
       timestamp: new Date().toISOString(),
     });
+  }
+
+  // PUT /api/purchase-orders/:id/revert
+  async revert(req: AuthRequest, res: Response) {
+    const { id } = req.params;
+    const userId = req.user!.id;
+
+    const purchaseOrder = await purchaseOrderService.revert(parseInt(id), userId);
+
+    const response: ApiResponse = {
+      success: true,
+      data: purchaseOrder,
+      message: 'Đơn đặt hàng đã được revert về trạng thái chờ duyệt',
+      timestamp: new Date().toISOString(),
+    };
+
+    res.status(200).json(response);
   }
 }
 

@@ -76,7 +76,6 @@ class WarehouseService {
             select: {
               inventory: true,
               stockTransactions: true,
-              purchaseOrders: true,
               invoices: true,
             },
           },
@@ -202,7 +201,6 @@ class WarehouseService {
           select: {
             inventory: true,
             stockTransactions: true,
-            purchaseOrders: true,
             invoices: true,
           },
         },

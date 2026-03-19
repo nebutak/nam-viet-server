@@ -186,7 +186,7 @@ class SupplierService {
           include: { unit: true }
         },
         purchaseOrder: {
-          select: { orderDate: true, createdAt: true, taxRate: true }
+          select: { orderDate: true, createdAt: true, taxAmount: true }
         }
       },
       orderBy: { purchaseOrder: { orderDate: 'desc' } }
@@ -197,9 +197,9 @@ class SupplierService {
       productId: detail.productId,
       productName: detail.product.productName,
       unitName: detail.product.unit?.unitName || '—',
-      price: detail.unitPrice,
+      price: detail.price,
       createdAt: detail.purchaseOrder.orderDate || detail.purchaseOrder.createdAt,
-      taxes: detail.purchaseOrder.taxRate.gt(0) ? [{ title: 'VAT', percentage: detail.purchaseOrder.taxRate }] : [],
+      taxes: detail.purchaseOrder.taxAmount.gt(0) ? [{ title: 'VAT', amount: detail.purchaseOrder.taxAmount }] : [],
     }));
 
     return {

@@ -3,20 +3,46 @@ import { z } from 'zod';
 const purchaseOrderDetailSchema = z.object({
   productId: z.number().int().positive('ID sản phẩm không hợp lệ'),
   quantity: z.number().positive('Số lượng phải lớn hơn 0'),
-  unitPrice: z.number().min(0, 'Đơn giá không được âm'),
-  notes: z.string().max(255, 'Ghi chú quá dài').optional(),
+  baseQuantity: z.number().min(0).optional(),
+  conversionFactor: z.number().min(0).optional(),
+  price: z.number().min(0, 'Đơn giá không được âm'),
+  discountRate: z.number().min(0).max(100).optional(),
+  discountAmount: z.number().min(0).optional(),
+  taxRate: z.string().max(50).optional().nullable(),
+  taxIds: z.array(z.number()).optional().nullable(),
+  taxAmount: z.number().min(0).optional(),
+  total: z.number().min(0).optional(),
+  periodMonths: z.coerce.string().max(50).optional().nullable(),
+  warrantyCost: z.number().min(0).optional(),
+  applyWarranty: z.boolean().optional(),
+  unitId: z.number().int().positive().optional().nullable(),
+  unitName: z.string().max(50).optional().nullable(),
+  notes: z.string().max(255, 'Ghi chú quá dài').optional().nullable(),
 });
 
 const updatePurchaseOrderDetailSchema = z.object({
   id: z.number().int().positive().optional(),
   productId: z.number().int().positive('ID sản phẩm không hợp lệ'),
   quantity: z.number().positive('Số lượng phải lớn hơn 0'),
-  unitPrice: z.number().min(0, 'Đơn giá không được âm'),
-  notes: z.string().max(255, 'Ghi chú quá dài').optional(),
+  baseQuantity: z.number().min(0).optional(),
+  conversionFactor: z.number().min(0).optional(),
+  price: z.number().min(0, 'Đơn giá không được âm'),
+  discountRate: z.number().min(0).max(100).optional(),
+  discountAmount: z.number().min(0).optional(),
+  taxRate: z.string().max(50).optional().nullable(),
+  taxIds: z.array(z.number()).optional().nullable(),
+  taxAmount: z.number().min(0).optional(),
+  total: z.number().min(0).optional(),
+  periodMonths: z.coerce.string().max(50).optional().nullable(),
+  warrantyCost: z.number().min(0).optional(),
+  applyWarranty: z.boolean().optional(),
+  unitId: z.number().int().positive().optional().nullable(),
+  unitName: z.string().max(50).optional().nullable(),
+  notes: z.string().max(255, 'Ghi chú quá dài').optional().nullable(),
 });
 
 export const createPurchaseOrderSchema = z.object({
-  supplierId: z.number().int().positive('ID nhà cung cấp không hợp lệ').optional().nullable(),
+  supplierId: z.preprocess((val) => (typeof val === 'string' ? parseInt(val, 10) : val), z.number().int().positive('ID nhà cung cấp không hợp lệ')).optional().nullable(),
   newSupplier: z.object({
     name: z.string().optional(),
     phone: z.string().optional(),
@@ -24,7 +50,6 @@ export const createPurchaseOrderSchema = z.object({
     address: z.string().optional(),
     taxCode: z.string().optional(),
   }).optional().nullable(),
-  warehouseId: z.number().int().positive('ID kho không hợp lệ').optional().nullable(),
   orderDate: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'Định dạng ngày không hợp lệ (YYYY-MM-DD)')
@@ -33,9 +58,16 @@ export const createPurchaseOrderSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'Định dạng ngày không hợp lệ (YYYY-MM-DD)')
     .or(z.date())
-    .optional(),
-  taxRate: z.number().min(0).max(100, 'Thuế suất phải từ 0-100').default(0),
-  notes: z.string().max(255, 'Ghi chú quá dài').optional(),
+    .optional()
+    .nullable(),
+  subTotal: z.number().min(0).optional(),
+  taxAmount: z.number().min(0).optional(),
+  discount: z.number().min(0).optional(),
+  discountAmount: z.number().min(0).optional(),
+  otherCosts: z.number().min(0).optional(),
+  totalAmount: z.number().min(0).optional(),
+  notes: z.string().max(255, 'Ghi chú quá dài').optional().nullable(),
+  isAutoApprove: z.boolean().optional(),
   details: z
     .array(purchaseOrderDetailSchema)
     .min(1, 'Phải có ít nhất một sản phẩm')
@@ -43,7 +75,7 @@ export const createPurchaseOrderSchema = z.object({
 });
 
 export const updatePurchaseOrderSchema = z.object({
-  supplierId: z.number().int().positive('ID nhà cung cấp không hợp lệ').optional().nullable(),
+  supplierId: z.preprocess((val) => (typeof val === 'string' ? parseInt(val, 10) : val), z.number().int().positive('ID nhà cung cấp không hợp lệ')).optional().nullable(),
   newSupplier: z.object({
     name: z.string().optional(),
     phone: z.string().optional(),
@@ -51,7 +83,6 @@ export const updatePurchaseOrderSchema = z.object({
     address: z.string().optional(),
     taxCode: z.string().optional(),
   }).optional().nullable(),
-  warehouseId: z.number().int().positive('ID kho không hợp lệ').optional(),
   orderDate: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'Định dạng ngày không hợp lệ (YYYY-MM-DD)')
@@ -61,9 +92,16 @@ export const updatePurchaseOrderSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'Định dạng ngày không hợp lệ (YYYY-MM-DD)')
     .or(z.date())
-    .optional(),
-  taxRate: z.number().min(0).max(100, 'Thuế suất phải từ 0-100').default(0),
-  notes: z.string().max(255, 'Ghi chú quá dài').optional(),
+    .optional()
+    .nullable(),
+  subTotal: z.number().min(0).optional(),
+  taxAmount: z.number().min(0).optional(),
+  discount: z.number().min(0).optional(),
+  discountAmount: z.number().min(0).optional(),
+  otherCosts: z.number().min(0).optional(),
+  totalAmount: z.number().min(0).optional(),
+  notes: z.string().max(255, 'Ghi chú quá dài').optional().nullable(),
+  isAutoApprove: z.boolean().optional(),
   details: z
     .array(updatePurchaseOrderDetailSchema)
     .min(1, 'Phải có ít nhất một sản phẩm')
@@ -77,20 +115,20 @@ export const receivePurchaseOrderSchema = z.object({
       z.object({
         productId: z.number().int().positive('ID sản phẩm không hợp lệ'),
         quantity: z.number().positive('Số lượng phải lớn hơn 0'),
-        unitPrice: z.number().min(0, 'Đơn giá không được âm'),
+        price: z.number().min(0, 'Đơn giá không được âm'),
         batchNumber: z.string().max(100, 'Số lô quá dài').optional(),
         expiryDate: z
           .string()
           .regex(/^\d{4}-\d{2}-\d{2}$/, 'Định dạng ngày không hợp lệ (YYYY-MM-DD)')
           .or(z.date())
           .optional(),
-        notes: z.string().max(500, 'Ghi chú quá dài').optional(),
+        notes: z.string().max(500, 'Ghi chú quá dài').optional().nullable(),
       })
     )
     .min(1, 'Phải có ít nhất một sản phẩm')
     .max(100, 'Tối đa 100 sản phẩm')
     .optional(),
-  notes: z.string().max(500, 'Ghi chú quá dài').optional(),
+  notes: z.string().max(500, 'Ghi chú quá dài').optional().nullable(),
 });
 
 export const purchaseOrderQuerySchema = z.object({
@@ -99,7 +137,6 @@ export const purchaseOrderQuerySchema = z.object({
   search: z.string().trim().optional(),
   status: z.enum(['pending', 'approved', 'received', 'cancelled']).optional(),
   supplierId: z.string().optional(),
-  warehouseId: z.string().optional(),
   fromDate: z.string().optional(),
   toDate: z.string().optional(),
   sortBy: z.string().optional().default('createdAt'),

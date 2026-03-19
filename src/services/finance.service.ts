@@ -43,7 +43,7 @@ class FinanceService {
       _sum: { amount: true },
       where: {
         paymentDate: { gte: start, lte: end },
-        isPosted: true,
+        status: 'posted',
         voucherType: { not: 'refund' },
       },
     });
@@ -52,7 +52,7 @@ class FinanceService {
       _sum: { amount: true },
       where: {
         paymentDate: { gte: prevStart, lte: prevEnd },
-        isPosted: true,
+        status: 'posted',
         voucherType: { not: 'refund' },
       },
     });
@@ -174,7 +174,7 @@ class FinanceService {
       _count: true,
       where: {
         paymentDate: { gte: start, lte: end },
-        isPosted: true,
+        status: 'posted',
         voucherType: { not: 'refund' },
       },
     });
@@ -231,7 +231,7 @@ class FinanceService {
       _sum: { amount: true },
       where: {
         paymentDate: { gte: start, lte: end },
-        isPosted: true,
+        status: 'posted',
         voucherType: { not: 'refund' },
       },
     });
@@ -335,7 +335,7 @@ class FinanceService {
         amount: Number(v.amount),
         paymentMethod: v.paymentMethod,
         createdBy: v.creator?.fullName || 'N/A',
-        isPosted: v.isPosted,
+        isPosted: v.status === 'posted',
       })),
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 

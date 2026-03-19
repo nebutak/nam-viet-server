@@ -1,5 +1,5 @@
 import { PrismaClient, Prisma } from '@prisma/client';
-import { NotFoundError, SendEmailOutLimitError, ValidationError } from '@utils/errors';
+import { NotFoundError, ValidationError } from '@utils/errors';
 import { logActivity } from '@utils/logger';
 import {
   type CreatePurchaseOrderInput,
@@ -37,7 +37,6 @@ class PurchaseOrderService {
       search = '',
       status,
       supplierId,
-      warehouseId,
       fromDate,
       toDate,
       sortBy = 'createdAt',
@@ -58,7 +57,6 @@ class PurchaseOrderService {
       }),
       ...(status && { status: status as any }),
       ...(supplierId && { supplierId: parseInt(supplierId) }),
-      ...(warehouseId && { warehouseId: parseInt(warehouseId) }),
       ...(fromDate &&
         toDate && {
           orderDate: {
@@ -81,7 +79,12 @@ class PurchaseOrderService {
         status: true,
         notes: true,
         subTotal: true,
-        taxRate: true,
+        taxAmount: true,
+        discountAmount: true,
+        otherCosts: true,
+        paidAmount: true,
+        paymentStatus: true,
+        createdAt: true,
         supplier: {
           select: {
             id: true,
@@ -89,13 +92,7 @@ class PurchaseOrderService {
             supplierCode: true,
             contactName: true,
             phone: true,
-          },
-        },
-        warehouse: {
-          select: {
-            id: true,
-            warehouseName: true,
-            warehouseCode: true,
+            taxCode: true,
           },
         },
         creator: {
@@ -103,6 +100,8 @@ class PurchaseOrderService {
             id: true,
             fullName: true,
             employeeCode: true,
+            phone: true,
+            email: true,
           },
         },
         approver: {
@@ -137,6 +136,123 @@ class PurchaseOrderService {
         limit: limitNum,
         total,
         totalPages: Math.ceil(total / limitNum),
+        last_page: Math.ceil(total / limitNum),
+      },
+      cards,
+      message: 'Success',
+    };
+
+    return result;
+  }
+
+  async getByUser(query: PurchaseOrderQueryInput, userId: number) {
+    const {
+      page = '1',
+      limit = '20',
+      search = '',
+      status,
+      supplierId,
+      fromDate,
+      toDate,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+    } = query;
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    const where: Prisma.PurchaseOrderWhereInput = {
+      deletedAt: null,
+      createdBy: userId,
+      ...(search && {
+        OR: [
+          { poCode: { contains: search } },
+          { supplier: { supplierName: { contains: search } } },
+        ],
+      }),
+      ...(status && { status: status as any }),
+      ...(supplierId && { supplierId: parseInt(supplierId) }),
+      ...(fromDate &&
+        toDate && {
+          orderDate: {
+            gte: new Date(fromDate),
+            lte: new Date(toDate),
+          },
+        }),
+    };
+
+    const total = await prisma.purchaseOrder.count({ where });
+
+    const purchaseOrders = await prisma.purchaseOrder.findMany({
+      where,
+      select: {
+        id: true,
+        poCode: true,
+        orderDate: true,
+        expectedDeliveryDate: true,
+        totalAmount: true,
+        status: true,
+        notes: true,
+        subTotal: true,
+        taxAmount: true,
+        discountAmount: true,
+        otherCosts: true,
+        paidAmount: true,
+        paymentStatus: true,
+        createdAt: true,
+        supplier: {
+          select: {
+            id: true,
+            supplierName: true,
+            supplierCode: true,
+            contactName: true,
+            phone: true,
+            taxCode: true,
+          },
+        },
+        creator: {
+          select: {
+            id: true,
+            fullName: true,
+            employeeCode: true,
+            phone: true,
+            email: true,
+          },
+        },
+        approver: {
+          select: {
+            id: true,
+            fullName: true,
+          },
+        },
+        _count: {
+          select: {
+            details: true,
+          },
+        },
+      },
+      orderBy: { [sortBy]: sortOrder },
+      skip: skip,
+      take: limitNum,
+    });
+
+    // Stat Cards
+    const cards = {
+      pending: await prisma.purchaseOrder.count({ where: { ...where, status: 'pending' } }),
+      approved: await prisma.purchaseOrder.count({ where: { ...where, status: 'approved' } }),
+      received: await prisma.purchaseOrder.count({ where: { ...where, status: 'received' } }),
+      cancelled: await prisma.purchaseOrder.count({ where: { ...where, status: 'cancelled' } }),
+    };
+
+    const result = {
+      data: purchaseOrders,
+      meta: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+        last_page: Math.ceil(total / limitNum),
       },
       cards,
       message: 'Success',
@@ -146,18 +262,18 @@ class PurchaseOrderService {
   }
 
   async getById(id: number) {
-
     const [po, t] = await Promise.all([
       prisma.purchaseOrder.findUnique({
         where: { id },
         include: {
           supplier: true,
-          warehouse: true,
           creator: {
             select: {
               id: true,
               fullName: true,
               employeeCode: true,
+              phone: true,
+              email: true,
             },
           },
           approver: {
@@ -165,6 +281,20 @@ class PurchaseOrderService {
               id: true,
               fullName: true,
               employeeCode: true,
+            },
+          },
+          paymentVouchers: {
+            where: {
+              deletedAt: null,
+            },
+            include: {
+              creator: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  employeeCode: true,
+                },
+              },
             },
           },
           details: {
@@ -175,6 +305,7 @@ class PurchaseOrderService {
                   code: true,
                   productName: true,
                   unit: true,
+                  image: true,
                   basePrice: true,
                 },
               },
@@ -193,14 +324,14 @@ class PurchaseOrderService {
       }),
     ]);
 
+    if (!po) {
+      throw new NotFoundError('Purchase Order');
+    }
+
     const purchaseOrder = {
       ...po,
       stockTransaction: t,
     };
-
-    if (!purchaseOrder) {
-      throw new NotFoundError('Purchase Order');
-    }
 
     return purchaseOrder;
   }
@@ -255,23 +386,6 @@ class PurchaseOrderService {
       throw new ValidationError('Thông tin nhà cung cấp không hợp lệ. Vui lòng chọn nhà cung cấp hoặc cung cấp thông tin mới.');
     }
 
-    // Validate warehouse - optional, fallback to first warehouse
-    let warehouseId = data.warehouseId;
-    if (warehouseId) {
-      const warehouse = await prisma.warehouse.findUnique({
-        where: { id: warehouseId },
-      });
-      if (!warehouse) {
-        throw new NotFoundError('Warehouse');
-      }
-    } else {
-      // Fallback: use first available warehouse
-      const defaultWarehouse = await prisma.warehouse.findFirst();
-      if (defaultWarehouse) {
-        warehouseId = defaultWarehouse.id;
-      }
-    }
-
     // Validate products
     for (const detail of data.details) {
       const product = await prisma.product.findUnique({
@@ -285,44 +399,65 @@ class PurchaseOrderService {
     // Generate PO code
     const poCode = await this.generatePOCode();
 
-    // Calculate total amount
-    const subTotal = data.details.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-
-    const totalAmount = subTotal + (subTotal * data.taxRate) / 100;
+    // Calculate totals if not provided
+    const subTotal = data.subTotal ?? data.details.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const taxAmount = data.taxAmount ?? 0;
+    const discountAmount = data.discountAmount ?? data.discount ?? 0;
+    const otherCosts = data.otherCosts ?? 0;
+    const totalAmount = data.totalAmount ?? (subTotal + taxAmount + otherCosts - discountAmount);
+    
+    const status = data.isAutoApprove ? 'approved' : 'pending';
+    const approvedBy = data.isAutoApprove ? userId : null;
 
     // Create purchase order
     const purchaseOrder = await prisma.purchaseOrder.create({
       data: {
         poCode,
         supplierId: supplierId as number,
-        warehouseId: warehouseId as number,
-        orderDate: new Date(data.orderDate),
+        orderDate: new Date(data.orderDate as string),
         expectedDeliveryDate: data.expectedDeliveryDate
-          ? new Date(data.expectedDeliveryDate)
+          ? new Date(data.expectedDeliveryDate as string)
           : null,
         subTotal,
+        taxAmount,
+        discountAmount,
+        otherCosts,
         totalAmount,
-        status: 'pending',
-        taxRate: data.taxRate,
+        status,
+        approvedBy,
         notes: data.notes,
         createdBy: userId,
         details: {
           create: data.details.map((item) => ({
             productId: item.productId,
             quantity: item.quantity,
-            unitPrice: item.unitPrice,
+            baseQuantity: item.baseQuantity ?? item.quantity,
+            conversionFactor: item.conversionFactor ?? 1,
+            price: item.price,
+            discountRate: item.discountRate ?? 0,
+            discountAmount: item.discountAmount ?? 0,
+            taxRate: item.taxRate,
+            taxIds: item.taxIds ? (item.taxIds as any) : undefined,
+            taxAmount: item.taxAmount ?? 0,
+            total: item.total ?? (item.price * item.quantity + (item.taxAmount ?? 0) - (item.discountAmount ?? 0)),
+            periodMonths: item.periodMonths,
+            warrantyCost: item.warrantyCost ?? 0,
+            applyWarranty: item.applyWarranty ?? false,
+            unitId: item.unitId,
+            unitName: item.unitName,
             notes: item.notes,
           })),
         },
       },
       include: {
         supplier: true,
-        warehouse: true,
         creator: {
           select: {
             id: true,
             fullName: true,
             employeeCode: true,
+            phone: true,
+            email: true,
           },
         },
         details: {
@@ -391,19 +526,9 @@ class PurchaseOrderService {
       }
     }
 
-    // Validate warehouse if provided
-    if (data.warehouseId) {
-      const warehouse = await prisma.warehouse.findUnique({
-        where: { id: data.warehouseId },
-      });
-      if (!warehouse) {
-        throw new NotFoundError('Warehouse');
-      }
-    }
-
-    // Calculate total amount if details provided
-    let subTotal = purchaseOrder.subTotal;
-    if (data.details) {
+    // Calculate subTotal if details provided
+    let subTotal = data.subTotal ?? purchaseOrder.subTotal;
+    if (data.details && !data.subTotal) {
       // Validate products
       for (const detail of data.details) {
         const product = await prisma.product.findUnique({
@@ -414,10 +539,14 @@ class PurchaseOrderService {
         }
       }
 
-      subTotal = data.details.reduce((sum, item) => new Prisma.Decimal(Number(sum) + Number(item.unitPrice) * item.quantity), new Prisma.Decimal(0));
+      subTotal = data.details.reduce((sum, item) => new Prisma.Decimal(Number(sum) + Number(item.price) * item.quantity), new Prisma.Decimal(0));
     }
 
-    const totalAmount = new Prisma.Decimal(Number(subTotal) + (Number(subTotal) * data.taxRate) / 100);
+    const taxAmount = data.taxAmount ?? purchaseOrder.taxAmount;
+    const discountAmount = data.discountAmount ?? data.discount ?? purchaseOrder.discountAmount;
+    const otherCosts = data.otherCosts ?? purchaseOrder.otherCosts;
+
+    const totalAmount = data.totalAmount ?? new Prisma.Decimal(Number(subTotal) + Number(taxAmount) + Number(otherCosts) - Number(discountAmount));
 
     // Update purchase order
     const updated = await prisma.$transaction(async (tx) => {
@@ -432,23 +561,41 @@ class PurchaseOrderService {
         where: { id },
         data: {
           supplierId,
-          ...(data.warehouseId && { warehouseId: data.warehouseId }),
-          ...(data.orderDate && { orderDate: new Date(data.orderDate) }),
+          ...(data.orderDate && { orderDate: new Date(data.orderDate as string) }),
           ...(data.expectedDeliveryDate !== undefined && {
             expectedDeliveryDate: data.expectedDeliveryDate
-              ? new Date(data.expectedDeliveryDate)
+              ? new Date(data.expectedDeliveryDate as string)
               : null,
           }),
           ...(data.notes !== undefined && { notes: data.notes }),
-          taxRate: data.taxRate,
+          taxAmount,
+          discountAmount,
+          otherCosts,
           subTotal,
           totalAmount,
+          ...(data.isAutoApprove !== undefined && { 
+            status: data.isAutoApprove ? 'approved' : 'pending',
+            approvedBy: data.isAutoApprove ? userId : null
+          }),
           ...(data.details && {
             details: {
               create: data.details.map((item) => ({
                 productId: item.productId,
                 quantity: item.quantity,
-                unitPrice: item.unitPrice,
+                baseQuantity: item.baseQuantity ?? item.quantity,
+                conversionFactor: item.conversionFactor ?? 1,
+                price: item.price,
+                discountRate: item.discountRate ?? 0,
+                discountAmount: item.discountAmount ?? 0,
+                taxRate: item.taxRate,
+                taxIds: item.taxIds ? (item.taxIds as any) : undefined,
+                taxAmount: item.taxAmount ?? 0,
+                total: item.total ?? (item.price * item.quantity + (item.taxAmount ?? 0) - (item.discountAmount ?? 0)),
+                periodMonths: item.periodMonths,
+                warrantyCost: item.warrantyCost ?? 0,
+                applyWarranty: item.applyWarranty ?? false,
+                unitId: item.unitId,
+                unitName: item.unitName,
                 notes: item.notes,
               })),
             },
@@ -456,12 +603,13 @@ class PurchaseOrderService {
         },
         include: {
           supplier: true,
-          warehouse: true,
           creator: {
             select: {
               id: true,
               fullName: true,
               employeeCode: true,
+              phone: true,
+              email: true,
             },
           },
           details: {
@@ -500,12 +648,13 @@ class PurchaseOrderService {
       },
       include: {
         supplier: true,
-        warehouse: true,
         creator: {
           select: {
             id: true,
             fullName: true,
             employeeCode: true,
+            phone: true,
+            email: true,
           },
         },
         approver: {
@@ -540,10 +689,6 @@ class PurchaseOrderService {
       throw new ValidationError('Đơn đặt hàng phải được phê duyệt.');
     }
 
-    if (purchaseOrder.sendNumber && purchaseOrder.sendNumber >= 3) {
-      throw new SendEmailOutLimitError('Không được gửi quá 3 lần email!');
-    }
-
     try {
       await sendPurchaseOrderEmail.sendPurchaseOrderEmail(purchaseOrder);
     } catch (error) {
@@ -553,16 +698,16 @@ class PurchaseOrderService {
     const updated = await prisma.purchaseOrder.update({
       where: { id },
       data: {
-        sendNumber: (purchaseOrder.sendNumber || 0) + 1,
       },
       include: {
         supplier: true,
-        warehouse: true,
         creator: {
           select: {
             id: true,
             fullName: true,
             employeeCode: true,
+            phone: true,
+            email: true,
           },
         },
         approver: {
@@ -591,166 +736,6 @@ class PurchaseOrderService {
 
   async receive(_id: number, _userId: number, _data?: ReceivePurchaseOrderInput) {
     return 1;
-    // const purchaseOrder = await this.getById(id);
-
-    // if (purchaseOrder.status !== 'approved') {
-    //   throw new ValidationError('Đơn đặt hàng phải được phê duyệt.');
-    // }
-
-    // // Use PO details if no custom details provided
-    // const receiveDetails =
-    //   data?.details ||
-    //   purchaseOrder.details.map((d: any) => ({
-    //     productId: d.productId,
-    //     quantity: Number(d.quantity),
-    //     unitPrice: Number(d.unitPrice),
-    //     batchNumber: undefined,
-    //     expiryDate: undefined,
-    //     notes: d.notes || undefined,
-    //   }));
-
-    // const result = await prisma.$transaction(async (tx) => {
-    //   // Create import stock transaction
-    //   // Note: Transaction will be in 'pending' status
-    //   const stockTransaction = await stockTransactionService.createImport(
-    //     {
-    //       warehouseId: purchaseOrder.warehouseId,
-    //       referenceType: 'purchase_order',
-    //       referenceId: purchaseOrder.id,
-    //       reason: `Nhập hàng từ đơn đặt hàng ${purchaseOrder.poCode}`,
-    //       notes: data?.notes,
-    //       details: receiveDetails,
-    //     },
-    //     userId
-    //   );
-
-    //   // Auto-approve the transaction
-    //   // This will trigger processImport which handles:
-    //   // 1. Increase inventory quantity
-    //   // 2. Update product purchase price
-    //   // 3. Add to supplier debt
-    //   // 4. Update PO status to 'received'
-    //   const approvedTransaction = await tx.stockTransaction.update({
-    //     where: { id: stockTransaction.id },
-    //     data: {
-    //       status: 'approved',
-    //       approvedBy: userId,
-    //       approvedAt: new Date(),
-    //     },
-    //     include: {
-    //       details: {
-    //         include: {
-    //           product: true,
-    //         },
-    //       },
-    //       warehouse: true,
-    //     },
-    //   });
-
-    //   // Process import logic inline (since we're in transaction)
-    //   for (const detail of approvedTransaction.details) {
-    //     const current = await tx.inventory.findUnique({
-    //       where: {
-    //         warehouseId_productId: {
-    //           warehouseId: approvedTransaction.warehouseId,
-    //           productId: detail.productId,
-    //         },
-    //       },
-    //     });
-
-    //     const newQuantity = (current ? Number(current.quantity) : 0) + Number(detail.quantity);
-
-    //     // 1️⃣ Increase inventory
-    //     await tx.inventory.upsert({
-    //       where: {
-    //         warehouseId_productId: {
-    //           warehouseId: approvedTransaction.warehouseId,
-    //           productId: detail.productId,
-    //         },
-    //       },
-    //       create: {
-    //         warehouseId: approvedTransaction.warehouseId,
-    //         productId: detail.productId,
-    //         quantity: newQuantity,
-    //         reservedQuantity: 0,
-    //         updatedBy: userId,
-    //       },
-    //       update: {
-    //         quantity: newQuantity,
-    //         updatedBy: userId,
-    //       },
-    //     });
-
-    //     // 2️⃣ Update product purchase price
-    //     if (detail.unitPrice) {
-    //       await tx.product.update({
-    //         where: { id: detail.productId },
-    //         data: {
-    //           purchasePrice: Number(detail.unitPrice),
-    //         },
-    //       });
-    //     }
-    //   }
-
-    //   // 3️⃣ Add to supplier debt
-    //   const supplier = await tx.supplier.findUnique({
-    //     where: { id: purchaseOrder.supplierId },
-    //   });
-
-    //   const newPayable = (supplier ? Number(supplier.totalPayable) || 0 : 0) + Number(purchaseOrder.totalAmount);
-
-    //   await tx.supplier.update({
-    //     where: { id: purchaseOrder.supplierId },
-    //     data: {
-    //       totalPayable: newPayable,
-    //     },
-    //   });
-
-    //   // 4️⃣ Update PO status to 'received'
-    //   const updatedPO = await tx.purchaseOrder.update({
-    //     where: { id },
-    //     data: {
-    //       status: 'received',
-    //     },
-    //     include: {
-    //       supplier: true,
-    //       warehouse: true,
-    //       creator: {
-    //         select: {
-    //           id: true,
-    //           fullName: true,
-    //           employeeCode: true,
-    //         },
-    //       },
-    //       approver: {
-    //         select: {
-    //           id: true,
-    //           fullName: true,
-    //           employeeCode: true,
-    //         },
-    //       },
-    //       details: {
-    //         include: {
-    //           product: true,
-    //         },
-    //       },
-    //     },
-    //   });
-
-    //   return { purchaseOrder: updatedPO, stockTransaction: approvedTransaction };
-    // });
-
-
-
-    // // Log activity
-    // logActivity('update', userId, 'purchase_orders', {
-    //   recordId: id,
-    //   poCode: purchaseOrder.poCode,
-    //   action: 'receive',
-    //   stockTransactionId: result.stockTransaction.id,
-    // });
-
-    // return result;
   }
 
   async cancel(id: number, userId: number, reason?: string) {
@@ -762,6 +747,31 @@ class PurchaseOrderService {
       );
     }
 
+    // Check for warehouse receipts (StockTransaction)
+    const warehouseReceipts = await prisma.stockTransaction.count({
+      where: {
+        referenceType: 'purchase_order',
+        referenceId: id,
+        deletedAt: null,
+      },
+    });
+
+    if (warehouseReceipts > 0) {
+      throw new ValidationError(
+        'Không thể hủy đơn đặt hàng đã có phiếu nhập kho. Vui lòng xóa phiếu nhập kho trước.'
+      );
+    }
+
+    // Check for payment vouchers
+    // Note: PaymentVoucher usually has a supplier but might refer to PO via notes or reference field if added.
+    // However, the user said "phiếu chi", which might be linked to this PO's debt.
+    // If the PO has paidAmount > 0, it definitely has payments.
+    if (Number(purchaseOrder.paidAmount) > 0) {
+        throw new ValidationError(
+          'Không thể hủy đơn đặt hàng đã có phiếu chi (đã thanh toán một phần hoặc toàn bộ). Vui lòng xóa phiếu chi trước.'
+        );
+    }
+
     const updated = await prisma.purchaseOrder.update({
       where: { id },
       data: {
@@ -770,12 +780,13 @@ class PurchaseOrderService {
       },
       include: {
         supplier: true,
-        warehouse: true,
         creator: {
           select: {
             id: true,
             fullName: true,
             employeeCode: true,
+            phone: true,
+            email: true,
           },
         },
         approver: {
@@ -807,8 +818,8 @@ class PurchaseOrderService {
   async delete(id: number, userId: number) {
     const purchaseOrder = await this.getById(id);
 
-    if (purchaseOrder.status !== 'pending') {
-      throw new ValidationError('Chỉ những đơn đặt hàng đang chờ xử lý mới có thể bị xóa.');
+    if (!['pending', 'cancelled'].includes(purchaseOrder.status)) {
+      throw new ValidationError('Chỉ những đơn đặt hàng đang chờ xử lý hoặc đã hủy mới có thể bị xóa.');
     }
 
     // Soft delete
@@ -830,6 +841,53 @@ class PurchaseOrderService {
       message: 'Đơn đặt hàng đã được xóa thành công',
       timestamp: new Date().toISOString(),
     };
+  }
+
+  async revert(id: number, userId: number) {
+    const purchaseOrder = await this.getById(id);
+
+    if (purchaseOrder.status !== 'approved') {
+      throw new ValidationError('Chỉ có thể revert đơn hàng từ trạng thái đã phê duyệt.');
+    }
+
+    const updated = await prisma.purchaseOrder.update({
+      where: { id },
+      data: {
+        status: 'pending',
+      },
+      include: {
+        supplier: true,
+        creator: {
+          select: {
+            id: true,
+            fullName: true,
+            employeeCode: true,
+            phone: true,
+            email: true,
+          },
+        },
+        approver: {
+          select: {
+            id: true,
+            fullName: true,
+            employeeCode: true,
+          },
+        },
+        details: {
+          include: {
+            product: true,
+          },
+        },
+      },
+    });
+
+    logActivity('revert', userId, 'purchase_orders', {
+      recordId: id,
+      poCode: purchaseOrder.poCode,
+      action: 'revert',
+    });
+
+    return updated;
   }
 }
 

@@ -136,19 +136,7 @@ class PaymentVoucherController {
     });
   }
 
-  // PUT /api/payment-vouchers/:id/approve - Approve voucher
-  async approve(req: AuthRequest, res: Response) {
-    const id = parseInt(req.params.id);
-    const userId = req.user!.id;
-    const voucher = await paymentVoucherService.approve(id, userId, req.body);
 
-    res.status(200).json({
-      success: true,
-      data: voucher,
-      message: 'Phiếu thanh toán đã được phê duyệt thành công.',
-      timestamp: new Date().toISOString(),
-    });
-  }
 
   // POST /api/payment-vouchers/:id/post - Post voucher to accounting
   async post(req: AuthRequest, res: Response) {
@@ -164,16 +152,16 @@ class PaymentVoucherController {
     });
   }
 
-  // DELETE /api/payment-vouchers/:id/unpost - Unpost voucher (Revert posted status)
-  async unpost(req: AuthRequest, res: Response) {
+  // POST /api/payment-vouchers/:id/cancel - Cancel voucher
+  async cancel(req: AuthRequest, res: Response) {
     const id = parseInt(req.params.id);
     const userId = req.user!.id;
-    const result = await paymentVoucherService.unpost(id, userId);
+    const result = await paymentVoucherService.cancel(id, userId, req.body);
 
     res.status(200).json({
       success: true,
       data: result,
-      message: 'Bỏ ghi sổ phiếu chi thành công',
+      message: 'Hủy phiếu chi thành công',
       timestamp: new Date().toISOString(),
     });
   }

@@ -2035,15 +2035,13 @@ class ReportService {
             gte: dateRange.fromDate,
             lte: dateRange.toDate,
           },
-          approvedBy: {
-            not: null,
-          },
+          status: 'posted',
         },
         _sum: {
           amount: true,
         },
         _count: {
-          id: true,
+          _all: true,
         },
       }),
       prisma.invoice.aggregate({
@@ -2061,8 +2059,8 @@ class ReportService {
       }),
     ]);
 
-    const totalReceipts = Number(receipts._sum.amount || 0);
-    const totalPayments = Number(vouchers._sum.amount || 0);
+    const totalReceipts = Number(receipts?._sum?.amount || 0);
+    const totalPayments = Number(vouchers?._sum?.amount || 0);
     const totalRevenue = Number(invoices._sum.totalAmount || 0);
     const totalPaid = Number(invoices._sum.paidAmount || 0);
 
@@ -2074,11 +2072,11 @@ class ReportService {
       },
       receipts: {
         total: totalReceipts,
-        count: receipts._count.id,
+        count: receipts?._count?.id || 0,
       },
       payments: {
         total: totalPayments,
-        count: vouchers._count.id,
+        count: vouchers?._count?._all || 0,
       },
       cashFlow: {
         netCashFlow: totalReceipts - totalPayments,

@@ -7,7 +7,6 @@ import { asyncHandler } from '@middlewares/errorHandler';
 import {
   createPaymentVoucherSchema,
   updatePaymentVoucherSchema,
-  approveVoucherSchema,
   postVoucherSchema,
   paymentVoucherQuerySchema,
 } from '@validators/payment-voucher.validator';
@@ -77,14 +76,6 @@ router.post(
   asyncHandler(paymentVoucherController.create.bind(paymentVoucherController))
 );
 
-// PUT /api/payment-vouchers/:id/approve - Approve voucher
-router.put(
-  '/:id/approve',
-  authorize('APPROVE_PAYMENT'),
-  validate(approveVoucherSchema),
-  logActivityMiddleware('approve', 'payment_voucher'),
-  asyncHandler(paymentVoucherController.approve.bind(paymentVoucherController))
-);
 
 // PUT /api/payment-vouchers/:id - Update payment voucher
 router.put(
@@ -104,12 +95,13 @@ router.post(
   asyncHandler(paymentVoucherController.post.bind(paymentVoucherController))
 );
 
-// DELETE /api/payment-vouchers/:id/unpost - Unpost voucher (Revert)
-router.delete(
-  '/:id/unpost',
+// POST /api/payment-vouchers/:id/cancel - Cancel voucher
+router.post(
+  '/:id/cancel',
   authorize('POSTED_PAYMENT'),
-  logActivityMiddleware('unpost', 'payment_voucher'),
-  asyncHandler(paymentVoucherController.unpost.bind(paymentVoucherController))
+  validate(postVoucherSchema),
+  logActivityMiddleware('cancel', 'payment_voucher'),
+  asyncHandler(paymentVoucherController.cancel.bind(paymentVoucherController))
 );
 
 // POST /api/payment-vouchers/bulk-post - Bulk post vouchers

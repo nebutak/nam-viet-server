@@ -3,12 +3,13 @@ import { z } from 'zod';
 export const createPaymentVoucherSchema = z.object({
   voucherType: z.enum(['salary', 'operating_cost', 'supplier_payment', 'refund', 'other']),
   supplierId: z.number().int().positive('ID nhà cung cấp phải là số dương').optional(),
-  expenseAccount: z.string().max(100).optional(),
+  purchaseOrderId: z.number().int().positive().optional(),
   amount: z.number().positive('Số tiền phải là số dương'),
   paymentMethod: z.enum(['cash', 'transfer']),
-  bankName: z.string().max(500).optional(),
+  bankName: z.string().max(500).nullable().optional(),
   paymentDate: z.string().refine((val) => !isNaN(Date.parse(val)), 'Ngày thanh toán không hợp lệ'),
-  notes: z.string().max(255).optional(),
+  reason: z.string().max(500).nullable().optional(),
+  notes: z.string().max(255).nullable().optional(),
 });
 
 export const updatePaymentVoucherSchema = z.object({
@@ -16,15 +17,16 @@ export const updatePaymentVoucherSchema = z.object({
     .enum(['salary', 'operating_cost', 'supplier_payment', 'refund', 'other'])
     .optional(),
   supplierId: z.number().int().positive('ID nhà cung cấp phải là số dương').optional(),
-  expenseAccount: z.string().max(100).optional(),
+  purchaseOrderId: z.number().int().positive().optional(),
   amount: z.number().positive('Số tiền phải là số dương').optional(),
   paymentMethod: z.enum(['cash', 'transfer']).optional(),
-  bankName: z.string().max(500).optional(),
+  bankName: z.string().max(500).nullable().optional(),
   paymentDate: z
     .string()
     .refine((val) => !isNaN(Date.parse(val)), 'Ngày thanh toán không hợp lệ')
     .optional(),
-  notes: z.string().max(255).optional(),
+  reason: z.string().max(500).nullable().optional(),
+  notes: z.string().max(255).nullable().optional(),
 });
 
 export const approveVoucherSchema = z.object({
@@ -48,12 +50,7 @@ export const paymentVoucherQuerySchema = z.object({
     .enum(['salary', 'operating_cost', 'supplier_payment', 'refund', 'other'])
     .optional(),
   paymentMethod: z.enum(['cash', 'transfer']).optional(),
-  isPosted: z
-    .string()
-    .transform((val) => val === 'true')
-    .optional(),
-  approvalStatus: z.enum(['approved', 'pending']).optional(),
-  postedStatus: z.enum(['posted', 'draft']).optional(),
+  status: z.enum(['draft', 'posted', 'cancelled']).optional(),
   fromDate: z.string().optional(),
   toDate: z.string().optional(),
   sortBy: z.string().optional(),
