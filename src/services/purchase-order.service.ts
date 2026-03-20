@@ -262,7 +262,7 @@ class PurchaseOrderService {
   }
 
   async getById(id: number) {
-    const [po, t] = await Promise.all([
+    const [po, warehouseReceipts] = await Promise.all([
       prisma.purchaseOrder.findUnique({
         where: { id },
         include: {
@@ -313,14 +313,22 @@ class PurchaseOrderService {
           },
         },
       }),
-      prisma.stockTransaction.findFirst({
+      prisma.stockTransaction.findMany({
         where: {
           referenceId: id,
           referenceType: 'purchase_order',
+          deletedAt: null,
         },
-        select: {
-          id: true,
+        include: {
+          creator: {
+            select: {
+              id: true,
+              fullName: true,
+              employeeCode: true
+            }
+          }
         },
+        orderBy: { createdAt: 'desc' }
       }),
     ]);
 
@@ -328,9 +336,20 @@ class PurchaseOrderService {
       throw new NotFoundError('Purchase Order');
     }
 
+    // Map stock transactions to the format expected by the frontend
+    const mappedReceipts = warehouseReceipts.map(receipt => ({
+      ...receipt,
+      code: receipt.transactionCode,
+      receiptDate: receipt.createdAt,
+      receiptType: receipt.transactionType === 'import' ? 1 : 2, // 1: import, 2: export
+      createdByUser: receipt.creator,
+      status: receipt.isPosted ? 'posted' : 'draft'
+    }));
+
     const purchaseOrder = {
       ...po,
-      stockTransaction: t,
+      stockTransaction: warehouseReceipts.length > 0 ? warehouseReceipts[0] : null,
+      warehouseReceipts: mappedReceipts,
     };
 
     return purchaseOrder;
