@@ -75,6 +75,24 @@ router.get(
   asyncHandler(attendanceController.getUserStatistics.bind(attendanceController))
 );
 
+// =====================================================
+// QR CODE ROUTES (must come BEFORE /:id to avoid "qr" being matched as :id)
+// =====================================================
+
+// GET /api/attendance/qr - Get all QR codes
+router.get(
+  '/qr',
+  authorize('VIEW_ATTENDANCE'),
+  asyncHandler(qrCodeController.getAll.bind(qrCodeController))
+);
+
+// GET /api/attendance/qr/:id - Get QR code by ID
+router.get(
+  '/qr/:id',
+  authorize('VIEW_ATTENDANCE'),
+  asyncHandler(qrCodeController.getById.bind(qrCodeController))
+);
+
 // GET /api/attendance/:id - Get attendance by ID
 router.get(
   '/:id',
@@ -133,6 +151,15 @@ router.post(
   asyncHandler(attendanceController.lockMonth.bind(attendanceController))
 );
 
+// POST /api/attendance/unlock-month - Unlock attendance month
+router.post(
+  '/unlock-month',
+  authorize('UPDATE_ATTENDANCE'),
+  validate(lockMonthSchema, 'body'),
+  logActivityMiddleware('unlock month', 'attendance'),
+  asyncHandler(attendanceController.unlockMonth.bind(attendanceController))
+);
+
 // POST /api/attendance/import - Import attendance from file
 router.post(
   '/import',
@@ -151,7 +178,7 @@ router.delete(
 );
 
 // =====================================================
-// QR CODE ROUTES
+// QR CODE MUTATION ROUTES
 // =====================================================
 
 // POST /api/attendance/qr/generate - Generate QR code for attendance
@@ -169,20 +196,6 @@ router.post(
   validate(scanQRSchema),
   logActivityMiddleware('scan QR', 'attendance'),
   asyncHandler(qrCodeController.scan.bind(qrCodeController))
-);
-
-// GET /api/attendance/qr - Get all QR codes
-router.get(
-  '/qr',
-  authorize('VIEW_ATTENDANCE'),
-  asyncHandler(qrCodeController.getAll.bind(qrCodeController))
-);
-
-// GET /api/attendance/qr/:id - Get QR code by ID
-router.get(
-  '/qr/:id',
-  authorize('VIEW_ATTENDANCE'),
-  asyncHandler(qrCodeController.getById.bind(qrCodeController))
 );
 
 // PUT /api/attendance/qr/:id/deactivate - Deactivate QR code

@@ -1,4 +1,4 @@
-import { PrismaClient, OrderStatus, PaymentStatus, TransactionType, TransactionStatus, ReceiptType, PaymentMethod, DeliveryStatus } from '@prisma/client';
+import { PrismaClient, OrderStatus, PaymentStatus, TransactionType, ReceiptType, PaymentMethod, DeliveryStatus } from '@prisma/client';
 
 export async function seedSalesAndReturns(prisma: PrismaClient) {
   console.log('🌱 Seeding Sales & Returns...');
@@ -50,15 +50,12 @@ export async function seedSalesAndReturns(prisma: PrismaClient) {
       referenceType: 'Invoice',
       referenceId: invoice1.id,
       reason: 'Xuất hàng bán',
-      status: TransactionStatus.completed,
+      isPosted: true,
       createdBy: creatorId,
-      approvedBy: creatorId,
-      approvedAt: new Date(),
       details: {
         create: products.map(p => ({
           productId: p.id,
           quantity: 2,
-          unitPrice: 5000000,
         }))
       }
     }
@@ -84,8 +81,6 @@ export async function seedSalesAndReturns(prisma: PrismaClient) {
       receiptDate: new Date(),
       isPosted: true,
       createdBy: creatorId,
-      approvedBy: creatorId,
-      approvedAt: new Date()
     }
   });
 
@@ -153,8 +148,6 @@ export async function seedSalesAndReturns(prisma: PrismaClient) {
       isPosted: true,
       notes: 'Hoàn tiền trả hàng',
       createdBy: creatorId,
-      approvedBy: creatorId,
-      approvedAt: new Date()
     }
   });
 
@@ -167,16 +160,13 @@ export async function seedSalesAndReturns(prisma: PrismaClient) {
       referenceType: 'InvoiceReturn',
       referenceId: invoice2.id,
       reason: 'Khách hàng trả hàng',
-      status: TransactionStatus.completed,
+      isPosted: true,
       createdBy: creatorId,
-      approvedBy: creatorId,
-      approvedAt: new Date(),
       details: {
         create: [
           {
             productId: products[0].id,
             quantity: 1,
-            unitPrice: 5000000,
           }
         ]
       }

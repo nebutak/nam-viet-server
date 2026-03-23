@@ -43,15 +43,20 @@ export const calculateSalarySchema = z.object({
   bonus: z.number().min(0).optional(),
   advance: z.number().min(0).optional(),
   notes: z.string().max(255).optional(),
+  preview: z.boolean().optional(),
 });
 
 // Calculate Batch Salary Schema
 export const calculateBatchSalarySchema = z.object({
   month: z.string().regex(/^\d{6}$/, 'Month must be in YYYYMM format'),
+  preview: z.boolean().optional(),
   users: z.array(
     z.object({
       userId: z.number().min(1, 'User ID is required'),
-      basicSalary: z.number().min(0, 'Basic salary must be non-negative')
+      basicSalary: z.number().min(0, 'Basic salary must be non-negative'),
+      allowance: z.number().min(0).optional(),
+      bonus: z.number().min(0).optional(),
+      advance: z.number().min(0).optional()
     })
   ).min(1, 'At least one user is required')
 });

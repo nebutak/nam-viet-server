@@ -276,9 +276,14 @@ class AttendanceController {
         endDate
       );
 
+      const isLocked = month ? await attendanceService.isMonthLocked(month as string) : false;
+
       res.json({
         success: true,
-        data: stats,
+        data: {
+          ...stats,
+          isMonthLocked: isLocked
+        },
         timestamp: new Date().toISOString(),
       });
     } catch (error: any) {
@@ -304,7 +309,32 @@ class AttendanceController {
       res.json({
         success: true,
         data: result,
-        message: `Điểm danh tháng ${month} đã được khóa thành công.`,
+        message: `Khóa công tháng ${month} thành công.`,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({
+        success: false,
+        error: {
+          code: error.code || 'INTERNAL_ERROR',
+          message: error.message,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
+  }
+
+  // POST /api/attendance/unlock-month - Unlock attendance month
+  async unlockMonth(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const { month } = req.body as { month: string };
+
+      const result = await attendanceService.unlockMonth(month);
+
+      res.json({
+        success: true,
+        data: result,
+        message: `Mở khóa công tháng ${month} thành công.`,
         timestamp: new Date().toISOString(),
       });
     } catch (error: any) {

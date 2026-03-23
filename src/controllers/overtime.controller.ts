@@ -141,7 +141,9 @@ class OvertimeController {
     try {
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 20;
-      const result = await overtimeService.getSessions(page, limit);
+      const search = req.query.search as string;
+      const status = req.query.status as string;
+      const result = await overtimeService.getSessions(page, limit, search, status);
       
       const response: ApiResponse = {
         success: true,

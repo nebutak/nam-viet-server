@@ -20,7 +20,8 @@ class QRCodeService {
     endDate: Date, 
     createdBy: number, 
     shift: ShiftType = 'all_day',
-    type: ScanType = 'check_in'
+    type: ScanType = 'check_in',
+    clientUrl?: string
   ) {
     // Create unique session token
     const sessionToken = crypto.randomBytes(32).toString('hex');
@@ -36,8 +37,11 @@ class QRCodeService {
     // Sign JWT with 90 days expiration
     const token = jwt.sign(payload, QR_SECRET, { expiresIn: '90d' });
     
+    // Build the QR data text
+    const qrText = clientUrl ? `${clientUrl}/attendance/scan?qrData=${token}` : token;
+
     // Generate QR code image as base64 data URL
-    const qrCodeDataURL = await QRCode.toDataURL(token, {
+    const qrCodeDataURL = await QRCode.toDataURL(qrText, {
       errorCorrectionLevel: 'H',
       type: 'image/png',
       width: 400,
@@ -205,6 +209,9 @@ class QRCodeService {
     } else {
       // CHECK-IN
       // Check if already checked in today
+      const localNow = new Date();
+      const today = new Date(Date.UTC(localNow.getFullYear(), localNow.getMonth(), localNow.getDate()));
+
       const existingAttendance = await prisma.attendance.findUnique({
         where: {
           userId_date: {
@@ -286,7 +293,18 @@ class QRCodeService {
     const [records, total] = await Promise.all([
       prisma.attendanceQRCode.findMany({
         where: { deletedAt: null },
-        include: {
+        select: {
+          id: true,
+          sessionToken: true,
+          startDate: true,
+          endDate: true,
+          shift: true,
+          type: true,
+          isActive: true,
+          usageCount: true,
+          createdBy: true,
+          createdAt: true,
+          expiresAt: true,
           creator: {
             select: {
               id: true,

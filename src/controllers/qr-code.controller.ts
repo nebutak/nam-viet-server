@@ -9,7 +9,8 @@ class QRCodeController {
    */
   async generate(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const { startDate, endDate, shift, type } = req.body;
+      const { startDate, endDate, shift, type, clientUrl } = req.body;
+      const originUrl = req.get('origin') || clientUrl || 'http://localhost:5173';
       const userId = req.user!.id;
       
       const result = await qrCodeService.generateQRCode(
@@ -17,7 +18,8 @@ class QRCodeController {
         new Date(endDate),
         userId,
         shift,
-        type
+        type,
+        originUrl
       );
       
       res.status(201).json({
@@ -46,8 +48,8 @@ class QRCodeController {
     try {
       const { qrData, location } = req.body;
       const userId = req.user!.id;
-      const ipAddress = req.ip;
-      const userAgent = req.get('user-agent');
+      const ipAddress = req.ip || req.socket.remoteAddress;
+      const userAgent = req.headers['user-agent'];
       
       const result = await qrCodeService.scanQRCode(
         qrData,
@@ -57,21 +59,25 @@ class QRCodeController {
         userAgent
       );
       
-      res.json({
+      res.status(200).json({
         success: true,
-        data: result.attendance,
-        message: result.message,
-        isLate: result.isLate,
-        timestamp: new Date().toISOString(),
+        data: result,
+        message: result.message
       });
     } catch (error: any) {
-      res.status(error.statusCode || 500).json({
+      console.error('===== SCAN ERROR =====');
+      console.error(error);
+      
+      const statusCode = error.statusCode || 500;
+      const message = error.message || 'Lỗi xử lý QR Code';
+      
+      res.status(statusCode).json({
         success: false,
         error: {
-          code: error.code || 'INTERNAL_ERROR',
-          message: error.message,
-          timestamp: new Date().toISOString(),
+          code: error.code || 'INTERNAL_SERVER_ERROR',
+          message: message,
         },
+        message: message // So frontend toast can access error.response.data.message easily
       });
     }
   }

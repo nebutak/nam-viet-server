@@ -338,11 +338,24 @@ export class OvertimeService {
   /**
    * Get all sessions
    */
-  async getSessions(page = 1, limit = 20) {
+  async getSessions(page = 1, limit = 20, search?: string, status?: string) {
     const skip = (page - 1) * limit;
     
+    const where: any = {};
+    if (status) {
+      where.status = status;
+    }
+    if (search) {
+      where.OR = [
+        { sessionName: { contains: search } },
+        { notes: { contains: search } },
+        { creator: { fullName: { contains: search } } }
+      ];
+    }
+
     const [sessions, total] = await Promise.all([
       prisma.overtimeSession.findMany({
+        where,
         skip,
         take: limit,
         orderBy: { startTime: 'desc' },
@@ -355,7 +368,7 @@ export class OvertimeService {
           }
         }
       }),
-      prisma.overtimeSession.count(),
+      prisma.overtimeSession.count({ where }),
     ]);
 
     return {

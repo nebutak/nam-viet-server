@@ -332,31 +332,16 @@ class SalaryService {
 
     for (const user of users) {
       try {
-        // Skip if salary already exists
-        const existing = await prisma.salary.findUnique({
-          where: {
-            userId_month: {
-              userId: user.userId,
-              month,
-            },
-          },
-        });
-
-        if (existing) {
-          errors.push({
-            userId: user.userId,
-            message: 'Salary already exists for this month',
-          });
-          continue;
-        }
+        // calculate will handle duplicate existing salaries and properly overwrite if pending or reject if approved
 
         const calcData: CalculateSalaryInput = {
           userId: user.userId,
           month,
           basicSalary: user.basicSalary,
-          allowance: 0,
-          bonus: 0,
-          advance: 0,
+          allowance: user.allowance || 0,
+          bonus: user.bonus || 0,
+          advance: user.advance || 0,
+          preview: data.preview,
           notes: 'Tự động tính lương hàng loạt',
         };
 
@@ -365,7 +350,7 @@ class SalaryService {
       } catch (error: any) {
         errors.push({
           userId: user.userId,
-          message: error.message || 'Error calculating salary',
+          message: error.message || 'Lỗi khi tính toán lương',
         });
       }
     }
@@ -380,7 +365,7 @@ class SalaryService {
 
   // Calculate salary for a user in a month
   async calculate(data: CalculateSalaryInput, creatorId: number) {
-    const { userId, month, basicSalary, allowance = 0, bonus = 0, advance = 0 } = data;
+    const { userId, month, basicSalary, allowance = 0, bonus = 0, advance = 0, preview = false } = data;
     let { notes } = data;
 
     // Check if salary already exists
@@ -391,11 +376,14 @@ class SalaryService {
           month,
         },
       },
+      include: {
+        user: true,
+        creator: true,
+      }
     });
 
-    if (existing) {
-      throw new ConflictError('Salary for this user and month already exists');
-    }
+    // Based on user request, we ALWAYS permit overwriting salary even if it is not pending anymore.
+    // The frontend may show a warning, but we do not throw ConflictError here.
 
     // Get user info (no basicSalary field in User model, will use from params or default)
     const user = await prisma.user.findUnique({
@@ -404,7 +392,7 @@ class SalaryService {
     });
 
     if (!user) {
-      throw new NotFoundError('User');
+      throw new NotFoundError('Không tìm thấy nhân viên');
     }
 
     const actualBasicSalary = basicSalary ?? 10000000; // Default 10M if not provided
@@ -460,9 +448,10 @@ class SalaryService {
     // 5. Calculate net salary
     const netSalary = grossIncome - totalDeduction - advance;
 
-    // Create salary record
-    const salary = await prisma.salary.create({
-      data: {
+    if (preview) {
+      // IF PREVIEW, return the dummy object as if it were created
+      return {
+        id: existing ? existing.id : -1,
         userId,
         month,
         basicSalary: actualBasicSalary,
@@ -473,28 +462,91 @@ class SalaryService {
         deduction: totalDeduction,
         advance,
         notes,
+        paymentDate: null,
+        status: 'pending',
+        isPosted: false,
         createdBy: creatorId,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            fullName: true,
-            employeeCode: true,
-            email: true,
-          },
+        createdAt: new Date(),
+        user,
+        creator: null,
+        totalSalary: netSalary,
+        breakdown: {
+          grossIncome,
+          insuranceDeduction,
+          tax,
+          netSalary,
         },
-        creator: true,
-      },
-    });
+      };
+    }
 
-    // Log activity
-    logActivity('calculate_salary', creatorId, 'salary', {
-      id: salary.id,
-      userId,
-      month,
-      netSalary,
-    });
+    let salary;
+    if (existing) {
+      salary = await prisma.salary.update({
+        where: { id: existing.id },
+        data: {
+          basicSalary: actualBasicSalary,
+          allowance,
+          overtimePay,
+          bonus,
+          commission,
+          deduction: totalDeduction,
+          advance,
+          notes,
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              employeeCode: true,
+              email: true,
+            },
+          },
+          creator: true,
+        },
+      });
+      // Log activity
+      logActivity('update', creatorId, 'salary', {
+        id: salary.id,
+        userId,
+        month,
+        netSalary,
+      });
+    } else {
+      salary = await prisma.salary.create({
+        data: {
+          userId,
+          month,
+          basicSalary: actualBasicSalary,
+          allowance,
+          overtimePay,
+          bonus,
+          commission,
+          deduction: totalDeduction,
+          advance,
+          notes,
+          createdBy: creatorId,
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              employeeCode: true,
+              email: true,
+            },
+          },
+          creator: true,
+        },
+      });
+      // Log activity
+      logActivity('calculate_salary', creatorId, 'salary', {
+        id: salary.id,
+        userId,
+        month,
+        netSalary,
+      });
+    }
 
     return {
       ...salary,

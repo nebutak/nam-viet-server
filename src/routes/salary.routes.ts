@@ -39,7 +39,7 @@ router.get(
 router.get(
   '/:userId/:month',
   authorize('VIEW_SALARY'),
-  validate(getSalaryByUserMonthSchema),
+  validate(getSalaryByUserMonthSchema, 'params'),
   asyncHandler(salaryController.getByUserAndMonth.bind(salaryController))
 );
 

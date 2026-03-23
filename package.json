@@ -11,7 +11,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:seed": "ts-node prisma/seeds/seed.ts",
-    "prisma:seed-hovtoi": "ts-node prisma/seeds/seed-hovtoi.ts",
+    "prisma:seed-hovtoi": "ts-node prisma/seeds/hovtoi-seeds/seed-hovtoi.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",

@@ -4,6 +4,9 @@ import { z } from 'zod';
 export const generateQRSchema = z.object({
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format. Use YYYY-MM-DD'),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format. Use YYYY-MM-DD'),
+  shift: z.enum(['morning', 'afternoon', 'all_day']).optional(),
+  type: z.enum(['check_in', 'check_out']).optional(),
+  clientUrl: z.string().url().optional().or(z.string().length(0)),
 }).refine(data => {
   const start = new Date(data.startDate);
   const end = new Date(data.endDate);

@@ -1,4 +1,4 @@
-import { PrismaClient, PurchaseOrderStatus, TransactionType, TransactionStatus, VoucherType, PaymentMethod } from '@prisma/client';
+import { PrismaClient, PurchaseOrderStatus, TransactionType, VoucherType, PaymentMethod } from '@prisma/client';
 
 export async function seedPurchaseAndInventory(prisma: PrismaClient) {
   console.log('🌱 Seeding Purchase & Inventory...');
@@ -48,17 +48,13 @@ export async function seedPurchaseAndInventory(prisma: PrismaClient) {
       warehouseId: warehouse.id,
       referenceType: 'PurchaseOrder',
       referenceId: po.id,
-      totalValue: 50000000,
       reason: 'Nhập hàng từ nhà cung cấp',
-      status: TransactionStatus.completed,
+      isPosted: true,
       createdBy: creatorId,
-      approvedBy: creatorId,
-      approvedAt: new Date(),
       details: {
         create: products.map(p => ({
           productId: p.id,
           quantity: 100,
-          unitPrice: p.price ? Number(p.price) * 0.7 : 100000,
         }))
       }
     }
@@ -95,7 +91,7 @@ export async function seedPurchaseAndInventory(prisma: PrismaClient) {
       }
     });
   }
-  
+
   console.log('✅ Updated Inventory for products');
 
   // 4. Create Payment Voucher (Partial Payment -> creates Debt for Supplier)
