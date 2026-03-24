@@ -12,9 +12,11 @@ import {
 const prisma = new PrismaClient();
 
 // Salary calculation constants
-const STANDARD_WORK_HOURS_PER_MONTH = 208; // 26 days * 8 hours
+// NOTE: Standard work days/hours are computed dynamically per month.
 const OVERTIME_RATE = 1.5; // 150% of hourly rate
 const COMMISSION_RATE = 0.05; // 5% of sales revenue
+const LATE_PENALTY_PER_INSTANCE = 50000; // Fixed penalty per late occurrence
+const PIT_RATE = 0.2; // 20% flat PIT rate (see calculatePersonalIncomeTax)
 const SOCIAL_INSURANCE_RATE = 0.08; // BHXH 8%
 const HEALTH_INSURANCE_RATE = 0.015; // BHYT 1.5%
 const UNEMPLOYMENT_INSURANCE_RATE = 0.01; // BHTN 1%
@@ -159,36 +161,258 @@ class SalaryService {
     return result;
   }
 
-  // Calculate tax based on progressive tax brackets (Vietnam 2024)
+  // Calculate PIT using flat 20% rate (see prompt requirement).
+  // If taxable income <= 0, PIT = 0.
   private calculatePersonalIncomeTax(taxableIncome: number): number {
     if (taxableIncome <= 0) return 0;
+    return Math.round(taxableIncome * PIT_RATE);
+  }
 
-    let tax = 0;
-    const brackets = [
-      { limit: 5000000, rate: 0.05 },
-      { limit: 10000000, rate: 0.1 },
-      { limit: 18000000, rate: 0.15 },
-      { limit: 32000000, rate: 0.2 },
-      { limit: 52000000, rate: 0.25 },
-      { limit: 80000000, rate: 0.3 },
-      { limit: Infinity, rate: 0.35 },
-    ];
+  private getMonthContext(month: string) {
+    const year = parseInt(month.substring(0, 4), 10);
+    const monthNum = parseInt(month.substring(4, 6), 10); // 1-12
+    const monthIndex = monthNum - 1; // 0-11
 
-    let remaining = taxableIncome;
-    let previousLimit = 0;
+    const startDate = new Date(Date.UTC(year, monthIndex, 1));
+    const nextMonthStart = new Date(Date.UTC(year, monthIndex + 1, 1));
+    const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
 
-    for (const bracket of brackets) {
-      const taxableAtThisBracket = Math.min(remaining, bracket.limit - previousLimit);
-      if (taxableAtThisBracket <= 0) break;
+    return {
+      year,
+      monthNum,
+      monthIndex,
+      startDate,
+      nextMonthStart,
+      daysInMonth,
+    };
+  }
 
-      tax += taxableAtThisBracket * bracket.rate;
-      remaining -= taxableAtThisBracket;
-      previousLimit = bracket.limit;
+  private getSundayCount(daysInMonth: number, year: number, monthIndex: number): number {
+    let sundayCount = 0;
+    for (let day = 1; day <= daysInMonth; day++) {
+      const d = new Date(Date.UTC(year, monthIndex, day));
+      if (d.getUTCDay() === 0) sundayCount++;
+    }
+    return sundayCount;
+  }
 
-      if (remaining <= 0) break;
+  private getShiftFraction(shift: any): number {
+    if (shift === 'morning' || shift === 'afternoon') return 0.5;
+    return 1;
+  }
+
+  private toYmdUtcKey(dateValue: any): string {
+    const d = dateValue instanceof Date ? dateValue : new Date(dateValue);
+    return d.toISOString().slice(0, 10);
+  }
+
+  private toMinutesSince8am(dateTimeValue: any, compareHour = 8): number | null {
+    if (!dateTimeValue) return null;
+
+    // Prisma @db.Time usually comes as string: "HH:MM:SS"
+    if (typeof dateTimeValue === 'string') {
+      const parts = dateTimeValue.split(':');
+      const h = parseInt(parts[0] || '0', 10);
+      const m = parseInt(parts[1] || '0', 10);
+      const minutes = h * 60 + m;
+      return minutes - compareHour * 60;
     }
 
-    return Math.round(tax);
+    if (dateTimeValue instanceof Date) {
+      return dateTimeValue.getHours() * 60 + dateTimeValue.getMinutes() - compareHour * 60;
+    }
+
+    return null;
+  }
+
+  private async getAttendanceStatsForSalary(userId: number, month: string) {
+    const { year, monthIndex, startDate, nextMonthStart, daysInMonth } = this.getMonthContext(month);
+    const sundayCount = this.getSundayCount(daysInMonth, year, monthIndex);
+    const standardWorkDays = daysInMonth - sundayCount;
+
+    const attendanceRecords = await prisma.attendance.findMany({
+      where: {
+        userId,
+        date: {
+          gte: startDate,
+          lt: nextMonthStart,
+        },
+      },
+      select: {
+        date: true,
+        status: true,
+        leaveType: true,
+        shift: true,
+        checkInTime: true,
+        overtimeHours: true,
+      },
+    });
+
+    const recordMap = new Map<string, (typeof attendanceRecords)[number]>();
+    for (const r of attendanceRecords) {
+      recordMap.set(this.toYmdUtcKey(r.date), r);
+    }
+
+    let workDaysActual = 0; // X
+    let permittedLeaveDays = 0; // P
+    let unpermittedDays = 0; // KP
+    let lateCount = 0; // M
+
+    let overtimeHoursAttendance = 0;
+    for (const r of attendanceRecords) {
+      overtimeHoursAttendance += Number(r.overtimeHours || 0);
+    }
+
+    const permittedLeaveTypes = new Set(['annual', 'sick', 'other']);
+    const unpermittedLeaveTypes = new Set(['unpaid', 'none']);
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const d = new Date(Date.UTC(year, monthIndex, day));
+      const key = d.toISOString().slice(0, 10);
+      const isSunday = d.getUTCDay() === 0;
+      if (isSunday) continue; // Sundays do not count towards X/P/KP, but are paid separately
+
+      const record = recordMap.get(key);
+      if (!record) {
+        // No attendance record => treat as unpermitted absence.
+        unpermittedDays += 1;
+        continue;
+      }
+
+      const shiftFraction = this.getShiftFraction(record.shift);
+      switch (record.status) {
+        case 'present':
+        case 'late':
+        case 'work_from_home':
+          workDaysActual += 1;
+          // Late check (prompt: compare with 08:00)
+          if (record.status === 'late') {
+            lateCount += 1;
+          } else {
+            const lateMinutes = this.toMinutesSince8am(record.checkInTime, 8);
+            if (lateMinutes !== null && lateMinutes > 0) lateCount += 1;
+          }
+          break;
+
+        case 'leave': {
+          const isPermitted = permittedLeaveTypes.has(record.leaveType as any);
+          const isUnpermitted = unpermittedLeaveTypes.has(record.leaveType as any);
+
+          if (isPermitted) {
+            permittedLeaveDays += shiftFraction;
+          } else if (isUnpermitted) {
+            unpermittedDays += shiftFraction;
+          } else {
+            // Fallback: treat unknown leave types as unpermitted.
+            unpermittedDays += shiftFraction;
+          }
+          break;
+        }
+
+        case 'absent':
+          unpermittedDays += 1;
+          break;
+      }
+    }
+
+    return {
+      standardWorkDays,
+      sundayCount,
+      workDaysActual,
+      permittedLeaveDays,
+      unpermittedDays,
+      lateCount,
+      overtimeHoursAttendance,
+    };
+  }
+
+  private async buildSalaryBreakdown(params: {
+    userId: number;
+    month: string;
+    basicSalaryInput: number;
+    allowance: number;
+    overtimePay: number;
+    bonus: number;
+    commission: number;
+    advance: number;
+  }) {
+    const {
+      userId,
+      month,
+      basicSalaryInput,
+      allowance,
+      overtimePay,
+      bonus,
+      commission,
+      advance,
+    } = params;
+
+    const PERSONAL_DEDUCTION = 11000000; // 11M
+    const DEPENDENT_DEDUCTION = 0; // Not provided in current DB logic
+
+    const attendanceStats = await this.getAttendanceStatsForSalary(userId, month);
+    const { standardWorkDays, sundayCount, workDaysActual, permittedLeaveDays, lateCount } = attendanceStats;
+
+    const dailySalary = standardWorkDays > 0 ? basicSalaryInput / standardWorkDays : 0;
+
+    // Time salary base includes full paid leave days (even those beyond 2 days).
+    const timeSalaryBase = dailySalary * (workDaysActual + permittedLeaveDays + sundayCount);
+
+    const excessLeaveDays = Math.max(permittedLeaveDays - 2, 0);
+    const excessLeavePenalty = dailySalary * 0.5 * excessLeaveDays;
+
+    const timeSalaryEarned = timeSalaryBase - excessLeavePenalty;
+
+    const latePenalty = lateCount * LATE_PENALTY_PER_INSTANCE;
+
+    // Insurance: keep 10.5% on "basic salary" input.
+    const insuranceDeduction = basicSalaryInput * TOTAL_INSURANCE_RATE;
+
+    // PIT: only subtract insurance and 11M personal deduction (per prompt).
+    const taxableIncome =
+      timeSalaryEarned + allowance + overtimePay + bonus + commission - insuranceDeduction - PERSONAL_DEDUCTION - DEPENDENT_DEDUCTION;
+    const pitTax = taxableIncome <= 0 ? 0 : this.calculatePersonalIncomeTax(taxableIncome);
+
+    const netSalary =
+      timeSalaryEarned +
+      allowance +
+      overtimePay +
+      bonus +
+      commission -
+      insuranceDeduction -
+      latePenalty -
+      pitTax -
+      advance;
+
+    // NOTE: DB deduction field must make SalaryService's persisted total match `netSalary`.
+    // getById uses: basicSalary + incomes - deduction - advance
+    // => deduction = basicSalary - timeEarned + insurance + late + pit + (excess already handled via timeEarned)
+    const deductionForDb = (basicSalaryInput - timeSalaryEarned) + insuranceDeduction + latePenalty + pitTax;
+
+    return {
+      // For UI transparency
+      standardWorkDays,
+      sundayCount,
+      workDaysActual,
+      permittedLeaveDays,
+      unpermittedDays: attendanceStats.unpermittedDays,
+      lateCount,
+      latePenaltyPerInstance: LATE_PENALTY_PER_INSTANCE,
+      latePenaltyAmount: latePenalty,
+      dailySalary,
+      timeSalaryBase,
+      timeSalaryEarned,
+      excessLeaveDays,
+      excessLeavePenalty,
+      insuranceDeduction,
+      insuranceRate: TOTAL_INSURANCE_RATE,
+      pitTax,
+      pitRate: PIT_RATE,
+
+      // Totals
+      netSalary,
+      deductionForDb,
+    };
   }
 
   // Get user's sales revenue for the month
@@ -281,9 +505,21 @@ class SalaryService {
       Number(salary.deduction) -
       Number(salary.advance);
 
+    const breakdown = await this.buildSalaryBreakdown({
+      userId: salary.userId,
+      month: salary.month,
+      basicSalaryInput: Number(salary.basicSalary),
+      allowance: Number(salary.allowance),
+      overtimePay: Number(salary.overtimePay),
+      bonus: Number(salary.bonus),
+      commission: Number(salary.commission),
+      advance: Number(salary.advance),
+    });
+
     return {
       ...salary,
-      totalSalary,
+      totalSalary: breakdown.netSalary ?? totalSalary,
+      breakdown,
     };
   }
 
@@ -396,57 +632,48 @@ class SalaryService {
     }
 
     const actualBasicSalary = basicSalary ?? 10000000; // Default 10M if not provided
+    const { year, monthIndex, daysInMonth } = this.getMonthContext(month);
+    const sundayCount = this.getSundayCount(daysInMonth, year, monthIndex);
+    const standardWorkDays = daysInMonth - sundayCount;
+    const standardWorkHours = standardWorkDays * 8;
 
-    // 1. Calculate overtime pay from attendance AND Overtime Sessions
+    // 1) Overtime hours (attendance + overtime sessions)
     const attendanceReport = await attendanceService.getMonthlyReport(month, userId);
     const userAttendance = attendanceReport.users.find((u: any) => u.user.id === userId);
-    const attendanceOvertime = userAttendance?.summary.totalOvertimeHours ?? 0;
-    
-    // NEW: Get hours from Overtime Sessions
-    const sessionOvertime = await this.getOvertimeSessionHours(userId, month);
-    console.log(`Overtime for user ${userId}: Attendance=${attendanceOvertime}, Session=${sessionOvertime}`);
-    
-    const totalOvertimeHours = Number(attendanceOvertime) + Number(sessionOvertime);
+    const attendanceOvertimeHours = userAttendance?.summary.totalOvertimeHours ?? 0;
+
+    const sessionOvertimeHours = await this.getOvertimeSessionHours(userId, month);
+    const totalOvertimeHours = Number(attendanceOvertimeHours) + Number(sessionOvertimeHours);
 
     const overtimePay =
-      (actualBasicSalary / STANDARD_WORK_HOURS_PER_MONTH) * totalOvertimeHours * OVERTIME_RATE;
+      standardWorkHours > 0
+        ? (actualBasicSalary / standardWorkHours) * totalOvertimeHours * OVERTIME_RATE
+        : 0;
 
-    // 2. Calculate commission from sales revenue
+    // 2) Commission from sales revenue
     const salesRevenue = await this.getUserSalesRevenue(userId, month);
     const commission = salesRevenue * COMMISSION_RATE;
 
-    // 3. Calculate gross income
-    const grossIncome = actualBasicSalary + allowance + overtimePay + bonus + commission;
+    // 3) Attendance-based salary breakdown (X/M/P/KP + leave penalty, late penalty, insurance, PIT)
+    const breakdown = await this.buildSalaryBreakdown({
+      userId,
+      month,
+      basicSalaryInput: actualBasicSalary,
+      allowance,
+      overtimePay,
+      bonus,
+      commission,
+      advance,
+    });
 
-    // 4. Calculate deductions (Insurance + Tax + Excess Leave)
-    const insuranceDeduction = actualBasicSalary * TOTAL_INSURANCE_RATE;
+    const netSalary = breakdown.netSalary;
+    const totalDeduction = breakdown.deductionForDb;
 
-    // Calculate Leave Deduction (1 Free Day Policy)
-    const totalLeaveDays = userAttendance?.summary.leaveDays ?? 0;
-    let leaveDeduction = 0;
-    
-    // Policy: 1 day per month is free. Excess is deducted.
-    // Assuming standard 26 working days.
-    if (totalLeaveDays > 1) {
-      const excessDays = totalLeaveDays - 1;
-      const dailySalary = actualBasicSalary / STANDARD_WORK_HOURS_PER_MONTH * 8; // or actualBasicSalary / 26
-      leaveDeduction = dailySalary * excessDays;
-      
-      const leaveNote = `\n[System] Deducted ${excessDays} excess leave days (${leaveDeduction.toLocaleString()} VND)`;
-      notes = notes ? notes + leaveNote : leaveNote;
-    }
-
-    // Tax = (Gross - Insurance - 11M personal deduction - 4.4M dependents) * progressive rate
-    const PERSONAL_DEDUCTION = 11000000; // 11M VND
-    const DEPENDENT_DEDUCTION = 4400000; // 4.4M VND per dependent (assume 0 for now)
-    const taxableIncome =
-      grossIncome - insuranceDeduction - leaveDeduction - PERSONAL_DEDUCTION - DEPENDENT_DEDUCTION;
-    const tax = this.calculatePersonalIncomeTax(taxableIncome);
-
-    const totalDeduction = insuranceDeduction + tax + leaveDeduction;
-
-    // 5. Calculate net salary
-    const netSalary = grossIncome - totalDeduction - advance;
+    // Keep legacy keys for the preview UI.
+    const grossIncome =
+      breakdown.timeSalaryEarned + allowance + overtimePay + bonus + commission;
+    const insuranceDeduction = breakdown.insuranceDeduction;
+    const tax = breakdown.pitTax;
 
     if (preview) {
       // IF PREVIEW, return the dummy object as if it were created
@@ -470,11 +697,13 @@ class SalaryService {
         user,
         creator: null,
         totalSalary: netSalary,
+        workDays: breakdown.standardWorkDays,
+        overtimeHours: totalOvertimeHours,
         breakdown: {
+          ...breakdown,
           grossIncome,
           insuranceDeduction,
           tax,
-          netSalary,
         },
       };
     }
@@ -551,11 +780,13 @@ class SalaryService {
     return {
       ...salary,
       totalSalary: netSalary,
+      workDays: breakdown.standardWorkDays,
+      overtimeHours: totalOvertimeHours,
       breakdown: {
+        ...breakdown,
         grossIncome,
         insuranceDeduction,
         tax,
-        netSalary,
       },
     };
   }
@@ -576,45 +807,48 @@ class SalaryService {
     }
 
     const { userId, month, basicSalary, allowance, bonus, advance } = existing;
+    const { year, monthIndex, daysInMonth } = this.getMonthContext(month);
+    const sundayCount = this.getSundayCount(daysInMonth, year, monthIndex);
+    const standardWorkDays = daysInMonth - sundayCount;
+    const standardWorkHours = standardWorkDays * 8;
 
-    // 1. Recalculate overtime pay
+    // 1) Recalculate overtime pay
     const attendanceReport = await attendanceService.getMonthlyReport(month, userId);
     const userAttendance = attendanceReport.users.find((u: any) => u.user.id === userId);
-    const attendanceOvertime = userAttendance?.summary.totalOvertimeHours ?? 0;
+    const attendanceOvertimeHours = userAttendance?.summary.totalOvertimeHours ?? 0;
 
-    const sessionOvertime = await this.getOvertimeSessionHours(userId, month);
-    const totalOvertimeHours = Number(attendanceOvertime) + Number(sessionOvertime);
+    const sessionOvertimeHours = await this.getOvertimeSessionHours(userId, month);
+    const totalOvertimeHours = Number(attendanceOvertimeHours) + Number(sessionOvertimeHours);
 
     const overtimePay =
-      (Number(basicSalary) / STANDARD_WORK_HOURS_PER_MONTH) * totalOvertimeHours * OVERTIME_RATE;
+      standardWorkHours > 0
+        ? (Number(basicSalary) / standardWorkHours) * totalOvertimeHours * OVERTIME_RATE
+        : 0;
 
-    // 2. Recalculate commission
+    // 2) Recalculate commission
     const salesRevenue = await this.getUserSalesRevenue(userId, month);
     const commission = salesRevenue * COMMISSION_RATE;
 
-    // 3. Recalculate deductions
+    // 3) Recalculate attendance-based salary & deductions
+    const breakdown = await this.buildSalaryBreakdown({
+      userId,
+      month,
+      basicSalaryInput: Number(basicSalary),
+      allowance: Number(allowance),
+      overtimePay: Number(overtimePay),
+      bonus: Number(bonus),
+      commission: Number(commission),
+      advance: Number(advance),
+    });
+
+    const netSalary = breakdown.netSalary;
+    const totalDeduction = breakdown.deductionForDb;
+
+    // Legacy keys for the response UI.
     const grossIncome =
-      Number(basicSalary) + Number(allowance) + overtimePay + Number(bonus) + commission;
-    const insuranceDeduction = Number(basicSalary) * TOTAL_INSURANCE_RATE;
-    
-    // Calculate Leave Deduction (1 Free Day Policy)
-    const totalLeaveDays = userAttendance?.summary.leaveDays ?? 0;
-    let leaveDeduction = 0;
-    
-    if (totalLeaveDays > 1) {
-      const excessDays = totalLeaveDays - 1;
-      const dailySalary = Number(basicSalary) / STANDARD_WORK_HOURS_PER_MONTH * 8;
-      leaveDeduction = dailySalary * excessDays;
-    }
-
-    const PERSONAL_DEDUCTION = 11000000;
-    const DEPENDENT_DEDUCTION = 4400000;
-    const taxableIncome =
-      grossIncome - insuranceDeduction - leaveDeduction - PERSONAL_DEDUCTION - DEPENDENT_DEDUCTION;
-    const tax = this.calculatePersonalIncomeTax(taxableIncome);
-    const totalDeduction = insuranceDeduction + tax + leaveDeduction;
-
-    const netSalary = grossIncome - totalDeduction - Number(advance);
+      breakdown.timeSalaryEarned + Number(allowance) + Number(overtimePay) + Number(bonus) + commission;
+    const insuranceDeduction = breakdown.insuranceDeduction;
+    const tax = breakdown.pitTax;
 
     // Update salary
     const updated = await prisma.salary.update({
@@ -640,10 +874,10 @@ class SalaryService {
       ...updated,
       totalSalary: netSalary,
       breakdown: {
+        ...breakdown,
         grossIncome,
         insuranceDeduction,
         tax,
-        netSalary,
       },
     };
   }

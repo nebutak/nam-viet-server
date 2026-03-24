@@ -391,32 +391,74 @@ class SmartDebtService {
       });
 
       // ✅ LẤY DỮ LIỆU TRẢ HÀNG TỪ KHO (Sale Refunds)
-      const orderIds = orders.map(o => o.id);
-      if (orderIds.length > 0) {
-        const stockReturns = await prisma.stockTransaction.findMany({
-          where: {
-            transactionType: 'import',      // Nhập kho lại
-            referenceType: 'sale_refunds',  // Khách trả hàng
-            referenceId: { in: orderIds },  // Thuộc các đơn hàng của khách này
-            // created_at: { gte: startOfYear, lte: endOfYear } // (Optional: lọc theo ngày phiếu)
-          },
-          orderBy: { createdAt: 'desc' },
-          include: {
-            details: {
-              include: { product: { select: { productName: true, code: true } } }
-            }
+      const stockReturns = await prisma.stockTransaction.findMany({
+        where: {
+          transactionType: 'import',      // Nhập kho lại
+          referenceType: 'sale_refunds',  // Khách trả hàng
+          referenceId: { not: null },
+          createdAt: { gte: startOfYear, lte: endOfYear },
+        },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          details: {
+            include: { product: { select: { productName: true, code: true } } }
           }
-        });
+        }
+      });
 
-        // Map về cấu trúc hiển thị
-        returns = stockReturns.map(r => ({
-          id: r.id,
-          code: r.transactionCode,
-          date: r.createdAt,
-          amount: 0, // Stock transactions no longer track price
-          note: r.reason || r.notes || 'Khách trả hàng',
-          details: r.details
-        }));
+      if (stockReturns.length > 0) {
+        const orderIdsFromReturns = Array.from(
+          new Set(stockReturns.map(r => r.referenceId).filter(Boolean))
+        ) as number[];
+
+        if (orderIdsFromReturns.length > 0) {
+          // Chỉ lấy những trả hàng thuộc về đúng khách đang xem
+          const allowedInvoices = await prisma.invoice.findMany({
+            where: { id: { in: orderIdsFromReturns }, customerId: Number(id), orderStatus: { not: 'cancelled' } },
+            select: { id: true }
+          });
+          const allowedSet = new Set(allowedInvoices.map(o => o.id));
+
+          const allowedOrderIds = Array.from(allowedSet);
+          if (allowedOrderIds.length > 0) {
+            // Map unitValue cho InvoiceDetail: unitValue = lineTotal / lineQty
+            const invoiceDetails = await prisma.invoiceDetail.findMany({
+              where: { orderId: { in: allowedOrderIds } },
+              select: { orderId: true, productId: true, quantity: true, total: true }
+            });
+
+            const unitValueMap = new Map<string, number>();
+            for (const d of invoiceDetails) {
+              const qty = this._toNumber(d.quantity);
+              if (!qty) continue;
+              const total = this._toNumber(d.total);
+              unitValueMap.set(`${d.orderId}:${d.productId}`, total / qty);
+            }
+
+            const filteredReturns = stockReturns.filter(r => r.referenceId && allowedSet.has(r.referenceId));
+
+            // Map về cấu trúc hiển thị (tính amount theo từng stockReturn)
+            returns = filteredReturns.map(r => {
+              const orderId = r.referenceId as number;
+              let amount = 0;
+
+              for (const det of r.details || []) {
+                const unit = unitValueMap.get(`${orderId}:${det.productId}`);
+                if (!unit) continue;
+                amount += this._toNumber(det.quantity) * unit;
+              }
+
+              return {
+                id: r.id,
+                code: r.transactionCode,
+                date: r.createdAt,
+                amount,
+                note: r.reason || r.notes || 'Khách trả hàng',
+                details: r.details
+              };
+            });
+          }
+        }
       }
 
     } else {
@@ -468,30 +510,76 @@ class SmartDebtService {
       });
 
       // ✅ LẤY DỮ LIỆU TRẢ HÀNG NCC TỪ KHO (Purchase Refunds)
-      const poIds = orders.map(p => p.id);
-      if (poIds.length > 0) {
-        const stockReturns = await prisma.stockTransaction.findMany({
-          where: {
-            transactionType: 'export',          // Xuất trả NCC
-            referenceType: 'purchase_refunds',  // Trả hàng mua
-            referenceId: { in: poIds },
-          },
-          orderBy: { createdAt: 'desc' },
-          include: {
-            details: {
-              include: { product: { select: { productName: true, code: true } } }
-            }
+      const stockReturns = await prisma.stockTransaction.findMany({
+        where: {
+          transactionType: 'export',          // Xuất trả NCC
+          referenceType: 'purchase_refunds',  // Trả hàng mua
+          referenceId: { not: null },
+          createdAt: { gte: startOfYear, lte: endOfYear },
+        },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          details: {
+            include: { product: { select: { productName: true, code: true } } }
           }
-        });
+        }
+      });
 
-        returns = stockReturns.map(r => ({
-          id: r.id,
-          code: r.transactionCode,
-          date: r.createdAt,
-          amount: 0, // Stock transactions no longer track price
-          note: r.reason || r.notes || 'Trả hàng NCC',
-          details: r.details
-        }));
+      if (stockReturns.length > 0) {
+        const poIdsFromReturns = Array.from(
+          new Set(stockReturns.map(r => r.referenceId).filter(Boolean))
+        ) as number[]
+
+        if (poIdsFromReturns.length > 0) {
+          // Chỉ lấy những trả hàng thuộc về đúng nhà cung cấp đang xem
+          const allowedPos = await prisma.purchaseOrder.findMany({
+            where: { id: { in: poIdsFromReturns }, supplierId: Number(id), status: { not: 'cancelled' } },
+            select: { id: true, taxRate: true }
+          })
+          const allowedSet = new Set(allowedPos.map(p => p.id))
+          const allowedPoIds = Array.from(allowedSet)
+
+          if (allowedPoIds.length > 0) {
+            const taxRateMap = new Map<number, number>();
+            for (const po of allowedPos) {
+              taxRateMap.set(po.id, this._toNumber(po.taxRate));
+            }
+
+            const poDetails = await prisma.purchaseOrderDetail.findMany({
+              where: { poId: { in: allowedPoIds } },
+              select: { poId: true, productId: true, unitPrice: true }
+            });
+
+            const unitPriceMap = new Map<string, number>();
+            for (const d of poDetails) {
+              unitPriceMap.set(`${d.poId}:${d.productId}`, this._toNumber(d.unitPrice));
+            }
+
+            const filteredReturns = stockReturns.filter(r => r.referenceId && allowedSet.has(r.referenceId))
+
+            returns = filteredReturns.map(r => {
+              const poId = r.referenceId as number;
+              let subTotalReturned = 0;
+
+              for (const det of r.details || []) {
+                const unit = unitPriceMap.get(`${poId}:${det.productId}`) || 0;
+                subTotalReturned += this._toNumber(det.quantity) * unit;
+              }
+
+              const taxRate = taxRateMap.get(poId) ?? 0;
+              const amount = subTotalReturned * (1 + taxRate / 100);
+
+              return {
+                id: r.id,
+                code: r.transactionCode,
+                date: r.createdAt,
+                amount,
+                note: r.reason || r.notes || 'Trả hàng NCC',
+                details: r.details
+              };
+            });
+          }
+        }
       }
     }
 
@@ -669,16 +757,13 @@ class SmartDebtService {
         });
 
         // C. Giảm (Trả hàng quá khứ) - ✅ LOGIC MỚI
-        let prevReturnAmount = 0;
-        // B1: Lấy danh sách đơn hàng cũ
-        const pastOrders = await tx.invoice.findMany({
-          where: { customerId: Number(customerId), orderDate: { lt: startOfStartYear } },
-          select: { id: true }
-        });
-        // B2: Tính tổng trả hàng từ kho
-        if (pastOrders.length > 0) {
-          prevReturnAmount = 0; // Stock transactions no longer track price
-        }
+        // Trả hàng tính theo createdAt (StockTransaction), không theo orderDate
+        const prevReturnAmount = await this._getCustomerReturnAmountByCustomerIdAndDateRange(
+          tx,
+          Number(customerId),
+          new Date(0),
+          new Date(startOfStartYear.getTime() - 1),
+        );
 
         currentOpeningBalance = Number(prevOrders._sum.totalAmount || 0)
           - Number(prevReceipts._sum.amount || 0)
@@ -696,14 +781,12 @@ class SmartDebtService {
           _sum: { amount: true }
         });
         // C. Giảm (Trả hàng quá khứ) - ✅ LOGIC MỚI
-        let prevReturnAmount = 0;
-        const pastPOs = await tx.purchaseOrder.findMany({
-          where: { supplierId: Number(supplierId), orderDate: { lt: startOfStartYear } },
-          select: { id: true }
-        });
-        if (pastPOs.length > 0) {
-          prevReturnAmount = 0; // Stock transactions no longer track price
-        }
+        const prevReturnAmount = await this._getSupplierReturnAmountBySupplierIdAndDateRange(
+          tx,
+          Number(supplierId),
+          new Date(0),
+          new Date(startOfStartYear.getTime() - 1),
+        );
 
         currentOpeningBalance = Number(prevPO._sum.totalAmount || 0)
           - Number(prevVouchers._sum.amount || 0)
@@ -806,9 +889,19 @@ class SmartDebtService {
             where: { customerId: Number(customerId), receiptDate: { lt: startOfStartYear } },
             _sum: { amount: true }
           });
-          // Lưu ý: Fallback này tạm thời chưa trừ trả hàng quá khứ (để đơn giản), 
-          // nếu muốn chính xác tuyệt đối nên chạy SyncFull.
-          openingBalance = Number(prevOrders._sum.totalAmount || 0) - Number(prevReceipts._sum.amount || 0);
+
+          // Trả hàng quá khứ (tính theo StockTransaction.createdAt)
+          const prevReturnAmount = await this._getCustomerReturnAmountByCustomerIdAndDateRange(
+            tx,
+            Number(customerId),
+            new Date(0),
+            new Date(startOfStartYear.getTime() - 1),
+          );
+
+          openingBalance =
+            Number(prevOrders._sum.totalAmount || 0) -
+            Number(prevReceipts._sum.amount || 0) -
+            prevReturnAmount;
         } else if (supplierId) {
           const prevPO = await tx.purchaseOrder.aggregate({
             where: { supplierId: Number(supplierId), orderDate: { lt: startOfStartYear }, status: { not: 'cancelled' } },
@@ -818,7 +911,19 @@ class SmartDebtService {
             where: { supplierId: Number(supplierId), paymentDate: { lt: startOfStartYear } },
             _sum: { amount: true }
           });
-          openingBalance = Number(prevPO._sum.totalAmount || 0) - Number(prevVouchers._sum.amount || 0);
+
+          // Trả hàng quá khứ (tính theo StockTransaction.createdAt)
+          const prevReturnAmount = await this._getSupplierReturnAmountBySupplierIdAndDateRange(
+            tx,
+            Number(supplierId),
+            new Date(0),
+            new Date(startOfStartYear.getTime() - 1),
+          );
+
+          openingBalance =
+            Number(prevPO._sum.totalAmount || 0) -
+            Number(prevVouchers._sum.amount || 0) -
+            prevReturnAmount;
         }
       }
 
@@ -843,14 +948,14 @@ class SmartDebtService {
         });
         paymentAmount = Number(currReceipts._sum.amount || 0);
 
-        // C. Giảm 2: Trả hàng (Stock Import - sale_refunds) - ✅ LOGIC MỚI
-        const orderList = await tx.invoice.findMany({
-          where: { customerId: Number(customerId), orderDate: { gte: startOfYear, lte: endOfYear } },
-          select: { id: true }
-        });
-        if (orderList.length > 0) {
-          returnAmount = 0; // Stock transactions no longer track price
-        }
+        // C. Giảm 2: Trả hàng (sale_refunds)
+        // Tính theo thời điểm trả (StockTransaction.createdAt)
+        returnAmount = await this._getCustomerReturnAmountByCustomerIdAndDateRange(
+          tx,
+          Number(customerId),
+          startOfYear,
+          endOfYear
+        );
 
       } else if (supplierId) {
         // A. Tăng: PO
@@ -867,14 +972,14 @@ class SmartDebtService {
         });
         paymentAmount = Number(currVouchers._sum.amount || 0);
 
-        // C. Giảm 2: Trả hàng (Stock Export - purchase_refunds) - ✅ LOGIC MỚI
-        const poList = await tx.purchaseOrder.findMany({
-          where: { supplierId: Number(supplierId), orderDate: { gte: startOfYear, lte: endOfYear } },
-          select: { id: true }
-        });
-        if (poList.length > 0) {
-          returnAmount = 0; // Stock transactions no longer track price
-        }
+        // C. Giảm 2: Trả hàng (purchase_refunds)
+        // Tính theo thời điểm trả (StockTransaction.createdAt)
+        returnAmount = await this._getSupplierReturnAmountBySupplierIdAndDateRange(
+          tx,
+          Number(supplierId),
+          startOfYear,
+          endOfYear
+        );
       }
 
       // 2.4. CHỐT SỐ (CÔNG THỨC MỚI)
@@ -1473,27 +1578,14 @@ class SmartDebtService {
       });
       paymentAmount = Number(receipts._sum.amount || 0);
 
-      // 3. Giảm: Trả hàng (Sale Refunds) - ✅ Logic Mới
-      // B1: Tìm các đơn hàng trong kỳ
-      const orderList = await tx.invoice.findMany({
-        where: { customerId, orderDate: { gte: startOfYear, lte: endOfYear } },
-        select: { id: true }
-      });
-      // B2: Sum total_value từ kho
-      if (orderList.length > 0) {
-        const ids = orderList.map((o: any) => o.id);
-        const stock = await tx.stockTransaction.aggregate({
-          where: {
-            transactionType: 'import',
-            referenceType: 'sale_refunds',
-            referenceId: { in: ids },
-            // Lấy theo ngày nhập kho để ghi nhận đúng thời điểm
-            createdAt: { gte: startOfYear, lte: endOfYear }
-          },
-          _sum: { totalValue: true }
-        });
-        returnAmount = Number(stock._sum.totalValue || 0);
-      }
+      // 3. Giảm: Trả hàng (Sale Refunds)
+      // Tính theo thời điểm trả (StockTransaction.createdAt)
+      returnAmount = await this._getCustomerReturnAmountByCustomerIdAndDateRange(
+        tx,
+        Number(customerId),
+        startOfYear,
+        endOfYear
+      );
 
     } else if (supplierId) {
       // 1. Tăng: PO
@@ -1510,24 +1602,14 @@ class SmartDebtService {
       });
       paymentAmount = Number(vouchers._sum.amount || 0);
 
-      // 3. Giảm: Trả hàng (Purchase Refunds) - ✅ Logic Mới
-      const poList = await tx.purchaseOrder.findMany({
-        where: { supplierId, orderDate: { gte: startOfYear, lte: endOfYear } },
-        select: { id: true }
-      });
-      if (poList.length > 0) {
-        const ids = poList.map((p: any) => p.id);
-        const stock = await tx.stockTransaction.aggregate({
-          where: {
-            transactionType: 'export',
-            referenceType: 'purchase_refunds',
-            referenceId: { in: ids },
-            createdAt: { gte: startOfYear, lte: endOfYear }
-          },
-          _sum: { totalValue: true }
-        });
-        returnAmount = Number(stock._sum.totalValue || 0);
-      }
+      // 3. Giảm: Trả hàng (Purchase Refunds)
+      // Tính theo thời điểm trả (StockTransaction.createdAt)
+      returnAmount = await this._getSupplierReturnAmountBySupplierIdAndDateRange(
+        tx,
+        Number(supplierId),
+        startOfYear,
+        endOfYear
+      );
     }
 
     // 4. Tính Chốt sổ (Công thức chuẩn: Đầu + Tăng - TrảTiền - TrảHàng - ĐiềuChỉnh)
@@ -1694,8 +1776,915 @@ class SmartDebtService {
 
 
 
+  // =================================================================
+  // Helpers: Tính giá trị trả hàng từ StockTransactionDetail
+  // (StockTransaction không có field totalValue trong schema hiện tại)
+  // =================================================================
+  private _toNumber(value: any): number {
+    if (value === null || value === undefined) return 0;
+    return Number(value);
+  }
+
+  private async _getCustomerReturnAmountFromInvoiceIds(
+    tx: any,
+    invoiceIds: number[],
+    start: Date,
+    end: Date
+  ): Promise<number> {
+    if (!invoiceIds || invoiceIds.length === 0) return 0;
+
+    const stockReturns = await tx.stockTransaction.findMany({
+      where: {
+        transactionType: 'import',
+        referenceType: 'sale_refunds',
+        referenceId: { in: invoiceIds },
+        createdAt: { gte: start, lte: end },
+      },
+      include: { details: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (stockReturns.length === 0) return 0;
+
+    // Map (orderId, productId) -> unitValue = lineTotal / lineQty
+    const invoiceDetails = await tx.invoiceDetail.findMany({
+      where: { orderId: { in: invoiceIds } },
+      select: { orderId: true, productId: true, quantity: true, total: true },
+    });
+
+    const unitValueMap = new Map<string, number>();
+    for (const d of invoiceDetails) {
+      const qty = this._toNumber(d.quantity);
+      if (!qty) continue;
+      const total = this._toNumber(d.total);
+      unitValueMap.set(`${d.orderId}:${d.productId}`, total / qty);
+    }
+
+    let totalReturn = 0;
+    for (const r of stockReturns) {
+      const orderId = r.referenceId;
+      if (!orderId) continue;
+
+      for (const det of r.details || []) {
+        const unit = unitValueMap.get(`${orderId}:${det.productId}`);
+        if (!unit) continue;
+        totalReturn += this._toNumber(det.quantity) * unit;
+      }
+    }
+
+    return totalReturn;
+  }
+
+  private async _getSupplierReturnAmountFromPurchaseOrderIds(
+    tx: any,
+    poIds: number[],
+    start: Date,
+    end: Date
+  ): Promise<number> {
+    if (!poIds || poIds.length === 0) return 0;
+
+    const stockReturns = await tx.stockTransaction.findMany({
+      where: {
+        transactionType: 'export',
+        referenceType: 'purchase_refunds',
+        referenceId: { in: poIds },
+        createdAt: { gte: start, lte: end },
+      },
+      include: { details: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (stockReturns.length === 0) return 0;
+
+    const purchaseOrders = await tx.purchaseOrder.findMany({
+      where: { id: { in: poIds } },
+      select: { id: true, taxRate: true },
+    });
+
+    const taxRateMap = new Map<number, number>();
+    for (const po of purchaseOrders) {
+      taxRateMap.set(po.id, this._toNumber(po.taxRate));
+    }
+
+    // Map (poId, productId) -> unitPrice (pre-tax, from PurchaseOrderDetail)
+    const poDetails = await tx.purchaseOrderDetail.findMany({
+      where: { poId: { in: poIds } },
+      select: { poId: true, productId: true, unitPrice: true },
+    });
+
+    const unitPriceMap = new Map<string, number>();
+    for (const d of poDetails) {
+      unitPriceMap.set(`${d.poId}:${d.productId}`, this._toNumber(d.unitPrice));
+    }
+
+    let totalReturn = 0;
+    for (const r of stockReturns) {
+      const poId = r.referenceId;
+      if (!poId) continue;
+
+      let subTotalReturned = 0;
+      for (const det of r.details || []) {
+        const unit = unitPriceMap.get(`${poId}:${det.productId}`) || 0;
+        subTotalReturned += this._toNumber(det.quantity) * unit;
+      }
+
+      const taxRate = taxRateMap.get(poId) ?? 0;
+      totalReturn += subTotalReturned * (1 + taxRate / 100);
+    }
+
+    return totalReturn;
+  }
+
+
+  // =================================================================
+  // Helpers: Tính giá trị trả hàng theo thời điểm trả (StockTransaction.createdAt)
+  // - Không ràng buộc theo `orderDate` (tránh lệch ở giao diện "theo tháng")
+  // =================================================================
+  private async _getCustomerReturnAmountByCustomerIdAndDateRange(
+    tx: any,
+    customerId: number,
+    start: Date,
+    end: Date
+  ): Promise<number> {
+    // Keep old helper referenced to satisfy TS "noUnusedLocals" (helper cũ vẫn còn để tham chiếu ngữ cảnh).
+    void this._getCustomerReturnAmountFromInvoiceIds;
+
+    const stockReturns = await tx.stockTransaction.findMany({
+      where: {
+        transactionType: 'import',
+        referenceType: 'sale_refunds',
+        referenceId: { not: null },
+        createdAt: { gte: start, lte: end },
+      },
+      include: { details: true },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    if (!stockReturns.length) return 0
+
+    const orderIds = Array.from(
+      new Set(stockReturns.map((r: any) => r.referenceId).filter(Boolean))
+    ) as number[]
+    if (!orderIds.length) return 0
+
+    const allowedOrders = await tx.invoice.findMany({
+      where: { id: { in: orderIds }, customerId: Number(customerId), orderStatus: { not: 'cancelled' } },
+      select: { id: true },
+    })
+    const allowedSet = new Set(allowedOrders.map((o: any) => o.id))
+    if (!allowedSet.size) return 0
+
+    const invoiceDetails = await tx.invoiceDetail.findMany({
+      where: { orderId: { in: Array.from(allowedSet) } },
+      select: { orderId: true, productId: true, quantity: true, total: true },
+    })
+
+    const unitValueMap = new Map<string, number>()
+    for (const d of invoiceDetails) {
+      const qty = this._toNumber(d.quantity)
+      if (!qty) continue
+      const total = this._toNumber(d.total)
+      unitValueMap.set(`${d.orderId}:${d.productId}`, total / qty)
+    }
+
+    let totalReturn = 0
+    for (const r of stockReturns) {
+      const orderId = r.referenceId
+      if (!orderId || !allowedSet.has(orderId)) continue
+
+      for (const det of r.details || []) {
+        const unit = unitValueMap.get(`${orderId}:${det.productId}`)
+        if (!unit) continue
+        totalReturn += this._toNumber(det.quantity) * unit
+      }
+    }
+
+    return totalReturn
+  }
+
+  private async _getSupplierReturnAmountBySupplierIdAndDateRange(
+    tx: any,
+    supplierId: number,
+    start: Date,
+    end: Date
+  ): Promise<number> {
+    // Keep old helper referenced to satisfy TS "noUnusedLocals" (helper cũ vẫn còn để tham chiếu ngữ cảnh).
+    void this._getSupplierReturnAmountFromPurchaseOrderIds;
+
+    const stockReturns = await tx.stockTransaction.findMany({
+      where: {
+        transactionType: 'export',
+        referenceType: 'purchase_refunds',
+        referenceId: { not: null },
+        createdAt: { gte: start, lte: end },
+      },
+      include: { details: true },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    if (!stockReturns.length) return 0
+
+    const poIds = Array.from(
+      new Set(stockReturns.map((r: any) => r.referenceId).filter(Boolean))
+    ) as number[]
+    if (!poIds.length) return 0
+
+    const allowedPos = await tx.purchaseOrder.findMany({
+      where: { id: { in: poIds }, supplierId: Number(supplierId), status: { not: 'cancelled' } },
+      select: { id: true, taxRate: true },
+    })
+    const allowedSet = new Set(allowedPos.map((p: any) => p.id))
+    if (!allowedSet.size) return 0
+
+    const taxRateMap = new Map<number, number>()
+    for (const po of allowedPos) {
+      taxRateMap.set(po.id, this._toNumber(po.taxRate))
+    }
+
+    const poDetails = await tx.purchaseOrderDetail.findMany({
+      where: { poId: { in: Array.from(allowedSet) } },
+      select: { poId: true, productId: true, unitPrice: true },
+    })
+
+    const unitPriceMap = new Map<string, number>()
+    for (const d of poDetails) {
+      unitPriceMap.set(`${d.poId}:${d.productId}`, this._toNumber(d.unitPrice))
+    }
+
+    let totalReturn = 0
+    for (const r of stockReturns) {
+      const poId = r.referenceId
+      if (!poId || !allowedSet.has(poId)) continue
+
+      let subTotalReturned = 0
+      for (const det of r.details || []) {
+        const unit = unitPriceMap.get(`${poId}:${det.productId}`)
+        if (!unit) continue
+        subTotalReturned += this._toNumber(det.quantity) * unit
+      }
+
+      const taxRate = taxRateMap.get(poId) ?? 0
+      totalReturn += subTotalReturned * (1 + taxRate / 100)
+    }
+
+    return totalReturn
+  }
+
+  private async _getCustomerReturnAmountByAssignedUserIdAndDateRange(
+    tx: any,
+    assignedUserId: number | undefined,
+    start: Date,
+    end: Date
+  ): Promise<number> {
+    const stockReturns = await tx.stockTransaction.findMany({
+      where: {
+        transactionType: 'import',
+        referenceType: 'sale_refunds',
+        referenceId: { not: null },
+        createdAt: { gte: start, lte: end },
+      },
+      include: { details: true },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    if (!stockReturns.length) return 0
+
+    const orderIds = Array.from(
+      new Set(stockReturns.map((r: any) => r.referenceId).filter(Boolean))
+    ) as number[]
+    if (!orderIds.length) return 0
+
+    const allowedOrders = await tx.invoice.findMany({
+      where: {
+        id: { in: orderIds },
+        orderStatus: { not: 'cancelled' },
+        ...(assignedUserId
+          ? { customer: { assignedUserId: Number(assignedUserId) } }
+          : {}),
+      },
+      select: { id: true },
+    })
+    const allowedSet = new Set(allowedOrders.map((o: any) => o.id))
+    if (!allowedSet.size) return 0
+
+    const invoiceDetails = await tx.invoiceDetail.findMany({
+      where: { orderId: { in: Array.from(allowedSet) } },
+      select: { orderId: true, productId: true, quantity: true, total: true },
+    })
+
+    const unitValueMap = new Map<string, number>()
+    for (const d of invoiceDetails) {
+      const qty = this._toNumber(d.quantity)
+      if (!qty) continue
+      const total = this._toNumber(d.total)
+      unitValueMap.set(`${d.orderId}:${d.productId}`, total / qty)
+    }
+
+    let totalReturn = 0
+    for (const r of stockReturns) {
+      const orderId = r.referenceId
+      if (!orderId || !allowedSet.has(orderId)) continue
+
+      for (const det of r.details || []) {
+        const unit = unitValueMap.get(`${orderId}:${det.productId}`)
+        if (!unit) continue
+        totalReturn += this._toNumber(det.quantity) * unit
+      }
+    }
+
+    return totalReturn
+  }
+
+  private async _getSupplierReturnAmountByAssignedUserIdAndDateRange(
+    tx: any,
+    assignedUserId: number | undefined,
+    start: Date,
+    end: Date
+  ): Promise<number> {
+    const stockReturns = await tx.stockTransaction.findMany({
+      where: {
+        transactionType: 'export',
+        referenceType: 'purchase_refunds',
+        referenceId: { not: null },
+        createdAt: { gte: start, lte: end },
+      },
+      include: { details: true },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    if (!stockReturns.length) return 0
+
+    const poIds = Array.from(
+      new Set(stockReturns.map((r: any) => r.referenceId).filter(Boolean))
+    ) as number[]
+    if (!poIds.length) return 0
+
+    const allowedPos = await tx.purchaseOrder.findMany({
+      where: {
+        id: { in: poIds },
+        status: { not: 'cancelled' },
+        ...(assignedUserId
+          ? { supplier: { assignedUserId: Number(assignedUserId) } }
+          : {}),
+      },
+      select: { id: true, taxRate: true },
+    })
+
+    const allowedSet = new Set(allowedPos.map((p: any) => p.id))
+    if (!allowedSet.size) return 0
+
+    const taxRateMap = new Map<number, number>()
+    for (const po of allowedPos) {
+      taxRateMap.set(po.id, this._toNumber(po.taxRate))
+    }
+
+    const poDetails = await tx.purchaseOrderDetail.findMany({
+      where: { poId: { in: Array.from(allowedSet) } },
+      select: { poId: true, productId: true, unitPrice: true },
+    })
+
+    const unitPriceMap = new Map<string, number>()
+    for (const d of poDetails) {
+      unitPriceMap.set(`${d.poId}:${d.productId}`, this._toNumber(d.unitPrice))
+    }
+
+    let totalReturn = 0
+    for (const r of stockReturns) {
+      const poId = r.referenceId
+      if (!poId || !allowedSet.has(poId)) continue
+
+      let subTotalReturned = 0
+      for (const det of r.details || []) {
+        const unit = unitPriceMap.get(`${poId}:${det.productId}`)
+        if (!unit) continue
+        subTotalReturned += this._toNumber(det.quantity) * unit
+      }
+
+      const taxRate = taxRateMap.get(poId) ?? 0
+      totalReturn += subTotalReturned * (1 + taxRate / 100)
+    }
+
+    return totalReturn
+  }
+
+  // =========================================================================
+  // MONTHLY OBJECT LIST (Giao diện giống "Tổng hợp" nhưng chỉ tính tháng)
+  // =========================================================================
+  async getMonthlyObjects(
+    params: {
+      year?: number
+      month?: number
+      type?: string
+      assignedUserId?: number
+      page?: number
+      limit?: number
+      search?: string
+      address?: string
+      status?: 'paid' | 'unpaid'
+    },
+  ) {
+    const {
+      year,
+      month,
+      type,
+      assignedUserId,
+      page = 1,
+      limit = 20,
+      search,
+      address,
+      status,
+    } = params || {}
+
+    const targetYear = year ? Number(year) : new Date().getFullYear()
+    const targetMonth = month ? Number(month) : new Date().getMonth() + 1
+    const pageNum = Number(page) || 1
+    const limitNum = Number(limit) || 20
+    const skip = (pageNum - 1) * limitNum
+
+    const startOfMonth = new Date(targetYear, targetMonth - 1, 1)
+    const endOfMonth = new Date(targetYear, targetMonth, 0, 23, 59, 59)
+    const endOfPrev = new Date(startOfMonth.getTime() - 1)
+
+    const allItems: any[] = []
+
+    // ---------------------------
+    // Customers
+    // ---------------------------
+    if (!type || type === 'customer') {
+      const invoiceCustomerIds = await prisma.invoice.findMany({
+        where: {
+          orderDate: { lte: endOfMonth },
+          orderStatus: { not: 'cancelled' },
+        },
+        select: { customerId: true },
+        distinct: ['customerId'],
+      })
+
+      const receiptCustomerIds = await prisma.paymentReceipt.findMany({
+        where: {
+          receiptDate: { lte: endOfMonth },
+        },
+        select: { customerId: true },
+        distinct: ['customerId'],
+      })
+
+      const returnTxRefs = await prisma.stockTransaction.findMany({
+        where: {
+          transactionType: 'import',
+          referenceType: 'sale_refunds',
+          createdAt: { lte: endOfMonth },
+          referenceId: { not: null },
+        },
+        select: { referenceId: true },
+        distinct: ['referenceId'],
+      })
+
+      const returnInvoiceIds = returnTxRefs
+        .map((t: any) => t.referenceId)
+        .filter(Boolean) as number[]
+
+      let returnCustomerIds: { customerId: number }[] = []
+      if (returnInvoiceIds.length > 0) {
+        returnCustomerIds = await prisma.invoice.findMany({
+          where: { id: { in: returnInvoiceIds } },
+          select: { customerId: true },
+          distinct: ['customerId'],
+        })
+      }
+
+      const txnCustomerIdSet = new Set<number>([
+        ...invoiceCustomerIds.map((x: any) => x.customerId),
+        ...receiptCustomerIds.map((x: any) => x.customerId),
+        ...(returnCustomerIds || []).map((x: any) => x.customerId),
+      ].filter((x: any) => x !== null && x !== undefined))
+
+      const txnCustomerIds = Array.from(txnCustomerIdSet)
+      if (txnCustomerIds.length > 0) {
+        const whereBase: any = { status: 'active', id: { in: txnCustomerIds } }
+        if (assignedUserId) whereBase.assignedUserId = Number(assignedUserId)
+        if (search) {
+          whereBase.OR = [
+            { customerName: { contains: search } },
+            { customerCode: { contains: search } },
+            { phone: { contains: search } },
+          ]
+        }
+        if (address) whereBase.address = { contains: address }
+
+        const customers = await prisma.customer.findMany({
+          where: whereBase,
+          select: {
+            id: true,
+            customerCode: true,
+            customerName: true,
+            phone: true,
+            address: true,
+            avatarUrl: true,
+            assignedUser: { select: { id: true, fullName: true } },
+          },
+        })
+
+        for (const customer of customers) {
+          const customerId = customer.id
+
+          const [incAgg, payAgg, openIncAgg, openPayAgg] = await Promise.all([
+            prisma.invoice.aggregate({
+              where: {
+                customerId,
+                orderDate: { gte: startOfMonth, lte: endOfMonth },
+                orderStatus: { not: 'cancelled' },
+              },
+              _sum: { totalAmount: true },
+            }),
+            prisma.paymentReceipt.aggregate({
+              where: {
+                customerId,
+                receiptDate: { gte: startOfMonth, lte: endOfMonth },
+              },
+              _sum: { amount: true },
+            }),
+            prisma.invoice.aggregate({
+              where: {
+                customerId,
+                orderDate: { lt: startOfMonth },
+                orderStatus: { not: 'cancelled' },
+              },
+              _sum: { totalAmount: true },
+            }),
+            prisma.paymentReceipt.aggregate({
+              where: {
+                customerId,
+                receiptDate: { lt: startOfMonth },
+              },
+              _sum: { amount: true },
+            }),
+          ])
+
+          const increase = Number(incAgg._sum.totalAmount || 0)
+          const payment = Number(payAgg._sum.amount || 0)
+
+          const openingSales = Number(openIncAgg._sum.totalAmount || 0)
+          const openingPayments = Number(openPayAgg._sum.amount || 0)
+
+          const returnOpening = await this._getCustomerReturnAmountByCustomerIdAndDateRange(
+            prisma,
+            customerId,
+            new Date(0),
+            endOfPrev,
+          )
+          const returnAmount = await this._getCustomerReturnAmountByCustomerIdAndDateRange(
+            prisma,
+            customerId,
+            startOfMonth,
+            endOfMonth,
+          )
+
+          const openingBalance = openingSales - openingPayments - returnOpening
+          const closingBalance = openingBalance + increase - payment - returnAmount
+
+          allItems.push(
+            this._mapToDebtItem(
+              customer,
+              {
+                id: 0,
+                openingBalance,
+                increasingAmount: increase,
+                decreasingAmount: payment,
+                returnAmount,
+                adjustmentAmount: 0,
+                closingBalance,
+                updatedAt: new Date(),
+                notes: '',
+              },
+              'customer',
+              String(targetYear),
+            ),
+          )
+        }
+      }
+    }
+
+    // ---------------------------
+    // Suppliers
+    // ---------------------------
+    if (!type || type === 'supplier') {
+      const poSupplierIds = await prisma.purchaseOrder.findMany({
+        where: {
+          orderDate: { lte: endOfMonth },
+          status: { not: 'cancelled' },
+        },
+        select: { supplierId: true },
+        distinct: ['supplierId'],
+      })
+
+      const voucherSupplierIds = await prisma.paymentVoucher.findMany({
+        where: {
+          paymentDate: { lte: endOfMonth },
+          supplierId: { not: null },
+        },
+        select: { supplierId: true },
+        distinct: ['supplierId'],
+      })
+
+      const returnTxRefs = await prisma.stockTransaction.findMany({
+        where: {
+          transactionType: 'export',
+          referenceType: 'purchase_refunds',
+          createdAt: { lte: endOfMonth },
+          referenceId: { not: null },
+        },
+        select: { referenceId: true },
+        distinct: ['referenceId'],
+      })
+
+      const returnPoIds = returnTxRefs
+        .map((t: any) => t.referenceId)
+        .filter(Boolean) as number[]
+
+      let returnSupplierIds: { supplierId: number }[] = []
+      if (returnPoIds.length > 0) {
+        returnSupplierIds = await prisma.purchaseOrder.findMany({
+          where: { id: { in: returnPoIds } },
+          select: { supplierId: true },
+          distinct: ['supplierId'],
+        })
+      }
+
+      const txnSupplierIdSet = new Set<number>([
+        ...poSupplierIds.map((x: any) => x.supplierId),
+        ...voucherSupplierIds.map((x: any) => x.supplierId),
+        ...(returnSupplierIds || []).map((x: any) => x.supplierId),
+      ].filter((x: any) => x !== null && x !== undefined))
+
+      const txnSupplierIds = Array.from(txnSupplierIdSet)
+      if (txnSupplierIds.length > 0) {
+        const whereBase: any = { status: 'active', id: { in: txnSupplierIds } }
+        if (assignedUserId) whereBase.assignedUserId = Number(assignedUserId)
+
+        if (search) {
+          whereBase.OR = [
+            { supplierName: { contains: search } },
+            { supplierCode: { contains: search } },
+            { phone: { contains: search } },
+          ]
+        }
+        if (address) whereBase.address = { contains: address }
+
+        const suppliers = await prisma.supplier.findMany({
+          where: whereBase,
+          select: {
+            id: true,
+            supplierCode: true,
+            supplierName: true,
+            phone: true,
+            address: true,
+            assignedUser: { select: { id: true, fullName: true } },
+          },
+        })
+
+        for (const supplier of suppliers) {
+          const supplierId = supplier.id
+
+          const [incAgg, payAgg, openIncAgg, openPayAgg] = await Promise.all([
+            prisma.purchaseOrder.aggregate({
+              where: {
+                supplierId,
+                orderDate: { gte: startOfMonth, lte: endOfMonth },
+                status: { not: 'cancelled' },
+              },
+              _sum: { totalAmount: true },
+            }),
+            prisma.paymentVoucher.aggregate({
+              where: {
+                supplierId,
+                paymentDate: { gte: startOfMonth, lte: endOfMonth },
+              },
+              _sum: { amount: true },
+            }),
+            prisma.purchaseOrder.aggregate({
+              where: {
+                supplierId,
+                orderDate: { lt: startOfMonth },
+                status: { not: 'cancelled' },
+              },
+              _sum: { totalAmount: true },
+            }),
+            prisma.paymentVoucher.aggregate({
+              where: {
+                supplierId,
+                paymentDate: { lt: startOfMonth },
+              },
+              _sum: { amount: true },
+            }),
+          ])
+
+          const increase = Number(incAgg._sum.totalAmount || 0)
+          const payment = Number(payAgg._sum.amount || 0)
+
+          const openingSales = Number(openIncAgg._sum.totalAmount || 0)
+          const openingPayments = Number(openPayAgg._sum.amount || 0)
+
+          const returnOpening = await this._getSupplierReturnAmountBySupplierIdAndDateRange(
+            prisma,
+            supplierId,
+            new Date(0),
+            endOfPrev,
+          )
+          const returnAmount = await this._getSupplierReturnAmountBySupplierIdAndDateRange(
+            prisma,
+            supplierId,
+            startOfMonth,
+            endOfMonth,
+          )
+
+          const openingBalance = openingSales - openingPayments - returnOpening
+          const closingBalance = openingBalance + increase - payment - returnAmount
+
+          allItems.push(
+            this._mapToDebtItem(
+              supplier,
+              {
+                id: 0,
+                openingBalance,
+                increasingAmount: increase,
+                decreasingAmount: payment,
+                returnAmount,
+                adjustmentAmount: 0,
+                closingBalance,
+                updatedAt: new Date(),
+                notes: '',
+              },
+              'supplier',
+              String(targetYear),
+            ),
+          )
+        }
+      }
+    }
+
+    // Apply status filter (nếu có)
+    let filtered = allItems.filter(Boolean)
+    if (status === 'unpaid') filtered = filtered.filter(i => Number(i.closingBalance) > 1000)
+    if (status === 'paid') filtered = filtered.filter(i => Number(i.closingBalance) <= 1000)
+
+    filtered = filtered.sort((a, b) => Number(b.closingBalance) - Number(a.closingBalance))
+
+    const total = filtered.length
+    const paged = filtered.slice(skip, skip + limitNum)
+
+    const summary = filtered.reduce(
+      (acc: any, item: any) => {
+        acc.opening += Number(item.openingBalance) || 0
+        acc.increase += Number(item.increasingAmount) || 0
+        acc.returnAmount += Number(item.returnAmount) || 0
+        acc.payment += Number(item.decreasingAmount) || 0
+        acc.closing += Number(item.closingBalance) || 0
+        return acc
+      },
+      {
+        opening: 0,
+        increase: 0,
+        returnAmount: 0,
+        payment: 0,
+        closing: 0,
+      },
+    )
+
+    return {
+      data: paged,
+      meta: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum) || 1,
+        summary: {
+          opening: summary.opening,
+          increase: summary.increase,
+          payment: summary.payment,
+          closing: summary.closing,
+          returnAmount: summary.returnAmount,
+          adjustmentAmount: 0,
+        },
+      },
+    }
+  }
+
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+  // =========================================================================
+  // MONTHLY BREAKDOWN (Tính công nợ theo tháng)
+  // =========================================================================
+  async getMonthlyBreakdown(year: number, type?: string, assignedUserId?: number) {
+    const targetYear = year || new Date().getFullYear();
+    const months: any[] = [];
+
+    for (let m = 1; m <= 12; m++) {
+      const startOfMonth = new Date(targetYear, m - 1, 1);
+      const endOfMonth = new Date(targetYear, m, 0, 23, 59, 59);
+
+      let increase = 0;
+      let returnAmount = 0;
+      let payment = 0;
+
+      // ---- CUSTOMER ----
+      if (!type || type === 'customer') {
+        const customerWhere: any = {
+          orderDate: { gte: startOfMonth, lte: endOfMonth },
+          orderStatus: { not: 'cancelled' as const }
+        };
+        if (assignedUserId) {
+          customerWhere.customer = { assignedUserId: Number(assignedUserId) };
+        }
+
+        const custOrders = await prisma.invoice.aggregate({
+          where: customerWhere,
+          _sum: { totalAmount: true }
+        });
+        increase += Number(custOrders._sum.totalAmount || 0);
+
+        // Trả hàng tính theo StockTransaction.createdAt (không phụ thuộc orderDate của đơn)
+        returnAmount += await this._getCustomerReturnAmountByAssignedUserIdAndDateRange(
+          prisma,
+          assignedUserId,
+          startOfMonth,
+          endOfMonth
+        );
+
+        const receiptWhere: any = {
+          receiptDate: { gte: startOfMonth, lte: endOfMonth }
+        };
+        if (assignedUserId) {
+          receiptWhere.customerRef = { assignedUserId: Number(assignedUserId) };
+        }
+
+        const custReceipts = await prisma.paymentReceipt.aggregate({
+          where: receiptWhere,
+          _sum: { amount: true }
+        });
+        payment += Number(custReceipts._sum.amount || 0);
+      }
+
+      // ---- SUPPLIER ----
+      if (!type || type === 'supplier') {
+        const supplierWhere: any = {
+          orderDate: { gte: startOfMonth, lte: endOfMonth },
+          status: { not: 'cancelled' as const }
+        };
+        if (assignedUserId) {
+          supplierWhere.supplier = { assignedUserId: Number(assignedUserId) };
+        }
+
+        const suppOrders = await prisma.purchaseOrder.aggregate({
+          where: supplierWhere,
+          _sum: { totalAmount: true }
+        });
+        increase += Number(suppOrders._sum.totalAmount || 0);
+
+        // Trả hàng tính theo StockTransaction.createdAt (không phụ thuộc orderDate của PO)
+        returnAmount += await this._getSupplierReturnAmountByAssignedUserIdAndDateRange(
+          prisma,
+          assignedUserId,
+          startOfMonth,
+          endOfMonth
+        );
+
+        const voucherWhere: any = {
+          paymentDate: { gte: startOfMonth, lte: endOfMonth },
+          supplierId: { not: null }
+        };
+        if (assignedUserId) {
+          voucherWhere.supplier = { assignedUserId: Number(assignedUserId) };
+        }
+
+        const suppVouchers = await prisma.paymentVoucher.aggregate({
+          where: voucherWhere,
+          _sum: { amount: true }
+        });
+        payment += Number(suppVouchers._sum.amount || 0);
+      }
+
+      const closing = increase - payment - returnAmount;
+
+      months.push({
+        month: m,
+        monthLabel: `Tháng ${m}`,
+        increase,
+        returnAmount,
+        payment,
+        closing
+      });
+    }
+
+    // Tính summary tổng
+    const summary = months.reduce((acc, m) => ({
+      increase: acc.increase + m.increase,
+      returnAmount: acc.returnAmount + m.returnAmount,
+      payment: acc.payment + m.payment,
+      closing: acc.closing + m.closing
+    }), { increase: 0, returnAmount: 0, payment: 0, closing: 0 });
+
+    return { months, summary };
+  }
 
 }
 

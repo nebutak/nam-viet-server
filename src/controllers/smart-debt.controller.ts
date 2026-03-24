@@ -330,6 +330,74 @@ class SmartDebtController {
     }
   }
 
+  /**
+   * GET /api/smart-debt/monthly
+   * Lấy dữ liệu công nợ tính theo tháng (12 tháng trong năm)
+   * Query: year, type, assignedUserId
+   */
+  async getMonthly(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { year, type, assignedUserId } = req.query;
+      const targetYear = year ? Number(year) : new Date().getFullYear();
+
+      const data = await debtService.getMonthlyBreakdown(
+        targetYear,
+        type as string,
+        assignedUserId ? Number(assignedUserId) : undefined
+      );
+
+      res.status(200).json({
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/smart-debt/monthly-objects
+   * Trả dữ liệu theo danh sách đối tượng (giống /smart-debt) nhưng tính cho 1 tháng cụ thể.
+   * Query: year, month, type, assignedUserId, page, limit, search, address, status
+   */
+  async getMonthlyObjects(req: Request, res: Response, next: NextFunction) {
+    try {
+      const {
+        year,
+        month,
+        type,
+        assignedUserId,
+        page,
+        limit,
+        search,
+        address,
+        status,
+      } = req.query
+
+      const result = await debtService.getMonthlyObjects({
+        year: year ? Number(year) : undefined,
+        month: month ? Number(month) : undefined,
+        type: type as string | undefined,
+        assignedUserId: assignedUserId ? Number(assignedUserId) : undefined,
+        page: page ? Number(page) : undefined,
+        limit: limit ? Number(limit) : undefined,
+        search: search as string | undefined,
+        address: address as string | undefined,
+        status: status as 'paid' | 'unpaid' | undefined,
+      })
+
+      res.status(200).json({
+        success: true,
+        data: result.data,
+        meta: result.meta,
+        timestamp: new Date().toISOString(),
+      })
+    } catch (error) {
+      next(error)
+    }
+  }
+
 }
 
 export default new SmartDebtController();

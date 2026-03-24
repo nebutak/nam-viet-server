@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🌱 Adding HR permissions to Admin role...');
+  console.log('🌱 Adding HR + Debt permissions to Admin role...');
 
   const hrPermissionsData = [
     // Attendance
@@ -18,6 +18,9 @@ async function main() {
     { key: "calculate_salary", name: "Tính lương", module: "salary", moduleLabel: "Lương" },
     { key: "approve_salary", name: "Duyệt lương", module: "salary", moduleLabel: "Lương" },
     { key: "pay_salary", name: "Thanh toán lương", module: "salary", moduleLabel: "Lương" },
+    // Debt / Công nợ
+    { key: "VIEW_DEBT_RECONCILIATION", name: "Xem công nợ", module: "debt", moduleLabel: "Công nợ" },
+    { key: "CREATE_DEBT_RECONCILIATION", name: "Tạo/Đồng bộ công nợ", module: "debt", moduleLabel: "Công nợ" },
   ];
 
   // Create permissions
@@ -35,7 +38,7 @@ async function main() {
     });
     permissions.push(permission);
   }
-  console.log(`✅ Created ${permissions.length} HR permissions`);
+  console.log(`✅ Created ${permissions.length} permissions (HR + Debt)`);
 
   // Find Admin user and role
   const adminRole = await prisma.role.findUnique({ where: { roleKey: 'admin' } });
@@ -66,7 +69,7 @@ async function main() {
     )
   );
 
-  console.log(`✅ Assigned ${rolePermissions.length} HR permissions to Admin role`);
+  console.log(`✅ Assigned ${rolePermissions.length} permissions to Admin role`);
 }
 
 main()

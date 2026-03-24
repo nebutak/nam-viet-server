@@ -25,6 +25,20 @@ router.get(
   asyncHandler(smartDebtController.checkIntegrity.bind(smartDebtController))
 );
 
+// 1a. Monthly Breakdown (Tính theo tháng)
+router.get(
+  '/monthly',
+  authorize('VIEW_DEBT_RECONCILIATION'),
+  asyncHandler(smartDebtController.getMonthly.bind(smartDebtController))
+);
+
+// 1a2. Monthly object list (Giao diện giống Tổng hợp)
+router.get(
+  '/monthly-objects',
+  authorize('VIEW_DEBT_RECONCILIATION'),
+  asyncHandler(smartDebtController.getMonthlyObjects.bind(smartDebtController))
+);
+
 // 1b. Export List of Integrity Issues (Xuất file danh sách )
 router.get('/export-list', 
   authorize('VIEW_DEBT_RECONCILIATION'),
