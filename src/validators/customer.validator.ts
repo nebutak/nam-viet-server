@@ -25,7 +25,9 @@ export const createCustomerSchema = z.object({
     .or(z.literal('')),
   address: z.string().max(255, 'Địa chỉ tối đa 255 ký tự').optional(),
   taxCode: z.string().max(50, 'Mã số thuế tối đa 50 ký tự').optional(),
-  cccd: z.string().min(1, 'CCCD không được để trống').max(20, 'CCCD không được quá 20 ký tự'),
+  cccd: z.string()
+    .length(12, 'CCCD phải có đúng 12 số')
+    .regex(/^\d+$/, 'CCCD chỉ được chứa các chữ số'),
   issuedAt: z.string().nullable().optional(),
   issuedBy: z.string().max(100, 'Nơi cấp không được quá 100 ký tự').optional().or(z.literal('')),
   creditLimit: z.number().min(0, 'Hạn mức tín dụng phải lớn hơn hoặc bằng 0').optional(),
@@ -61,7 +63,9 @@ export const updateCustomerSchema = z.object({
     .or(z.literal('')),
   address: z.string().max(255, 'Địa chỉ tối đa 255 ký tự').optional(),
   taxCode: z.string().max(50, 'Mã số thuế tối đa 50 ký tự').optional(),
-  cccd: z.string().min(1, 'CCCD không được để trống').max(20, 'CCCD không được quá 20 ký tự'),
+  cccd: z.string()
+    .length(12, 'CCCD phải có đúng 12 số')
+    .regex(/^\d+$/, 'CCCD chỉ được chứa các chữ số'),
   issuedAt: z.string().nullable().optional(),
   issuedBy: z.string().max(100, 'Nơi cấp không được quá 100 ký tự').optional().or(z.literal('')),
   creditLimit: z.number().min(0, 'Hạn mức tín dụng phải lớn hơn hoặc bằng 0').optional(),

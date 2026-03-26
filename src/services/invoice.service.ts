@@ -4,6 +4,7 @@ import { logActivity } from '@utils/logger';
 import customerService from './customer.service';
 import notificationService from './notification.service';
 import promotionService from './promotion.service';
+import smartDebtService from './smart-debt.service';
 import {
   CreateInvoiceInput,
   UpdateInvoiceInput,
@@ -17,21 +18,33 @@ const prisma = new PrismaClient();
 
 class InvoiceService {
   private async generateOrderCode(): Promise<string> {
-    const date = new Date();
-    const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
 
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+    // Đếm TẤT CẢ invoice trong ngày (kể cả đã xoá mềm) để tránh trùng mã
     const count = await prisma.invoice.count({
       where: {
         createdAt: {
-          gte: new Date(date.setHours(0, 0, 0, 0)),
-          lt: new Date(date.setHours(23, 59, 59, 999)),
+          gte: startOfDay,
+          lt: endOfDay,
         },
-        deletedAt: null,
       },
     });
 
     const sequence = (count + 1).toString().padStart(3, '0');
-    return `DB-${dateStr}-${sequence}`;
+    const code = `DB-${dateStr}-${sequence}`;
+
+    // Kiểm tra trùng code trước khi trả về (xử lý race condition)
+    const existing = await prisma.invoice.findFirst({ where: { orderCode: code } });
+    if (existing) {
+      const sequence2 = (count + 2).toString().padStart(3, '0');
+      return `DB-${dateStr}-${sequence2}`;
+    }
+
+    return code;
   }
 
 
@@ -587,7 +600,21 @@ class InvoiceService {
         totalAmount: Number(result.totalAmount)
     }).catch(err => console.error('Failed to send new order notification', err));
 
+    // ─── Auto-sync công nợ khách hàng ──────────────────────────────────────
+    if (customerId) {
+      this._autoSyncCustomerDebt(Number(customerId));
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     return result;
+  }
+
+  /** Fire-and-forget: Tự động đồng bộ công nợ khách hàng vào bảng Smart Debt */
+  private _autoSyncCustomerDebt(customerId: number) {
+    const year = new Date().getFullYear();
+    smartDebtService.syncSnap({ customerId, year }).catch((err) =>
+      console.error(`[AutoSync] Failed to sync debt for customer ${customerId}:`, err.message)
+    );
   }
 
   private async createPickupOrder(
@@ -659,6 +686,20 @@ class InvoiceService {
         },
       },
     });
+
+    // Cập nhật công nợ khách hàng nếu đơn hàng chưa thanh toán đủ
+    const debtAmount = totalAmount - paidAmount;
+    if (debtAmount > 0 && Number(data.customerId) > 0) {
+      await prisma.customer.update({
+        where: { id: Number(data.customerId) },
+        data: {
+          currentDebt: {
+            increment: debtAmount,
+          },
+          debtUpdatedAt: new Date(),
+        },
+      });
+    }
 
     logActivity('create', userId, 'invoices', {
       recordId: order.id,
@@ -733,6 +774,20 @@ class InvoiceService {
         },
       },
     });
+
+    // Cập nhật công nợ khách hàng nếu đơn hàng chưa thanh toán đủ
+    const debtAmount = totalAmount - paidAmount;
+    if (debtAmount > 0 && Number(data.customerId) > 0) {
+      await prisma.customer.update({
+        where: { id: Number(data.customerId) },
+        data: {
+          currentDebt: {
+            increment: debtAmount,
+          },
+          debtUpdatedAt: new Date(),
+        },
+      });
+    }
 
     logActivity('create', userId, 'invoices', {
       recordId: order.id,
@@ -1075,6 +1130,11 @@ class InvoiceService {
       reason: data.reason,
     });
 
+    // Auto-sync công nợ khách hàng sau khi hủy đơn
+    if (order.customerId) {
+      this._autoSyncCustomerDebt(order.customerId);
+    }
+
     return result;
   }
 
@@ -1193,6 +1253,11 @@ class InvoiceService {
       orderCode: order.orderCode,
       paidAmount: data.paidAmount,
     });
+
+    // Auto-sync công nợ khách hàng sau khi thanh toán
+    if (order.customerId) {
+      this._autoSyncCustomerDebt(order.customerId);
+    }
 
     return result;
   }

@@ -264,6 +264,7 @@ class InventoryService {
             minStockLevel: true,
             code: true,
             productName: true,
+            image: true,
           },
         },
       },

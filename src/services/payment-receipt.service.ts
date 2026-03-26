@@ -4,6 +4,7 @@ import { logActivity } from '@utils/logger';
 import customerService from './customer.service';
 import emailService from './email.service';
 import invoiceService from './invoice.service';
+import smartDebtService from './smart-debt.service';
 import {
   CreatePaymentReceiptInput,
   UpdatePaymentReceiptInput,
@@ -454,6 +455,14 @@ class PaymentReceiptService {
       receiptCode: receipt.receiptCode,
     });
 
+    // Auto-sync công nợ khách hàng sau khi ghi sổ phiếu thu
+    if (receipt.customerId) {
+      const year = new Date().getFullYear();
+      smartDebtService.syncSnap({ customerId: receipt.customerId, year }).catch((err) =>
+        console.error(`[AutoSync] Failed to sync debt after post receipt for customer ${receipt.customerId}:`, err.message)
+      );
+    }
+
     return updatedReceipt;
   }
 
@@ -498,6 +507,14 @@ class PaymentReceiptService {
       action: 'unpost_receipt',
       receiptCode: receipt.receiptCode,
     });
+
+    // Auto-sync công nợ khách hàng sau khi bỏ ghi sổ phiếu thu
+    if (receipt.customerId) {
+      const year = new Date().getFullYear();
+      smartDebtService.syncSnap({ customerId: receipt.customerId, year }).catch((err) =>
+        console.error(`[AutoSync] Failed to sync debt after unpost receipt for customer ${receipt.customerId}:`, err.message)
+      );
+    }
 
     return updatedReceipt;
   }
