@@ -1367,6 +1367,7 @@ class InvoiceService {
       where: { id: invoiceId, deletedAt: null },
       include: {
         details: true,
+        customer: true,
         deliveries: {
           where: { deletedAt: null }
         },
@@ -1376,7 +1377,11 @@ class InvoiceService {
     if (!order) return;
 
     // Condition 1: Fully Paid
-    const isPaid = order.paymentStatus === 'paid';
+    // Nếu paymentStatus đã là 'paid' → OK
+    // Nếu khách hàng có công nợ dương (currentDebt < 0) → coi như đã trả trước, tương đương đã thanh toán
+    const customerDebt = Number(order.customer?.currentDebt || 0);
+    const hasPrepaidCredit = customerDebt < 0;
+    const isPaid = order.paymentStatus === 'paid' || hasPrepaidCredit;
 
     // Condition 2: Fully Exported
     const stockTransactions = await tx.stockTransaction.findMany({
@@ -1415,12 +1420,36 @@ class InvoiceService {
     }
 
     if (isPaid && isFullyExported && isDelivered) {
+      // Nếu hoàn thành nhờ trả trước, cập nhật paymentStatus và trừ công nợ
+      const updateData: any = {
+        orderStatus: 'completed',
+        completedAt: new Date(),
+      };
+
+      if (hasPrepaidCredit && order.paymentStatus !== 'paid') {
+        updateData.paymentStatus = 'paid';
+        updateData.paidAmount = Number(order.totalAmount);
+
+        // Trừ tiền đơn hàng từ credit trả trước (tăng currentDebt vì currentDebt đang âm)
+        const invoiceTotal = Number(order.totalAmount);
+        const alreadyPaid = Number(order.paidAmount || 0);
+        const remainingToPay = invoiceTotal - alreadyPaid;
+        if (remainingToPay > 0 && order.customerId) {
+          await tx.customer.update({
+            where: { id: order.customerId },
+            data: {
+              currentDebt: {
+                increment: remainingToPay,
+              },
+              debtUpdatedAt: new Date(),
+            },
+          });
+        }
+      }
+
       await tx.invoice.update({
         where: { id: invoiceId },
-        data: {
-          orderStatus: 'completed',
-          completedAt: new Date(),
-        },
+        data: updateData,
       });
 
       logActivity('update', userId, 'invoices', {
