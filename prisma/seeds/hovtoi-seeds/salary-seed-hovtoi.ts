@@ -2,9 +2,9 @@ import { PrismaClient, SalaryStatus, VoucherType, PaymentMethod } from '@prisma/
 
 export async function seedSalary(prisma: PrismaClient) {
   console.log('🌱 Seeding Salary...');
-  
+
   const creatorId = 1;
-  const users = await prisma.user.findMany({ 
+  const users = await prisma.user.findMany({
     take: 3,
     orderBy: { id: 'asc' }
   });
@@ -52,28 +52,28 @@ export async function seedSalary(prisma: PrismaClient) {
     });
 
     if (salaryLastMonth.status === SalaryStatus.paid && !salaryLastMonth.voucherId) {
-       // Create Payment Voucher for salary
-       const voucher = await prisma.paymentVoucher.create({
-         data: {
-           voucherCode: `PV-SALARY-${user.id}-${lastMonthStr}`,
-           voucherType: VoucherType.salary,
-           amount: Number(salaryLastMonth.basicSalary) + Number(salaryLastMonth.allowance) + 
-                   Number(salaryLastMonth.overtimePay) + Number(salaryLastMonth.commission) + Number(salaryLastMonth.bonus) - 
-                   Number(salaryLastMonth.deduction) - Number(salaryLastMonth.advance),
-           paymentMethod: PaymentMethod.transfer,
-           paymentDate: new Date(),
-           isPosted: true,
-           notes: `Thanh toán lương tháng ${lastMonthStr} cho nhân viên ID ${user.id}`,
-           createdBy: creatorId,
-           approvedBy: creatorId,
-           approvedAt: new Date(),
-         }
-       });
+      // Create Payment Voucher for salary
+      const voucher = await prisma.paymentVoucher.create({
+        data: {
+          voucherCode: `PV-SALARY-${user.id}-${lastMonthStr}`,
+          voucherType: VoucherType.salary,
+          amount: Number(salaryLastMonth.basicSalary) + Number(salaryLastMonth.allowance) +
+            Number(salaryLastMonth.overtimePay) + Number(salaryLastMonth.commission) + Number(salaryLastMonth.bonus) -
+            Number(salaryLastMonth.deduction) - Number(salaryLastMonth.advance),
+          paymentMethod: PaymentMethod.transfer,
+          paymentDate: new Date(),
+          //  isPosted: true,
+          notes: `Thanh toán lương tháng ${lastMonthStr} cho nhân viên ID ${user.id}`,
+          createdBy: creatorId,
+          //  approvedBy: creatorId,
+          //  approvedAt: new Date(),
+        }
+      });
 
-       await prisma.salary.update({
-         where: { id: salaryLastMonth.id },
-         data: { voucherId: voucher.id }
-       });
+      await prisma.salary.update({
+        where: { id: salaryLastMonth.id },
+        data: { voucherId: voucher.id }
+      });
     }
 
     // --- 2. Lương tháng này (Mới tính - Chờ duyệt / pending) ---

@@ -63,6 +63,8 @@ export const createInvoiceSchema = z.object({
         applyWarranty: z.boolean().optional(),
         warehouseId: z.number().int().positive().optional(),
         notes: z.string().max(255).optional(),
+        gift: z.boolean().optional(),
+        isGift: z.boolean().optional(),
       })
     )
     .min(1, 'Đơn hàng phải có ít nhất một sản phẩm'),

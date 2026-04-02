@@ -9,6 +9,12 @@ import { seedAttributes } from './attribute.seed';
 import { seedProducts } from './product.seed';
 import { seedInventory } from './inventory.seed';
 import { seedCustomers } from './customer.seed';
+import { seedStaff } from './staff.seed';
+import { seedInvoices } from './invoice.seed';
+import { seedPurchaseOrders } from './purchase_order.seed';
+import { seedStockTransactions } from './stock.seed';
+import { seedDeliveries } from './delivery.seed';
+import { seedFinancial } from './finance.seed';
 
 const prisma = new PrismaClient();
 
@@ -77,13 +83,13 @@ async function main() {
     await prisma.customerExpiryAccount.deleteMany({}); // Added
     await prisma.customer.deleteMany({});
     await prisma.supplier.deleteMany({});
-    
+
     await prisma.productHasAttribute.deleteMany({});
     await prisma.productUnitConversion.deleteMany({});
     await prisma.productPriceHistory.deleteMany({});
     await prisma.productMaterial.deleteMany({});
     await prisma.product.deleteMany({});
-    
+
     await prisma.warehouse.deleteMany({});
     await prisma.category.deleteMany({});
     await prisma.attribute.deleteMany({});
@@ -218,7 +224,7 @@ async function main() {
     { key: "CREATE_USER", name: "Thêm", module: "user", moduleLabel: "Nhân sự" },
     { key: "UPDATE_USER", name: "Sửa", module: "user", moduleLabel: "Nhân sự" },
     { key: "DELETE_USER", name: "Xóa", module: "user", moduleLabel: "Nhân sự" },
-    
+
     // Quản lý Chấm công
     { key: "VIEW_ATTENDANCE", name: "Xem bảng công", module: "attendance", moduleLabel: "Chấm công" },
     { key: "UPDATE_ATTENDANCE", name: "Cập nhật bảng công", module: "attendance", moduleLabel: "Chấm công" },
@@ -353,13 +359,14 @@ async function main() {
     { key: "CREATE_DEBT", name: "Thêm", module: "debt", moduleLabel: "Công nợ" },
     { key: "UPDATE_DEBT", name: "Sửa", module: "debt", moduleLabel: "Công nợ" },
     { key: "DELETE_DEBT", name: "Xóa", module: "debt", moduleLabel: "Công nợ" },
+    { key: "VIEW_DEBT_RECONCILIATION", name: "Xem đối chiếu công nợ", module: "debt", moduleLabel: "Công nợ" },
 
     // Quản lý kho
     { key: "GET_WAREHOUSE", name: "Xem", module: "warehouse", moduleLabel: "Kho" },
     { key: "CREATE_WAREHOUSE", name: "Thêm", module: "warehouse", moduleLabel: "Kho" },
     { key: "UPDATE_WAREHOUSE", name: "Sửa", module: "warehouse", moduleLabel: "Kho" },
     { key: "DELETE_WAREHOUSE", name: "Xóa", module: "warehouse", moduleLabel: "Kho" },
-    
+
     // Quản lý tồn kho
     { key: "GET_INVENTORY", name: "Xem tồn kho", module: "inventory", moduleLabel: "Tồn kho" },
     { key: "MANAGE_INVENTORY", name: "Quản lý tồn kho", module: "inventory", moduleLabel: "Tồn kho" },
@@ -388,7 +395,7 @@ async function main() {
     { key: "GET_STORAGE_SIZE_SETTING", name: "Xem dung lượng lưu trữ", module: "setting", moduleLabel: "Cài đặt" },
 
     // Báo cáo
-    { key: "GET_DASHBOARD", name: "Xem dashboard", module: "report", moduleLabel: "Báo cáo"},
+    { key: "GET_DASHBOARD", name: "Xem dashboard", module: "report", moduleLabel: "Báo cáo" },
     { key: "GET_REVENUE_REPORT", name: "Xem doanh thu", module: "report", moduleLabel: "Báo cáo" },
     { key: "GET_INVENTORY_REPORT", name: "Xem tồn kho", module: "report", moduleLabel: "Báo cáo" },
     { key: "GET_SALES_REPORT", name: "Xem bán hàng", module: "report", moduleLabel: "Báo cáo" },
@@ -446,15 +453,15 @@ async function main() {
 
   let adminUser = await prisma.user.findFirst({
     where: {
-      OR: [{ email: 'nhoangkha03@gmail.com' }, { employeeCode: 'NV-00010' }],
+      OR: [{ email: 'lyvanquy2020@gmail.com' }, { employeeCode: 'NV-00001' }],
     },
   });
 
   if (!adminUser) {
     adminUser = await prisma.user.create({
       data: {
-        employeeCode: 'NV-00010',
-        email: 'nhoangkha03@gmail.com',
+        employeeCode: 'NV-00001',
+        email: 'lyvanquy2020@gmail.com',
         passwordHash: hashedPassword,
         fullName: 'Quản trị viên hệ thống',
         phone: '0123456789',
@@ -686,6 +693,36 @@ async function main() {
   // 14. SEED INVENTORY
   // =====================================================
   await seedInventory(prisma, adminUser.id);
+
+  // =====================================================
+  // 15. SEED STAFF
+  // =====================================================
+  await seedStaff(prisma);
+
+  // =====================================================
+  // 16. SEED INVOICES (Sales Orders)
+  // =====================================================
+  await seedInvoices(prisma, adminUser.id);
+
+  // =====================================================
+  // 17. SEED PURCHASE ORDERS
+  // =====================================================
+  await seedPurchaseOrders(prisma, adminUser.id);
+
+  // =====================================================
+  // 18. SEED STOCK TRANSACTIONS (Imports, Exports, Transfers)
+  // =====================================================
+  await seedStockTransactions(prisma, adminUser.id);
+
+  // =====================================================
+  // 19. SEED DELIVERIES
+  // =====================================================
+  await seedDeliveries(prisma, adminUser.id);
+
+  // =====================================================
+  // 20. SEED FINANCIAL TRANSACTIONS (Receipts, Vouchers)
+  // =====================================================
+  await seedFinancial(prisma, adminUser.id);
 
   console.log('✅ Database seed completed successfully! 🎉\n');
   console.log('📌 Login Credentials:\n');

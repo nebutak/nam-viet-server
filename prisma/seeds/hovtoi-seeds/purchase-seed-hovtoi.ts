@@ -20,11 +20,11 @@ export async function seedPurchaseAndInventory(prisma: PrismaClient) {
     data: {
       poCode: 'PO-00001',
       supplierId: supplier.id,
-      warehouseId: warehouse.id,
+      // warehouseId: warehouse.id,
       orderDate: new Date(),
       expectedDeliveryDate: new Date(new Date().getTime() + 7 * 24 * 60 * 60 * 1000),
       subTotal: 50000000,
-      taxRate: 10,
+      // taxRate: 10,
       totalAmount: 55000000,
       status: PurchaseOrderStatus.received,
       createdBy: creatorId,
@@ -104,10 +104,10 @@ export async function seedPurchaseAndInventory(prisma: PrismaClient) {
       amount: 20000000,
       paymentMethod: PaymentMethod.transfer,
       paymentDate: new Date(),
-      isPosted: true,
+      //  isPosted: true,
       createdBy: creatorId,
-      approvedBy: creatorId,
-      approvedAt: new Date(),
+      //  approvedBy: creatorId,
+      //  approvedAt: new Date(),
       notes: 'Thanh toán một phần đơn hàng PO-00001'
     }
   });
