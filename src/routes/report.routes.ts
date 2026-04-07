@@ -274,6 +274,13 @@ router.get(
   asyncHandler(reportController.exportFinancialReport.bind(reportController))
 );
 
+// POST /api/reports/financial/yearly-fund - Update Yearly Fund
+router.post(
+  '/financial/yearly-fund',
+  authorize('GET_FINANCIAL_REPORT'),
+  asyncHandler(reportController.updateYearlyFund.bind(reportController))
+);
+
 // =====================================================
 // FILTER OPTIONS
 // =====================================================

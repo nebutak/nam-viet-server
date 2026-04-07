@@ -17,6 +17,7 @@ class FinancialService {
 
     // Fetch KPI data
     const kpi = await this.getKPI(startDate, endDate, prevStartDate, prevEndDate);
+    const kpiYearly = await this.getYearlyKPI(endDate);
     const profitLoss = await this.getProfitLoss(startDate, endDate, prevStartDate, prevEndDate);
     const cashLedger = await this.getCashLedger(startDate, endDate);
     const receiptsByType = await this.getReceiptsByType(startDate, endDate);
@@ -35,6 +36,7 @@ class FinancialService {
         days: periodDays,
       },
       kpi,
+      kpiYearly,
       profitLoss,
       cashLedger,
       receiptsByType,
@@ -133,6 +135,73 @@ class FinancialService {
       paymentGrowth,
       cashFlowGrowth,
     };
+  }
+
+  /**
+   * Calculate Yearly KPI metrics
+   */
+  private async getYearlyKPI(endDate: Date): Promise<any> {
+    const year = endDate.getFullYear();
+    const startOfYear = new Date(year, 0, 1);
+    
+    // Fetch YearlyFund config or default to 0
+    const yearlyFund = await (prisma as any).yearlyFund.findUnique({
+      where: { year }
+    });
+    
+    const openingBalance = yearlyFund ? Number(yearlyFund.openingBalance) : 0;
+
+    const currentReceipts = await prisma.paymentReceipt.aggregate({
+      _sum: { amount: true },
+      where: {
+        receiptDate: {
+          gte: startOfYear,
+          lte: endDate,
+        },
+      },
+    });
+
+    const currentPayments = await prisma.paymentVoucher.aggregate({
+      _sum: { amount: true },
+      where: {
+        paymentDate: {
+          gte: startOfYear,
+          lte: endDate,
+        },
+      },
+    });
+
+    const totalReceipts = Number(currentReceipts._sum.amount || 0);
+    const totalPayments = Number(currentPayments._sum.amount || 0);
+    const netCashFlow = totalReceipts - totalPayments;
+    const closingBalance = openingBalance + netCashFlow;
+
+    return {
+      year,
+      openingBalance,
+      totalReceipts,
+      totalPayments,
+      netCashFlow,
+      closingBalance
+    };
+  }
+
+  /**
+   * Update Yearly Opening Balance
+   */
+  async updateYearlyFund(year: number, openingBalance: number, updatedBy: number): Promise<any> {
+    return await (prisma as any).yearlyFund.upsert({
+      where: { year },
+      update: {
+        openingBalance,
+        updatedBy
+      },
+      create: {
+        year,
+        openingBalance,
+        updatedBy
+      }
+    });
   }
 
   /**

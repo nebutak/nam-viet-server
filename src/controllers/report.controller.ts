@@ -576,6 +576,27 @@ class ReportController {
     res.setHeader('Content-Disposition', `attachment; filename=BaoCaoTonKho_${new Date().toISOString().split('T')[0]}.xlsx`);
     res.send(result);
   }
+
+  // POST /api/reports/financial/yearly-fund - Update Yearly Fund
+  async updateYearlyFund(req: AuthRequest, res: Response) {
+    try {
+      // Admin should be able to update it, check any role restrictions
+      const { year, openingBalance } = req.body;
+      const updatedBy = req.user?.id || 1;
+      
+      const result = await financialService.updateYearlyFund(year, openingBalance, updatedBy);
+      return res.status(200).json({
+        success: true,
+        message: 'Cập nhật quỹ đầu năm thành công',
+        data: result,
+      });
+    } catch (error: any) {
+      return res.status(500).json({
+        success: false,
+        message: error.message || 'Lỗi khi cập nhật quỹ',
+      });
+    }
+  }
 }
 
 export default new ReportController();

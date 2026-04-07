@@ -908,6 +908,123 @@ class PurchaseOrderService {
 
     return updated;
   }
+
+  /**
+   * Return goods to supplier:
+   * - cancelQty: unimported → just note (no stock move needed)
+   * - exportQty: already imported → create an export StockTransaction (draft) + a refund PaymentVoucher
+   */
+  async returnGoods(
+    id: number,
+    userId: number,
+    data: {
+      items: Array<{
+        id: number;
+        productId: number;
+        quantity: number;
+        cancelQty: number;
+        exportQty: number;
+        price: number;
+      }>;
+      actualDate?: string;
+      warehouseId: number;
+      reason?: string;
+      notes?: string;
+    }
+  ) {
+    const purchaseOrder = await this.getById(id);
+
+    if (!['approved', 'received'].includes(purchaseOrder.status)) {
+      throw new ValidationError('Chỉ có thể trả hàng với đơn mua đã duyệt hoặc đã nhận.');
+    }
+
+    if (!data.items || data.items.length === 0) {
+      throw new ValidationError('Vui lòng chọn ít nhất một sản phẩm để trả hàng.');
+    }
+
+    const warehouse = await prisma.warehouse.findUnique({ where: { id: data.warehouseId } });
+    if (!warehouse) throw new ValidationError('Kho không tồn tại.');
+
+    const returnDate = data.actualDate ? new Date(data.actualDate) : new Date();
+    const refundAmount = data.items.reduce(
+      (sum, item) => sum + Number(item.exportQty) * Number(item.price), 0
+    );
+
+    // Generate transaction code
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const countToday = await prisma.stockTransaction.count({
+      where: { createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } },
+    });
+    const txCode = `EX-RET-${today}-${String(countToday + 1).padStart(4, '0')}`;
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Create export StockTransaction (draft) for physically returned items
+      const exportItems = data.items.filter(i => Number(i.exportQty) > 0);
+      if (exportItems.length > 0) {
+        await tx.stockTransaction.create({
+          data: {
+            transactionCode: txCode,
+            transactionType: 'export',
+            referenceType: 'purchase_refunds',
+            referenceId: id,
+            warehouseId: data.warehouseId,
+            supplierId: purchaseOrder.supplierId,
+            actualReceiptDate: returnDate,
+            notes: data.notes || (data.reason
+              ? `Trả hàng NCC: ${data.reason}`
+              : `Trả hàng NCC - ${purchaseOrder.poCode}`),
+            isPosted: false,
+            createdBy: userId,
+            details: {
+              create: exportItems.map(item => ({
+                productId: item.productId,
+                quantity: Number(item.exportQty),
+                notes: `Trả hàng từ ${purchaseOrder.poCode}`,
+              })),
+            },
+          },
+        });
+      }
+
+      // 2. Create draft PaymentVoucher (type: refund) if there's a refund amount
+      if (refundAmount > 0) {
+        const vDate = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const vCount = await tx.paymentVoucher.count({
+          where: { createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } },
+        });
+        const voucherCode = `PC-RET-${vDate}-${String(vCount + 1).padStart(4, '0')}`;
+
+        await tx.paymentVoucher.create({
+          data: {
+            voucherCode,
+            voucherType: 'refund',
+            supplierId: purchaseOrder.supplierId,
+            amount: refundAmount,
+            paymentMethod: 'cash',
+            paymentDate: returnDate,
+            status: 'draft',
+            purchaseOrderId: id,
+            notes: data.notes || undefined,
+            reason: data.reason || `Hoàn tiền trả hàng - ${purchaseOrder.poCode}`,
+            createdBy: userId,
+          },
+        });
+      }
+    });
+
+    logActivity('return', userId, 'purchase_orders', {
+      recordId: id,
+      poCode: purchaseOrder.poCode,
+      action: 'return',
+    });
+
+    return {
+      message: 'Tạo phiếu trả hàng thành công. Vui lòng duyệt ghi sổ để cập nhật kho và công nợ.',
+      exportTxCode: txCode,
+      refundAmount,
+    };
+  }
 }
 
 export default new PurchaseOrderService();
+

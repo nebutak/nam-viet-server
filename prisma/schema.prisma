@@ -2014,3 +2014,13 @@ model ProductUnitConversion {
   @@index([unitId])
   @@map("product_unit_conversions")
 }
+
+model YearlyFund {
+  year           Int      @id
+  openingBalance Decimal  @default(0) @map("opening_balance") @db.Decimal(15, 2)
+  updatedBy      Int?     @map("updated_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("yearly_funds")
+}

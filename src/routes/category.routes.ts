@@ -15,6 +15,21 @@ import { logActivityMiddleware } from '@middlewares/logger';
 
 const router = Router();
 
+// ============================================================
+// PUBLIC ROUTES (no authentication required)
+// ============================================================
+
+// GET /api/categories/public – Public category listing for showcase filters
+router.get(
+  '/public',
+  validate(queryCategoriesSchema, 'query'),
+  asyncHandler(categoryController.getAllCategories.bind(categoryController))
+);
+
+// ============================================================
+// PROTECTED ROUTES (authentication required)
+// ============================================================
+
 // All routes require authentication
 router.use(authentication);
 

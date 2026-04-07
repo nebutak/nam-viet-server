@@ -97,6 +97,15 @@ router.put(
   asyncHandler(purchaseOrderController.cancel.bind(purchaseOrderController))
 );
 
+// POST /api/purchase-orders/:id/return - Return goods to supplier
+router.post(
+  '/:id/return',
+  authorize('UPDATE_PURCHASE_ORDER'),
+  validate(purchaseOrderIdSchema, 'params'),
+  logActivityMiddleware('return', 'purchase_order'),
+  asyncHandler(purchaseOrderController.returnGoods.bind(purchaseOrderController))
+);
+
 // DELETE /api/purchase-orders/:id - Delete purchase order
 router.delete(
   '/:id',

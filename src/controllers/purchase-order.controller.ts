@@ -187,6 +187,29 @@ class PurchaseOrderController {
 
     res.status(200).json(response);
   }
+  // POST /api/purchase-orders/:id/return
+  async returnGoods(req: AuthRequest, res: Response) {
+    const { id } = req.params;
+    const userId = req.user!.id;
+    const { items, actualDate, warehouseId, reason, notes } = req.body;
+
+    const result = await purchaseOrderService.returnGoods(parseInt(id), userId, {
+      items,
+      actualDate,
+      warehouseId: parseInt(warehouseId),
+      reason,
+      notes,
+    });
+
+    const response: ApiResponse = {
+      success: true,
+      data: result,
+      message: result.message,
+      timestamp: new Date().toISOString(),
+    };
+
+    res.status(200).json(response);
+  }
 }
 
 export default new PurchaseOrderController();
