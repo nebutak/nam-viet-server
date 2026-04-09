@@ -136,6 +136,7 @@ model User {
   deliveriesSettled       Delivery[]            @relation("DeliverySettler")
   paymentReceipts         PaymentReceipt[]      @relation("ReceiptCreator")
   paymentVouchers         PaymentVoucher[]      @relation("VoucherCreator")
+  employeeVouchers        PaymentVoucher[]      @relation("VoucherEmployee")
   // debtReconciliations         DebtReconciliation[] @relation("ReconciliationCreator")
   // debtReconciliationsApproved DebtReconciliation[] @relation("ReconciliationApprover")
 
@@ -651,6 +652,7 @@ model Customer {
 
   invoices        Invoice[]
   paymentReceipts PaymentReceipt[]
+  paymentVouchers PaymentVoucher[]
   // debtReconciliations DebtReconciliation[]
   debtPeriods     DebtPeriod[]
   customerAccount CustomerAccount?
@@ -892,7 +894,7 @@ model PaymentReceipt {
   paymentMethod        FinancePaymentMethod @map("payment_method")
   bankName             String?              @map("bank_name") @db.VarChar(200)
   transactionReference String?              @map("transaction_reference") @db.VarChar(100)
-  receiptDate          DateTime             @map("receipt_date") @db.Date
+  receiptDate          DateTime             @map("receipt_date")
   isPosted             Boolean              @default(false) @map("is_posted")
   notes                String?              @db.VarChar(255)
   createdBy            Int                  @map("created_by")
@@ -915,10 +917,12 @@ model PaymentVoucher {
   voucherCode    String               @unique @map("voucher_code") @db.VarChar(50)
   voucherType    VoucherType          @map("voucher_type")
   supplierId     Int?                 @map("supplier_id")
+  customerId     Int?                 @map("customer_id")
+  employeeId     Int?                 @map("employee_id")
   amount         Decimal              @db.Decimal(15, 2)
   paymentMethod  VoucherPaymentMethod @map("payment_method")
   bankName       String?              @map("bank_name") @db.VarChar(200)
-  paymentDate    DateTime             @map("payment_date") @db.Date
+  paymentDate    DateTime             @map("payment_date")
   status         PaymentVoucherStatus @default(draft)
   postedAt       DateTime?            @map("posted_at")
   cancelledAt    DateTime?            @map("cancelled_at")
@@ -929,8 +933,10 @@ model PaymentVoucher {
   createdAt      DateTime             @default(now()) @map("created_at")
   deletedAt      DateTime?            @map("deleted_at")
 
-  supplier Supplier? @relation(fields: [supplierId], references: [id])
-  creator  User      @relation("VoucherCreator", fields: [createdBy], references: [id])
+  supplier      Supplier?      @relation(fields: [supplierId], references: [id])
+  customer      Customer?      @relation(fields: [customerId], references: [id])
+  employee      User?          @relation("VoucherEmployee", fields: [employeeId], references: [id])
+  creator       User           @relation("VoucherCreator", fields: [createdBy], references: [id])
   purchaseOrder PurchaseOrder? @relation("PurchaseOrderPayment", fields: [purchaseOrderId], references: [id])
 
   salaries Salary[]
@@ -938,6 +944,9 @@ model PaymentVoucher {
   @@index([voucherCode])
   @@index([paymentDate])
   @@index([status])
+  @@index([supplierId])
+  @@index([customerId])
+  @@index([employeeId])
   @@map("payment_vouchers")
 }
 

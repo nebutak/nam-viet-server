@@ -386,6 +386,8 @@ class PaymentReceiptService {
                 throw new ValidationError('Đơn mua hàng không thuộc về nhà cung cấp này');
             }
         }
+    } else if (data.notes?.trim() === 'Thu đầu kỳ' || data.receiptType === 'other') {
+        // Thu đầu kỳ / Loại khác: không cần khách hàng hay nhà cung cấp
     } else {
         throw new ValidationError('Phải chọn khách hàng hoặc nhà cung cấp');
     }
@@ -746,14 +748,25 @@ class PaymentReceiptService {
         });
 
         if (receipt.purchaseOrderId) {
-            await tx.purchaseOrder.update({
-                where: { id: receipt.purchaseOrderId },
-                data: {
-                    paidAmount: {
-                        decrement: Number(receipt.amount),
-                    }
+            const po = await tx.purchaseOrder.findUnique({ where: { id: receipt.purchaseOrderId } });
+            if (po) {
+                const newPaidAmount = Math.max(0, Number(po.paidAmount) - Number(receipt.amount));
+                const totalAmount = Number(po.totalAmount);
+                let paymentStatus: string = 'unpaid';
+                if (newPaidAmount >= totalAmount && totalAmount > 0) {
+                    paymentStatus = 'paid';
+                } else if (newPaidAmount > 0) {
+                    paymentStatus = 'partial';
                 }
-            });
+
+                await tx.purchaseOrder.update({
+                    where: { id: receipt.purchaseOrderId },
+                    data: {
+                        paidAmount: newPaidAmount,
+                        paymentStatus: paymentStatus as any,
+                    }
+                });
+            }
         }
     } else if (receipt.receiptType === 'debt_collection') {
       // Phiếu thu công nợ: trừ trực tiếp vào công nợ khách hàng

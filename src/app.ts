@@ -41,7 +41,7 @@ import deliveryRoutes from '@routes/delivery.routes';
 import paymentReceiptRoutes from '@routes/payment-receipt.routes';
 import paymentVoucherRoutes from '@routes/payment-voucher.routes';
 // import debtReconciliationRoutes from '@routes/debt-reconciliation.routes';
-// import cashFundRoutes from '@routes/cash-fund.routes';
+import cashFlowRoutes from '@routes/cash-flow.routes';
 
 import promotionRoutes from '@routes/promotion.routes';
 import attendanceRoutes from '@routes/attendance.routes';
@@ -222,7 +222,7 @@ app.use('/api/deliveries', deliveryRoutes);
 app.use('/api/payment-receipts', paymentReceiptRoutes);
 app.use('/api/payment-vouchers', paymentVoucherRoutes);
 // app.use('/api/debt-reconciliation', debtReconciliationRoutes);
-// app.use('/api/cash-fund', cashFundRoutes);
+app.use('/api/cash-flow', cashFlowRoutes);
 
 app.use('/api/promotions', promotionRoutes);
 app.use('/api/attendance', attendanceRoutes);

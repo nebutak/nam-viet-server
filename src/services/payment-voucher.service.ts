@@ -50,6 +50,8 @@ class PaymentVoucherService {
     const where: Prisma.PaymentVoucherWhereInput = {
       deletedAt: null,
       ...(supplierId && { supplierId }),
+      ...(query.customerId && { customerId: query.customerId }),
+      ...(query.employeeId && { employeeId: query.employeeId }),
       ...(voucherType && { voucherType }),
       ...(paymentMethod && { paymentMethod }),
       ...(status && { status }),
@@ -58,6 +60,8 @@ class PaymentVoucherService {
         OR: [
           { voucherCode: { contains: search } },
           { supplier: { supplierName: { contains: search } } },
+          { customer: { customerName: { contains: search } } },
+          { employee: { fullName: { contains: search } } },
         ],
       }),
       ...(fromDate &&
@@ -78,6 +82,22 @@ class PaymentVoucherService {
               id: true,
               supplierCode: true,
               supplierName: true,
+              phone: true,
+            },
+          },
+          customer: {
+            select: {
+              id: true,
+              customerCode: true,
+              customerName: true,
+              phone: true,
+            },
+          },
+          employee: {
+            select: {
+              id: true,
+              employeeCode: true,
+              fullName: true,
               phone: true,
             },
           },
@@ -169,6 +189,27 @@ class PaymentVoucherService {
             taxCode: true,
           },
         },
+        customer: {
+          select: {
+            id: true,
+            customerCode: true,
+            customerName: true,
+            phone: true,
+            email: true,
+            address: true,
+            taxCode: true,
+          },
+        },
+        employee: {
+          select: {
+            id: true,
+            employeeCode: true,
+            fullName: true,
+            phone: true,
+            email: true,
+            address: true,
+          },
+        },
         creator: {
           select: {
             id: true,
@@ -224,6 +265,8 @@ class PaymentVoucherService {
         voucherCode,
         voucherType: data.voucherType,
         supplierId: data.supplierId,
+        customerId: data.customerId,
+        employeeId: data.employeeId,
         purchaseOrderId: data.purchaseOrderId,
         amount: data.amount,
         paymentMethod: data.paymentMethod,
@@ -236,6 +279,8 @@ class PaymentVoucherService {
       },
       include: {
         supplier: true,
+        customer: true,
+        employee: true,
         creator: true,
       },
     });
@@ -288,6 +333,8 @@ class PaymentVoucherService {
       data: {
         ...(data.voucherType && { voucherType: data.voucherType }),
         supplierId: data.supplierId !== undefined ? data.supplierId : undefined,
+        customerId: data.customerId !== undefined ? data.customerId : undefined,
+        employeeId: data.employeeId !== undefined ? data.employeeId : undefined,
         purchaseOrderId: data.purchaseOrderId !== undefined ? data.purchaseOrderId : undefined,
         amount: data.amount !== undefined ? data.amount : undefined,
         ...(data.paymentMethod && { paymentMethod: data.paymentMethod }),
@@ -298,6 +345,8 @@ class PaymentVoucherService {
       },
       include: {
         supplier: true,
+        customer: true,
+        employee: true,
         creator: true,
       },
     });
@@ -367,8 +416,9 @@ class PaymentVoucherService {
         const po = await tx.purchaseOrder.findUnique({ where: { id: voucher.purchaseOrderId } });
         if (po) {
           const newPaidAmount = Number(po.paidAmount) + Number(voucher.amount);
+          const totalAmount = Number(po.totalAmount);
           let paymentStatus = 'partial';
-          if (newPaidAmount >= Number(po.totalAmount)) paymentStatus = 'paid';
+          if (newPaidAmount >= totalAmount) paymentStatus = 'paid';
           if (newPaidAmount <= 0) paymentStatus = 'unpaid';
           
           await tx.purchaseOrder.update({
