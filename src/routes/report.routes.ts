@@ -274,6 +274,13 @@ router.get(
   asyncHandler(reportController.exportFinancialReport.bind(reportController))
 );
 
+// GET /api/reports/financial/cash-book - Sổ quỹ chi tiết với running balance
+router.get(
+  '/financial/cash-book',
+  authorize('GET_FINANCIAL_REPORT'),
+  asyncHandler(reportController.getCashBookReport.bind(reportController))
+);
+
 // =====================================================
 // FILTER OPTIONS
 // =====================================================
@@ -285,3 +292,4 @@ router.get(
 );
 
 export default router;
+

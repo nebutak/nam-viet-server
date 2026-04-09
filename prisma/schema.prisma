@@ -646,9 +646,6 @@ model Customer {
   assignedUserId Int?  @map("assigned_user_id")
   assignedUser   User? @relation("CustomerManager", fields: [assignedUserId], references: [id], onDelete: SetNull)
 
-  isBlacklisted      Boolean   @default(false) @map("is_blacklisted")
-  debtExtensionDate  DateTime? @map("debt_extension_date")
-
   invoices        Invoice[]
   paymentReceipts PaymentReceipt[]
   // debtReconciliations DebtReconciliation[]

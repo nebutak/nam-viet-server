@@ -1,4 +1,4 @@
-import { PrismaClient, Prisma } from '@prisma/client';
+import { PrismaClient, Prisma, PurchaseOrderDetail } from '@prisma/client';
 import { NotFoundError, ValidationError } from '@utils/errors';
 import { logActivity } from '@utils/logger';
 import {
@@ -377,7 +377,8 @@ class PurchaseOrderService {
     }));
 
     // Map payment receipts to format expected by the frontend payment vouchers table
-    const mappedReceiptsAsVouchers = (po.refundReceipts || []).map(receipt => ({
+    const poAny = po as any;
+    const mappedReceiptsAsVouchers = (poAny.refundReceipts || []).map((receipt: any) => ({
       id: receipt.id,
       voucherCode: receipt.receiptCode,
       amount: receipt.amount,
@@ -390,7 +391,7 @@ class PurchaseOrderService {
       isReceipt: true, // Specific flag for the frontend
     }));
 
-    const sortedPaymentVouchersAndReceipts = [...(po.paymentVouchers || []), ...mappedReceiptsAsVouchers].sort(
+    const sortedPaymentVouchersAndReceipts = [...(poAny.paymentVouchers || []), ...mappedReceiptsAsVouchers].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
 
@@ -959,7 +960,7 @@ class PurchaseOrderService {
   }
 
   async processReturn(id: number, userId: number, data: ReturnPurchaseOrderInput) {
-    const purchaseOrder = await this.getById(id);
+    const purchaseOrder = await this.getById(id) as any;
 
     if (purchaseOrder.status === 'pending' || purchaseOrder.status === 'cancelled') {
       throw new ValidationError('Chỉ đơn mua đã duyệt, đang giao hoặc hoàn thành mới có thể trả hàng');
@@ -975,7 +976,7 @@ class PurchaseOrderService {
 
       // Process each item
       for (const reqItem of data.items) {
-        const poDetail = purchaseOrder.details.find((d) => d.productId === reqItem.productId);
+        const poDetail = purchaseOrder.details.find((d: PurchaseOrderDetail) => d.productId === reqItem.productId);
         if (!poDetail) {
           throw new ValidationError(`Sản phẩm (ID: ${reqItem.productId}) không tồn tại trong đơn mua này`);
         }

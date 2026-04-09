@@ -576,6 +576,45 @@ class ReportController {
     res.setHeader('Content-Disposition', `attachment; filename=BaoCaoTonKho_${new Date().toISOString().split('T')[0]}.xlsx`);
     res.send(result);
   }
+
+  // GET /api/reports/financial/cash-book - Sổ quỹ chi tiết
+  async getCashBookReport(req: AuthRequest, res: Response) {
+    const today = new Date();
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+
+    const {
+      fromDate = firstDay.toISOString().split('T')[0],
+      toDate = today.toISOString().split('T')[0],
+      customerId,
+      supplierId,
+      createdById,
+      receiverName,
+      receiverTypes,
+      voucherType,
+      page = '1',
+      pageSize = '20',
+    } = req.query as Record<string, string>;
+
+    const result = await financialService.getCashBookReport({
+      fromDate: fromDate as string,
+      toDate: toDate as string,
+      customerId: customerId ? Number(customerId) : undefined,
+      supplierId: supplierId ? Number(supplierId) : undefined,
+      createdById: createdById ? Number(createdById) : undefined,
+      receiverName: receiverName as string | undefined,
+      receiverTypes: receiverTypes ? (receiverTypes as string).split(',') : undefined,
+      voucherType: voucherType as string | undefined,
+      page: Number(page),
+      pageSize: Number(pageSize),
+    });
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString(),
+    });
+  }
 }
 
 export default new ReportController();
+

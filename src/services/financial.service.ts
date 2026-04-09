@@ -995,6 +995,188 @@ class FinancialService {
     const buffer = await workbook.xlsx.writeBuffer();
     return Buffer.from(buffer);
   }
+
+  /**
+   * Get cash book report with filters and running balance
+   */
+  async getCashBookReport(params: {
+    fromDate: string;
+    toDate: string;
+    customerId?: number;
+    supplierId?: number;
+    createdById?: number;   // NV lập phiếu
+    receiverName?: string;
+    receiverTypes?: string[]; // 'customer' | 'supplier' | 'other'
+    voucherType?: string;     // receipt type or payment voucher type
+    page?: number;
+    pageSize?: number;
+  }): Promise<any> {
+    const {
+      fromDate, toDate, customerId, supplierId, createdById,
+      receiverName, receiverTypes, voucherType,
+      page = 1, pageSize = 20,
+    } = params;
+
+    const startDate = new Date(fromDate);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(toDate);
+    endDate.setHours(23, 59, 59, 999);
+
+    // ── Quỹ đầu kỳ: tổng giao dịch TRƯỚC fromDate (chỉ posted) ─────────────
+    const [preReceipts, prePayments] = await Promise.all([
+      prisma.paymentReceipt.aggregate({
+        _sum: { amount: true },
+        where: { receiptDate: { lt: startDate }, isPosted: true },
+      }),
+      prisma.paymentVoucher.aggregate({
+        _sum: { amount: true },
+        where: { paymentDate: { lt: startDate }, status: 'posted' },
+      }),
+    ]);
+    const openingBalance =
+      Number((preReceipts as any)._sum?.amount || 0) - Number((prePayments as any)._sum?.amount || 0);
+
+    // ── Build where clauses ──────────────────────────────────────────────────
+    const receiptWhere: any = {
+      receiptDate: { gte: startDate, lte: endDate },
+      deletedAt: null,
+    };
+    const paymentWhere: any = {
+      paymentDate: { gte: startDate, lte: endDate },
+      deletedAt: null,
+    };
+
+    if (customerId) receiptWhere.customerId = customerId;
+    if (supplierId) paymentWhere.supplierId = supplierId;
+    if (createdById) {
+      receiptWhere.createdBy = createdById;
+      paymentWhere.createdBy = createdById;
+    }
+
+    // voucherType filter
+    const receiptTypes = ['sales','debt_collection','refund'];
+    const paymentVoucherTypes = ['salary','operating_cost','supplier_payment','refund','other'];
+
+    let wantReceipts = true;
+    let wantPayments = true;
+
+    if (voucherType) {
+      if (receiptTypes.includes(voucherType)) {
+        receiptWhere.receiptType = voucherType;
+        wantPayments = false;
+      } else if (paymentVoucherTypes.includes(voucherType)) {
+        paymentWhere.voucherType = voucherType;
+        wantReceipts = false;
+      }
+    }
+
+    // receiverTypes filter
+    if (receiverTypes && receiverTypes.length > 0) {
+      wantReceipts = receiverTypes.includes('customer');
+      if (!receiverTypes.includes('supplier') && !receiverTypes.includes('other')) wantPayments = false;
+    }
+
+    // ── Fetch transactions ───────────────────────────────────────────────────
+    const [receipts, payments] = await Promise.all([
+      wantReceipts ? prisma.paymentReceipt.findMany({
+        where: receiptWhere,
+        include: {
+          creator: { select: { id: true, fullName: true, phone: true } },
+          customerRef: { select: { id: true, customerName: true, address: true, phone: true } },
+        },
+        orderBy: { receiptDate: 'asc' },
+      }) : Promise.resolve([]),
+      wantPayments ? prisma.paymentVoucher.findMany({
+        where: paymentWhere,
+        include: {
+          creator: { select: { id: true, fullName: true, phone: true } },
+          supplier: { select: { id: true, supplierName: true, address: true, phone: true } },
+        },
+        orderBy: { paymentDate: 'asc' },
+      }) : Promise.resolve([]),
+    ]);
+
+    // ── Normalise ────────────────────────────────────────────────────────────
+    const entries: any[] = [];
+
+    for (const r of receipts) {
+      const customerName = r.customerRef?.customerName || '';
+      if (receiverName && !customerName.toLowerCase().includes(receiverName.toLowerCase())) continue;
+
+      entries.push({
+        id: r.id,
+        type: 'receipt' as const,
+        voucherType: r.receiptType,
+        code: r.receiptCode,
+        datetime: r.receiptDate,
+        partyName: customerName,
+        partyType: 'customer',
+        address: r.customerRef?.address || '',
+        province: '',
+        content: r.notes || '',
+        amount: Number(r.amount),
+        isReceipt: true,
+        creator: r.creator,
+        isPosted: r.isPosted,
+      });
+    }
+
+    for (const p of payments) {
+      const supplierName = p.supplier?.supplierName || '';
+      if (receiverName && !supplierName.toLowerCase().includes(receiverName.toLowerCase())) continue;
+
+      // receiverType filter for payments
+      const pType = p.supplierId ? 'supplier' : 'other';
+      if (receiverTypes && receiverTypes.length > 0 && !receiverTypes.includes(pType)) continue;
+
+      entries.push({
+        id: p.id,
+        type: 'payment' as const,
+        voucherType: p.voucherType,
+        code: p.voucherCode,
+        datetime: p.paymentDate,
+        partyName: supplierName,
+        partyType: pType,
+        address: p.supplier?.address || '',
+        province: '',
+        content: p.reason || p.notes || '',
+        amount: Number(p.amount),
+        isReceipt: false,
+        creator: p.creator,
+        isPosted: p.status === 'posted',
+      });
+    }
+
+    // ── Sort ascending for running balance ───────────────────────────────────
+    entries.sort((a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime());
+
+    // ── Compute running balance ──────────────────────────────────────────────
+    let runningBalance = openingBalance;
+    for (const e of entries) {
+      runningBalance = e.isReceipt ? runningBalance + e.amount : runningBalance - e.amount;
+      e.runningBalance = runningBalance;
+    }
+
+    const closingBalance = runningBalance;
+    const totalReceipt = entries.filter(e => e.isReceipt).reduce((s, e) => s + e.amount, 0);
+    const totalPayment = entries.filter(e => !e.isReceipt).reduce((s, e) => s + e.amount, 0);
+
+    // ── Pagination: reverse for display (newest first) ───────────────────────
+    const displayEntries = [...entries].reverse();
+    const total = displayEntries.length;
+    const paginated = displayEntries.slice((page - 1) * pageSize, page * pageSize);
+
+    return {
+      openingBalance,
+      totalReceipt,
+      totalPayment,
+      closingBalance,
+      total,
+      page,
+      pageSize,
+      transactions: paginated,
+    };
+  }
 }
 
 export default new FinancialService();
