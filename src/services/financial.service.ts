@@ -1177,6 +1177,131 @@ class FinancialService {
       transactions: paginated,
     };
   }
+
+  /**
+   * Export detailed cash book to Excel
+   */
+  async exportCashBookExcel(params: {
+    fromDate: string;
+    toDate: string;
+    customerId?: number;
+    supplierId?: number;
+    createdById?: number;
+    receiverName?: string;
+    receiverTypes?: string[];
+    voucherType?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<Buffer> {
+    const ExcelJS = require('exceljs');
+    
+    // Use the existing function to get data, we will not paginate by passing 999999 as pageSize which was handled in controller
+    const reportData = await this.getCashBookReport(params);
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Nam Viet App';
+    workbook.created = new Date();
+
+    const headerStyle = {
+      fill: {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF4472C4' },
+      },
+      font: { bold: true, size: 12, color: { argb: 'FFFFFFFF' } },
+      alignment: { horizontal: 'center', vertical: 'middle' },
+      border: {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' },
+      },
+    };
+
+    const sheet = workbook.addWorksheet('So Quy Chi Tiet');
+
+    // Title
+    sheet.mergeCells('A1:I1');
+    sheet.getCell('A1').value = 'SỔ QUỸ CHI TIẾT';
+    sheet.getCell('A1').font = { bold: true, size: 14, color: { argb: 'FFE84A5F' } };
+    sheet.getCell('A1').alignment = { horizontal: 'center' };
+
+    // Date range
+    sheet.mergeCells('A2:I2');
+    sheet.getCell('A2').value = `Từ ngày: ${params.fromDate} - Đến ngày: ${params.toDate}`;
+    sheet.getCell('A2').font = { size: 10, italic: true };
+    sheet.getCell('A2').alignment = { horizontal: 'center' };
+
+    // Empty row
+    sheet.addRow([]);
+
+    // Headers
+    const headers = [
+      'STT', 
+      'Thời gian', 
+      'Mã phiếu', 
+      'Khách hàng / Đối tượng', 
+      'Địa chỉ', 
+      'Diễn giải', 
+      'Loại phiếu',
+      'Thu',
+      'Chi',
+      'Tồn quỹ'
+    ];
+    const headerRow = sheet.addRow(headers);
+    headerRow.eachCell((cell: any) => {
+      cell.style = headerStyle;
+    });
+
+    const RECEIPT_TYPE_LABELS: Record<string, string> = { sales: 'Thu bán hàng', debt_collection: 'Thu nợ', refund: 'Hoàn trả' };
+    const PAYMENT_TYPE_LABELS: Record<string, string> = { supplier_payment: 'Chi nhà cung cấp', salary: 'Chi lương', operating_cost: 'Chi phí khác', refund: 'Hoàn tiền', other: 'Chi khác' };
+
+    // Add opening balance row
+    const openRow = sheet.addRow([
+      '', '', '', 'Số dư đầu kỳ', '', '', '', '', '', reportData.openingBalance
+    ]);
+    openRow.font = { bold: true };
+    openRow.getCell(10).numFmt = '#,##0';
+
+    const transactions = reportData.transactions || [];
+    // Data rows
+    transactions.forEach((tx: any, index: number) => {
+      const typeLabel = tx.isReceipt
+          ? (RECEIPT_TYPE_LABELS[tx.voucherType] || 'Thu khác')
+          : (PAYMENT_TYPE_LABELS[tx.voucherType] || 'Chi khác');
+          
+      const row = sheet.addRow([
+        index + 1,
+        tx.datetime ? new Date(tx.datetime).toLocaleString('vi-VN') : '',
+        tx.code || '',
+        tx.partyName || tx.customerName || tx.supplierName || '',
+        tx.address || '',
+        tx.content || '',
+        typeLabel,
+        tx.isReceipt ? tx.amount : '',
+        !tx.isReceipt ? tx.amount : '',
+        tx.runningBalance || 0
+      ]);
+
+      if (tx.isReceipt) row.getCell(8).numFmt = '#,##0';
+      if (!tx.isReceipt) row.getCell(9).numFmt = '#,##0';
+      row.getCell(10).numFmt = '#,##0';
+    });
+
+    // Column widths
+    sheet.getColumn(1).width = 6;
+    sheet.getColumn(2).width = 20;
+    sheet.getColumn(3).width = 15;
+    sheet.getColumn(4).width = 30;
+    sheet.getColumn(5).width = 25;
+    sheet.getColumn(6).width = 35;
+    sheet.getColumn(7).width = 16;
+    sheet.getColumn(8).width = 15;
+    sheet.getColumn(9).width = 15;
+    sheet.getColumn(10).width = 18;
+
+    return await workbook.xlsx.writeBuffer();
+  }
 }
 
 export default new FinancialService();

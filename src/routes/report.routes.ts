@@ -281,6 +281,13 @@ router.get(
   asyncHandler(reportController.getCashBookReport.bind(reportController))
 );
 
+// GET /api/reports/financial/export-cash-book - Xuất excel danh sách sổ quỹ chi tiết
+router.get(
+  '/financial/export-cash-book',
+  authorize('GET_FINANCIAL_REPORT'),
+  asyncHandler(reportController.exportCashBookExcel.bind(reportController))
+);
+
 // =====================================================
 // FILTER OPTIONS
 // =====================================================

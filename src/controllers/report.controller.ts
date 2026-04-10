@@ -548,6 +548,45 @@ class ReportController {
     }
   }
 
+  /**
+   * Export cash book to excel
+   */
+  async exportCashBookExcel(req: AuthRequest, res: Response): Promise<void> {
+    const fromDate = req.query.fromDate as string;
+    const toDate = req.query.toDate as string;
+
+    if (!fromDate || !toDate) {
+      res.status(400).json({ success: false, message: 'Thiếu thời gian báo cáo' });
+      return;
+    }
+
+    try {
+      const params = {
+        fromDate,
+        toDate,
+        customerId: req.query.customerId ? Number(req.query.customerId) : undefined,
+        supplierId: req.query.supplierId ? Number(req.query.supplierId) : undefined,
+        createdById: req.query.createdById ? Number(req.query.createdById) : undefined,
+        receiverName: req.query.receiverName as string,
+        receiverTypes: req.query.receiverTypes ? (req.query.receiverTypes as string).split(',') : undefined,
+        voucherType: req.query.voucherType as string,
+        page: 1,
+        pageSize: 999999,
+      };
+
+      const buffer = await financialService.exportCashBookExcel(params);
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename=SoQuy_${fromDate}_${toDate}.xlsx`);
+      res.send(buffer);
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Lỗi xuất sổ quỹ',
+      });
+    }
+  }
+
   // GET /api/reports/filter-options/warehouses - Get warehouses for filter
   async getWarehousesForFilter(_req: AuthRequest, res: Response) {
     const warehouses = await reportService.getWarehousesForFilter();
