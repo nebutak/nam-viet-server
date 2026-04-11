@@ -1138,10 +1138,13 @@ class ReportService {
   async getInventoryNXTReport(params: {
     fromDate?: string;
     toDate?: string;
-    warehouseId?: number;
-    categoryId?: number;
+    warehouseId?: string | number;
+    categoryId?: string | number;
   }) {
-    const { fromDate, toDate, warehouseId, categoryId } = params;
+    const { fromDate, toDate } = params;
+    const warehouseId = params.warehouseId ? Number(params.warehouseId) : undefined;
+    const categoryId = params.categoryId ? Number(params.categoryId) : undefined;
+    
     const dateRange = this.getDateRange(fromDate, toDate);
 
     // 1. Get products and current inventory
@@ -1155,6 +1158,7 @@ class ReportService {
         }),
       },
       include: {
+        warehouse: true,
         product: {
           include: {
             unit: true,
@@ -1175,7 +1179,7 @@ class ReportService {
         },
       },
       include: {
-        transaction: { select: { transactionType: true, createdAt: true } },
+        transaction: { select: { transactionType: true, createdAt: true, warehouseId: true } },
       },
     });
 
@@ -1184,12 +1188,12 @@ class ReportService {
       (t) => t.transaction.createdAt <= dateRange.toDate
     );
 
-    // Group transactions by product
-    const changesAfterFrom: Record<number, { imports: number; exports: number }> = {};
-    const changesWithinPeriod: Record<number, { imports: number; exports: number }> = {};
+    // Group transactions by product AND warehouse
+    const changesAfterFrom: Record<string, { imports: number; exports: number }> = {};
+    const changesWithinPeriod: Record<string, { imports: number; exports: number }> = {};
 
     transactionsAfterFrom.forEach((t) => {
-      const pId = t.productId;
+      const pId = `${t.transaction.warehouseId}-${t.productId}`;
       if (!changesAfterFrom[pId]) changesAfterFrom[pId] = { imports: 0, exports: 0 };
       
       const qty = Number(t.quantity);
@@ -1201,7 +1205,7 @@ class ReportService {
     });
 
     transactionsWithinPeriod.forEach((t) => {
-      const pId = t.productId;
+      const pId = `${t.transaction.warehouseId}-${t.productId}`;
       if (!changesWithinPeriod[pId]) changesWithinPeriod[pId] = { imports: 0, exports: 0 };
       
       const qty = Number(t.quantity);
@@ -1214,12 +1218,13 @@ class ReportService {
 
     // 4. Build report data
     const report = inventory.map((inv) => {
+      const pIdKey = `${inv.warehouseId}-${inv.productId}`;
       const pId = inv.productId;
       const product = inv.product;
       const basePrice = Number(product.basePrice || 0);
       
-      const afterFrom = changesAfterFrom[pId] || { imports: 0, exports: 0 };
-      const withinPeriod = changesWithinPeriod[pId] || { imports: 0, exports: 0 };
+      const afterFrom = changesAfterFrom[pIdKey] || { imports: 0, exports: 0 };
+      const withinPeriod = changesWithinPeriod[pIdKey] || { imports: 0, exports: 0 };
       
       const currentQty = Number(inv.quantity);
       // Opening = Current - (Imports-After-From) + (Exports-After-From)
@@ -1232,6 +1237,7 @@ class ReportService {
 
       return {
         productId: pId,
+        warehouse: inv.warehouse ? { id: inv.warehouseId, name: (inv.warehouse as any).warehouseName } : null,
         product: {
           id: product.id,
           name: product.productName,
@@ -1251,7 +1257,15 @@ class ReportService {
       };
     });
 
-    return report;
+    const finalReport = report.filter(
+      (r) =>
+        r.openingQuantity > 0 ||
+        r.quantityIn > 0 ||
+        r.quantityOut > 0 ||
+        r.closingQuantity > 0
+    );
+
+    return finalReport;
   }
 
   async getInventoryLedger(params: {
