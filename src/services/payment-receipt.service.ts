@@ -569,6 +569,22 @@ class PaymentReceiptService {
       // Gọi logic kiểm tra hoàn thành tập trung
       if (posted.orderId) {
         await (invoiceService as any).checkAndCompleteOrder(posted.orderId, userId, tx);
+      } else if (posted.customerId) {
+        // Phiếu thu không liên kết đơn hàng cụ thể (thu công nợ tổng):
+        // Quét tất cả đơn hàng chưa hoàn thành của khách để cập nhật trạng thái
+        const pendingOrders = await tx.invoice.findMany({
+          where: {
+            customerId: posted.customerId,
+            paymentStatus: { in: ['unpaid', 'partial'] },
+            orderStatus: { notIn: ['cancelled', 'completed'] },
+            deletedAt: null,
+          },
+          select: { id: true },
+          orderBy: { orderDate: 'asc' }, // Xử lý đơn cũ trước
+        });
+        for (const order of pendingOrders) {
+          await (invoiceService as any).checkAndCompleteOrder(order.id, userId, tx);
+        }
       }
 
       return posted;

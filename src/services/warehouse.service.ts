@@ -522,6 +522,9 @@ class WarehouseService {
         id: true,
         warehouseCode: true,
         warehouseName: true,
+        _count: {
+          select: { stockTransactions: true }
+        },
         inventory: {
           where: {
             quantity: { gt: 0 },
@@ -552,6 +555,7 @@ class WarehouseService {
       warehouseCode: w.warehouseCode,
       warehouseName: w.warehouseName,
       hasInventory: w.inventory.length > 0,
+      hasTransactions: (w._count?.stockTransactions ?? 0) > 0,
       inventoryItems: w.inventory.map((inv) => ({
         productId: inv.product.id,
         productCode: inv.product.code,

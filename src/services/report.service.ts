@@ -1515,7 +1515,7 @@ class ReportService {
   // =====================================================
   // SALES ANALYTICS
   // =====================================================
-  async getTopSellingProducts(limit: number = 10, fromDate?: string, toDate?: string) {
+  async getTopSellingProducts(limit: number = 10, fromDate?: string, toDate?: string, sortBy: 'revenue' | 'quantity' = 'quantity') {
     const dateRange = this.getDateRange(fromDate, toDate);
 
     // Get sales order details with aggregation
@@ -1568,7 +1568,7 @@ class ReportService {
     }, {} as Record<number, any>);
 
     return Object.values(grouped)
-      .sort((a: any, b: any) => b.quantitySold - a.quantitySold)
+      .sort((a: any, b: any) => sortBy === 'revenue' ? b.revenue - a.revenue : b.quantitySold - a.quantitySold)
       .slice(0, limit);
   }
 

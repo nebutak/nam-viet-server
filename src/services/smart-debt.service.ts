@@ -15,6 +15,8 @@ export interface DebtQueryParams {
   type?: 'customer' | 'supplier';
   address?: string;        // Lọc theo địa chỉ
   blacklist?: string;      // 'true' hoặc 'false'
+  from?: string;           // NEW: Lọc từ ngày
+  to?: string;             // NEW: Lọc đến ngày
 }
 
 // ==========================================
@@ -56,6 +58,8 @@ export interface DebtDetailParams {
   id: number;
   type: 'customer' | 'supplier';
   year?: number;
+  from?: string;
+  to?: string;
 }
 class SmartDebtService {
   // =========================================================================
@@ -63,9 +67,18 @@ class SmartDebtService {
   // =========================================================================
   async getAll(params: DebtQueryParams) {
 
-    const { page = 1, limit = 20, search, status, year, assignedUserId, type, address, blacklist } = params;
+    const { page = 1, limit = 20, search, status, year, assignedUserId, type, address, blacklist, from, to } = params;
     const skip = (Number(page) - 1) * Number(limit);
     const targetYearStr = year ? String(year) : String(new Date().getFullYear());
+
+    let startDate: Date | undefined;
+    let endDate: Date | undefined;
+    if (from && to) {
+      startDate = new Date(from);
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date(to);
+      endDate.setHours(23, 59, 59, 999);
+    }
 
     let data: any[] = [];
     let total = 0;
@@ -107,30 +120,64 @@ class SmartDebtService {
       const allItems: any[] = [];
       for (const customer of customers) {
         const customerId = customer.id;
-        const [incAgg, payAgg] = await Promise.all([
-          prisma.invoice.aggregate({
-            where: { customerId, orderStatus: { not: 'cancelled' } },
-            _sum: { totalAmount: true },
-          }),
-          prisma.paymentReceipt.aggregate({
-            where: { customerId },
-            _sum: { amount: true },
-          }),
-        ]);
 
-        const increase = Number(incAgg._sum.totalAmount || 0);
-        const payment = Number(payAgg._sum.amount || 0);
-        const returnAmount = await this._getCustomerReturnAmountByCustomerIdAndDateRange(
-          prisma, customerId, new Date(0), new Date()
-        );
-        const closingBalance = increase - payment - returnAmount;
+        let increase = 0, payment = 0, returnAmount = 0, openingBalance = 0;
+
+        if (startDate && endDate) {
+          // Tính đầu kỳ
+          const [incBefore, payBefore] = await Promise.all([
+            prisma.invoice.aggregate({
+              where: { customerId, orderStatus: { not: 'cancelled' }, orderDate: { lt: startDate } },
+              _sum: { totalAmount: true }
+            }),
+            prisma.paymentReceipt.aggregate({
+              where: { customerId, receiptDate: { lt: startDate } },
+              _sum: { amount: true }
+            })
+          ]);
+          const returnBefore = await this._getCustomerReturnAmountByCustomerIdAndDateRange(prisma, customerId, new Date(0), new Date(startDate.getTime() - 1));
+          openingBalance = Number(incBefore._sum.totalAmount || 0) - Number(payBefore._sum.amount || 0) - returnBefore;
+
+          // Tính trong kỳ
+          const [incAgg, payAgg] = await Promise.all([
+            prisma.invoice.aggregate({
+              where: { customerId, orderStatus: { not: 'cancelled' }, orderDate: { gte: startDate, lte: endDate } },
+              _sum: { totalAmount: true },
+            }),
+            prisma.paymentReceipt.aggregate({
+              where: { customerId, receiptDate: { gte: startDate, lte: endDate } },
+              _sum: { amount: true },
+            }),
+          ]);
+          increase = Number(incAgg._sum.totalAmount || 0);
+          payment = Number(payAgg._sum.amount || 0);
+          returnAmount = await this._getCustomerReturnAmountByCustomerIdAndDateRange(prisma, customerId, startDate, endDate);
+        } else {
+          // Logic cũ (tất cả thời gian)
+          const [incAgg, payAgg] = await Promise.all([
+            prisma.invoice.aggregate({
+              where: { customerId, orderStatus: { not: 'cancelled' } },
+              _sum: { totalAmount: true },
+            }),
+            prisma.paymentReceipt.aggregate({
+              where: { customerId },
+              _sum: { amount: true },
+            }),
+          ]);
+          increase = Number(incAgg._sum.totalAmount || 0);
+          payment = Number(payAgg._sum.amount || 0);
+          returnAmount = await this._getCustomerReturnAmountByCustomerIdAndDateRange(prisma, customerId, new Date(0), new Date());
+          openingBalance = 0;
+        }
+
+        const closingBalance = openingBalance + increase - payment - returnAmount;
 
         allItems.push(
           this._mapToDebtItem(
             customer,
             {
               id: 0,
-              openingBalance: 0,
+              openingBalance: openingBalance,
               increasingAmount: increase,
               decreasingAmount: payment,
               returnAmount,
@@ -163,6 +210,7 @@ class SmartDebtService {
       // Tính summary từ toàn bộ dữ liệu (trước phân trang)
       const inlineSummary = filtered.reduce(
         (acc: any, item: any) => {
+          acc.opening += Number(item.openingBalance) || 0;
           acc.increase += Number(item.increasingAmount) || 0;
           acc.returnAmount += Number(item.returnAmount) || 0;
           acc.payment += Number(item.decreasingAmount) || 0;
@@ -214,30 +262,65 @@ class SmartDebtService {
       const allItems: any[] = [];
       for (const supplier of suppliers) {
         const supplierId = supplier.id;
-        const [incAgg, payAgg] = await Promise.all([
-          prisma.purchaseOrder.aggregate({
-            where: { supplierId, status: { not: 'cancelled' } },
-            _sum: { totalAmount: true },
-          }),
-          prisma.paymentVoucher.aggregate({
-            where: { supplierId },
-            _sum: { amount: true },
-          }),
-        ]);
 
-        const increase = Number(incAgg._sum.totalAmount || 0);
-        const payment = Number(payAgg._sum.amount || 0);
-        const returnAmount = await this._getSupplierReturnAmountBySupplierIdAndDateRange(
-          prisma, supplierId, new Date(0), new Date()
-        );
-        const closingBalance = increase - payment - returnAmount;
+        let increase = 0, payment = 0, returnAmount = 0, openingBalance = 0;
+
+        if (startDate && endDate) {
+          // Tính đầu kỳ
+          const [incBefore, payBefore] = await Promise.all([
+            prisma.purchaseOrder.aggregate({
+              where: { supplierId, status: { not: 'cancelled' }, orderDate: { lt: startDate } },
+              _sum: { totalAmount: true }
+            }),
+            prisma.paymentVoucher.aggregate({
+              where: { supplierId, paymentDate: { lt: startDate } },
+              _sum: { amount: true }
+            })
+          ]);
+          const returnBefore = await this._getSupplierReturnAmountBySupplierIdAndDateRange(prisma, supplierId, new Date(0), new Date(startDate.getTime() - 1));
+          openingBalance = Number(incBefore._sum.totalAmount || 0) - Number(payBefore._sum.amount || 0) - returnBefore;
+
+          // Tính trong kỳ
+          const [incAgg, payAgg] = await Promise.all([
+            prisma.purchaseOrder.aggregate({
+              where: { supplierId, status: { not: 'cancelled' }, orderDate: { gte: startDate, lte: endDate } },
+              _sum: { totalAmount: true },
+            }),
+            prisma.paymentVoucher.aggregate({
+              where: { supplierId, paymentDate: { gte: startDate, lte: endDate } },
+              _sum: { amount: true },
+            }),
+          ]);
+          increase = Number(incAgg._sum.totalAmount || 0);
+          payment = Number(payAgg._sum.amount || 0);
+          returnAmount = await this._getSupplierReturnAmountBySupplierIdAndDateRange(prisma, supplierId, startDate, endDate);
+        } else {
+          // Logic cũ (tất cả thời gian)
+          const [incAgg, payAgg] = await Promise.all([
+            prisma.purchaseOrder.aggregate({
+              where: { supplierId, status: { not: 'cancelled' } },
+              _sum: { totalAmount: true },
+            }),
+            prisma.paymentVoucher.aggregate({
+              where: { supplierId },
+              _sum: { amount: true },
+            }),
+          ]);
+
+          increase = Number(incAgg._sum.totalAmount || 0);
+          payment = Number(payAgg._sum.amount || 0);
+          returnAmount = await this._getSupplierReturnAmountBySupplierIdAndDateRange(prisma, supplierId, new Date(0), new Date());
+          openingBalance = 0;
+        }
+
+        const closingBalance = openingBalance + increase - payment - returnAmount;
 
         allItems.push(
           this._mapToDebtItem(
             supplier,
             {
               id: 0,
-              openingBalance: 0,
+              openingBalance: openingBalance,
               increasingAmount: increase,
               decreasingAmount: payment,
               returnAmount,
@@ -270,6 +353,7 @@ class SmartDebtService {
       // Tính summary từ toàn bộ dữ liệu
       const inlineSummary = filtered.reduce(
         (acc: any, item: any) => {
+          acc.opening += Number(item.openingBalance) || 0;
           acc.increase += Number(item.increasingAmount) || 0;
           acc.returnAmount += Number(item.returnAmount) || 0;
           acc.payment += Number(item.decreasingAmount) || 0;
@@ -470,15 +554,28 @@ class SmartDebtService {
   // =========================================================================
   // 2. GET DETAIL (CÁC TRƯỜNG MỚI TỪ DB THẬT)
   // =========================================================================
-  async getDetail(id: number, type: 'customer' | 'supplier', year?: number) {
-    const targetYear = year || new Date().getFullYear();
-    const periodName = String(targetYear);
-
+  async getDetail(id: number, type: 'customer' | 'supplier', year?: number, fromDateStr?: string, toDateStr?: string) {
     // 🟢 LOGIC QUERY DB
     console.log(`🐢 Querying DB for Detail...`);
 
-    const startOfYear = new Date(targetYear, 0, 1);
-    const endOfYear = new Date(targetYear, 11, 31, 23, 59, 59);
+    let startDate: Date;
+    let endDate: Date;
+    let periodName: string;
+
+    if (fromDateStr && toDateStr) {
+      startDate = new Date(fromDateStr);
+      startDate.setHours(0, 0, 0, 0);
+
+      endDate = new Date(toDateStr);
+      endDate.setHours(23, 59, 59, 999);
+      
+      periodName = String(startDate.getFullYear());
+    } else {
+      const targetYear = year || new Date().getFullYear();
+      periodName = String(targetYear);
+      startDate = new Date(targetYear, 0, 1);
+      endDate = new Date(targetYear, 11, 31, 23, 59, 59);
+    }
 
     let entityInfo: any = null;
     let debtPeriod: any = null;
@@ -514,23 +611,26 @@ class SmartDebtService {
       orders = await prisma.invoice.findMany({
         where: {
           customerId: Number(id),
-          orderDate: { gte: startOfYear, lte: endOfYear },
+          orderDate: { gte: startDate, lte: endDate },
           orderStatus: { not: 'cancelled' }
         },
         orderBy: { orderDate: 'desc' },
         select: {
           id: true, orderCode: true, totalAmount: true, orderDate: true, orderStatus: true,
-          notes: true
+          notes: true,
+          details: {
+            include: { product: { select: { id: true, productName: true, code: true, image: true } } }
+          }
         }
       });
 
       payments = await prisma.paymentReceipt.findMany({
         where: {
           customerId: Number(id),
-          receiptDate: { gte: startOfYear, lte: endOfYear }
+          receiptDate: { gte: startDate, lte: endDate }
         },
         orderBy: { receiptDate: 'desc' },
-        select: { id: true, receiptCode: true, amount: true, receiptDate: true, notes: true }
+        select: { id: true, receiptCode: true, amount: true, receiptDate: true, notes: true, orderId: true }
       });
 
       // ✅ LẤY DỮ LIỆU TRẢ HÀNG TỪ KHO (Sale Refunds)
@@ -539,7 +639,7 @@ class SmartDebtService {
           transactionType: 'import',      // Nhập kho lại
           referenceType: 'sale_refunds',  // Khách trả hàng
           referenceId: { not: null },
-          createdAt: { gte: startOfYear, lte: endOfYear },
+          createdAt: { gte: startDate, lte: endDate },
         },
         orderBy: { createdAt: 'desc' },
         include: {
@@ -567,39 +667,81 @@ class SmartDebtService {
             // Map unitValue cho InvoiceDetail: unitValue = lineTotal / lineQty
             const invoiceDetails = await prisma.invoiceDetail.findMany({
               where: { orderId: { in: allowedOrderIds } },
-              select: { orderId: true, productId: true, quantity: true, total: true, price: true }
+              select: { orderId: true, productId: true, quantity: true, total: true, price: true, unitName: true }
             });
 
             const unitValueMap = new Map<string, number>();
+            const unitNameMap = new Map<number, string>();
             for (const d of invoiceDetails) {
               const qty = this._toNumber(d.quantity);
               if (!qty) continue;
               const total = this._toNumber(d.total);
               
               const unit = total > 0 ? (total / qty) : this._toNumber((d as any).price);
-              unitValueMap.set(`${d.orderId}:${d.productId}`, unit);
+              const mapKey = `${d.orderId}:${d.productId}`;
+              const existing = unitValueMap.get(mapKey) || 0;
+              // Only set/overwrite if the new unit price is greater (avoids gift rows with price=0 overwriting real prices)
+              if (unit > existing) {
+                unitValueMap.set(mapKey, unit);
+              }
+              if (d.unitName && !unitNameMap.has(d.productId)) {
+                unitNameMap.set(d.productId, d.unitName);
+              }
             }
 
             const filteredReturns = stockReturns.filter(r => r.referenceId && allowedSet.has(r.referenceId));
+
+            // Collect all productIds from return details and query products directly
+            const returnProductIds = new Set<number>();
+            for (const r of filteredReturns) {
+              for (const det of (r.details || []) as any[]) {
+                returnProductIds.add(det.productId);
+              }
+            }
+
+            // Query products directly by ID to avoid nested include issues
+            const returnProducts = returnProductIds.size > 0
+              ? await prisma.product.findMany({
+                  where: { id: { in: Array.from(returnProductIds) } },
+                  select: { id: true, productName: true, code: true }
+                })
+              : [];
+
+            const productInfoMap = new Map<number, { productName: string; code: string }>();
+            for (const p of returnProducts) {
+              productInfoMap.set(p.id, { productName: p.productName, code: p.code });
+            }
 
             // Map về cấu trúc hiển thị (tính amount theo từng stockReturn)
             returns = filteredReturns.map(r => {
               const orderId = r.referenceId as number;
               let amount = 0;
 
-              for (const det of r.details || []) {
-                const unit = unitValueMap.get(`${orderId}:${det.productId}`);
-                if (!unit) continue;
-                amount += this._toNumber(det.quantity) * unit;
-              }
+              // Enrich details with product name and unit price for print template
+              const enrichedDetails = (r.details || []).map((det: any) => {
+                const unitPrice = unitValueMap.get(`${orderId}:${det.productId}`) || 0;
+                const qty = this._toNumber(det.quantity);
+                const lineTotal = qty * unitPrice;
+                amount += lineTotal;
+                const pInfo = productInfoMap.get(det.productId);
+                return {
+                  productId: det.productId,
+                  productName: pInfo?.productName || 'Sản phẩm đã xóa',
+                  sku: pInfo?.code || '',
+                  unitName: unitNameMap.get(det.productId) || '',
+                  quantity: qty,
+                  unitPrice: isNaN(unitPrice) ? 0 : unitPrice,
+                  lineTotal: isNaN(lineTotal) ? 0 : lineTotal,
+                };
+              });
 
               return {
                 id: r.id,
                 code: r.transactionCode,
                 date: r.createdAt,
-                amount,
+                amount: isNaN(amount) ? 0 : amount,
                 note: r.reason || r.notes || 'Khách trả hàng',
-                details: r.details
+                details: enrichedDetails
               };
             });
           }
@@ -632,7 +774,7 @@ class SmartDebtService {
       orders = await prisma.purchaseOrder.findMany({
         where: {
           supplierId: Number(id),
-          orderDate: { gte: startOfYear, lte: endOfYear },
+          orderDate: { gte: startDate, lte: endDate },
           status: { not: 'cancelled' }
         },
         orderBy: { orderDate: 'desc' },
@@ -640,7 +782,7 @@ class SmartDebtService {
           id: true, poCode: true, totalAmount: true, orderDate: true, status: true,
           notes: true,
           details: {
-            include: { product: { select: { id: true, productName: true, code: true } } }
+            include: { product: { select: { id: true, productName: true, code: true, image: true } } }
           }
         }
       });
@@ -648,7 +790,7 @@ class SmartDebtService {
       payments = await prisma.paymentVoucher.findMany({
         where: {
           supplierId: Number(id),
-          paymentDate: { gte: startOfYear, lte: endOfYear }
+          paymentDate: { gte: startDate, lte: endDate }
         },
         orderBy: { paymentDate: 'desc' },
         select: { id: true, voucherCode: true, amount: true, paymentDate: true, notes: true }
@@ -660,7 +802,7 @@ class SmartDebtService {
           transactionType: 'export',          // Xuất trả NCC
           referenceType: 'purchase_refunds',  // Trả hàng mua
           referenceId: { not: null },
-          createdAt: { gte: startOfYear, lte: endOfYear },
+          createdAt: { gte: startDate, lte: endDate },
         },
         orderBy: { createdAt: 'desc' },
         include: {
@@ -737,55 +879,66 @@ class SmartDebtService {
             productId: item.productId,
             productName: item.product?.productName || "Sản phẩm đã xóa",
             sku: item.product?.code,
+            image: item.product?.image,
+            unitName: item.unitName || '',
+            gift: item.gift || false,
             quantity: Number(item.quantity),
             price: Number(item.unitPrice || item.price || 0),
+            total: Number(item.total || 0),
           });
         });
       }
     });
 
-    // Tính tổng tiền trả hàng thực tế từ DB
+    // ----------------------------------------------------------------------------------
+    // Tính toán Opening Balance chính xác tại `startDate` và tổng hợp tăng giảm trong kỳ
+    // ----------------------------------------------------------------------------------
+    let openingAtStartDate = 0;
+    
+    if (type === 'customer') {
+      const [totalIncBeforeAgg, totalPayBeforeAgg] = await Promise.all([
+        prisma.invoice.aggregate({
+          where: { customerId: Number(id), orderStatus: { not: 'cancelled' }, orderDate: { lt: startDate } },
+          _sum: { totalAmount: true }
+        }),
+        prisma.paymentReceipt.aggregate({
+          where: { customerId: Number(id), receiptDate: { lt: startDate } },
+          _sum: { amount: true }
+        })
+      ]);
+      const totalReturnBefore = await this._getCustomerReturnAmountByCustomerIdAndDateRange(prisma, Number(id), new Date(0), new Date(startDate.getTime() - 1));
+      openingAtStartDate = Number(totalIncBeforeAgg._sum.totalAmount || 0) - Number(totalPayBeforeAgg._sum.amount || 0) - totalReturnBefore;
+    } else {
+      const [totalIncBeforeAgg, totalPayBeforeAgg] = await Promise.all([
+        prisma.purchaseOrder.aggregate({
+          where: { supplierId: Number(id), status: { not: 'cancelled' }, orderDate: { lt: startDate } },
+          _sum: { totalAmount: true }
+        }),
+        prisma.paymentVoucher.aggregate({
+          where: { supplierId: Number(id), paymentDate: { lt: startDate } },
+          _sum: { amount: true }
+        })
+      ]);
+      const totalReturnBefore = await this._getSupplierReturnAmountBySupplierIdAndDateRange(prisma, Number(id), new Date(0), new Date(startDate.getTime() - 1));
+      openingAtStartDate = Number(totalIncBeforeAgg._sum.totalAmount || 0) - Number(totalPayBeforeAgg._sum.amount || 0) - totalReturnBefore;
+    }
+
+    // Các phát sinh trong kỳ (tính từ mảng dữ liệu đã fetch để đồng nhất)
+    const increase = orders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+    const payment = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
     const totalReturnReal = returns.reduce((sum, item) => sum + item.amount, 0);
     const totalAdjustReal = 0; // Chưa có logic adjustment
 
-    // Logic tính Closing Balance:
-    // Closing = Opening + Increase - (Payment + Return + Adjust)
-    // Lưu ý: Cột decreasingAmount trong DB thường lưu tổng giảm (Payment + Return) nếu hàm Sync đã gộp.
-    // Nếu hàm Sync chưa gộp return vào decreasingAmount, thì ta trừ thủ công ở đây.
-    // Giả sử hàm SyncSnap đã gộp return vào decreasingAmount, thì closingBalance trong DB là đúng.
-    // Nhưng để hiển thị tách bạch trên UI, ta cần:
-    // - Payment (Thanh toán thuần) = decreasingAmount (DB) - Return (DB)
-    // - Return = Return (DB)
+    const closingCalculated = openingAtStartDate + increase - payment - totalReturnReal;
 
-    // Tuy nhiên, vì bảng DebtPeriod hiện tại CHƯA có cột returnAmount riêng,
-    // và decreasingAmount đang chứa cả hai (hoặc chỉ payment tùy logic sync cũ).
-    // An toàn nhất là tính toán lại closing để hiển thị realtime:
-
-    const opening = Number(debtPeriod?.openingBalance || 0);
-    const increase = Number(debtPeriod?.increasingAmount || 0);
-    // Giả sử decreasingAmount trong DB chỉ là tiền thanh toán (từ PaymentReceipt/Voucher)
-    // Nếu syncSnap logic cũ chỉ cộng PaymentReceipt vào decreasingAmount, thì Return chưa được trừ.
-    const payment = Number(debtPeriod?.decreasingAmount || 0);
-
-    // Vậy Closing hiển thị sẽ là:
-    const closingCalculated = opening + increase - payment - totalReturnReal;
-
-    const financials = debtPeriod ? {
-      opening,
+    const financials = {
+      opening: openingAtStartDate,
       increase,
-      payment, // Đây là tiền thanh toán
-
+      payment, 
       returnAmount: totalReturnReal,
       adjustmentAmount: totalAdjustReal,
-
-      closing: closingCalculated, // Số dư cuối kỳ chính xác
+      closing: closingCalculated,
       status: closingCalculated > 1000 ? 'unpaid' : 'paid'
-    } : {
-      opening: 0, increase: 0, payment: 0,
-      returnAmount: totalReturnReal,
-      adjustmentAmount: 0,
-      closing: 0 - totalReturnReal, // Khách trả hàng khi chưa mua gì -> Âm nợ (Có tiền dư)
-      status: 'paid'
     };
 
     const response = {

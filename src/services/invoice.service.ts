@@ -158,10 +158,37 @@ class InvoiceService {
       prisma.invoice.count({ where }),
     ]);
 
-    const ordersWithRemaining = orders.map((order) => ({
-      ...order,
-      remainingAmount: Number(order.totalAmount) - Number(order.paidAmount),
-    }));
+    const orderIds = orders.map(o => o.id);
+    const refundTransactions = await prisma.stockTransaction.findMany({
+      where: {
+        referenceType: 'sale_refunds',
+        referenceId: { in: orderIds },
+        transactionType: 'import',
+        isPosted: true,
+        deletedAt: null
+      },
+      include: { details: true }
+    });
+
+    const ordersWithRemaining = orders.map((order) => {
+      let refundedAmount = 0;
+      const orderRefunds = refundTransactions.filter(rt => rt.referenceId === order.id);
+      orderRefunds.forEach(receipt => {
+        receipt.details.forEach(rd => {
+          const invoiceItem = order.details.find(id => String(id.productId) === String(rd.productId));
+          if (invoiceItem && Number(invoiceItem.quantity) > 0) {
+            const itemEffectivePrice = Number(invoiceItem.total || 0) / Number(invoiceItem.quantity);
+            refundedAmount += Number(rd.quantity || 0) * itemEffectivePrice;
+          }
+        });
+      });
+
+      return {
+        ...order,
+        refundedAmount,
+        remainingAmount: Number(order.totalAmount) - Number(order.paidAmount) - refundedAmount,
+      };
+    });
 
     return {
       data: ordersWithRemaining,
@@ -538,17 +565,15 @@ class InvoiceService {
       );
     }
 
-    // For credit/installment payment, check remaining debt
-    if (
-      (data.paymentMethod === 'credit' || data.paymentMethod === 'installment') &&
-      paidAmount < totalAmount
-    ) {
-      const debtFromThisOrder = totalAmount - paidAmount;
-      const newDebt = Number(validatedCustomer?.currentDebt || 0) + debtFromThisOrder;
-      const limit = Number(validatedCustomer?.creditLimit || Infinity);
-      if (limit > 0 && newDebt > limit) {
+    // Kiểm tra hạn mức công nợ khách hàng (Áp dụng cho mọi hình thức thanh toán nếu có hạn mức)
+    const limit = Number(validatedCustomer?.creditLimit || 0);
+    if (limit > 0) {
+      const currentDebt = Number(validatedCustomer?.currentDebt || 0);
+      const availableLimit = limit - currentDebt;
+      
+      if (totalAmount > availableLimit) {
         throw new ValidationError(
-          `Đơn hàng vượt quá hạn mức tín dụng của khách hàng. Công nợ hiện tại: ${validatedCustomer?.currentDebt || 0}, Công nợ mới từ đơn hàng: ${debtFromThisOrder}, Hạn mức tín dụng: ${limit}`
+          `Khách hàng có hạn mức công nợ hiện tại không đủ. Tổng giá trị đơn hàng (${totalAmount.toLocaleString()} đ) vượt quá Hạn mức công nợ hiện tại (${availableLimit.toLocaleString()} đ). Yêu cầu kiểm tra và thay đổi giá trị đơn hàng hoặc nâng hạn mức công nợ.`
         );
       }
     }
@@ -1313,6 +1338,39 @@ class InvoiceService {
     return { message: 'Xóa đơn hàng bán thành công' };
   }
 
+  async bulkDelete(ids: number[], userId: number) {
+    const orders = await prisma.invoice.findMany({
+      where: { id: { in: ids }, deletedAt: null },
+    });
+
+    if (orders.length !== ids.length) {
+      throw new NotFoundError('Một hoặc nhiều đơn hàng không được tìm thấy hoặc đã bị xóa');
+    }
+
+    for (const order of orders) {
+      if (order.orderStatus !== 'pending' && order.orderStatus !== 'cancelled') {
+        throw new ValidationError('Chỉ có thể xóa các đơn hàng ở trạng thái chờ xử lý hoặc đã hủy');
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.invoice.updateMany({
+        where: { id: { in: ids } },
+        data: {
+          deletedAt: new Date(),
+        },
+      });
+    });
+
+    logActivity('delete', userId, 'invoices', {
+      action: 'bulk_delete',
+      orderCount: ids.length,
+      orderIds: ids,
+    });
+
+    return { message: 'Xóa các đơn hàng đã chọn thành công' };
+  }
+
   async revert(id: number, userId: number) {
     const order = await prisma.invoice.findFirst({
       where: { id, deletedAt: null },
@@ -1380,6 +1438,36 @@ class InvoiceService {
     return updatedOrder;
   }
 
+  async recheckStatus(invoiceId: number, userId: number) {
+    const orderBefore = await prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      select: { orderStatus: true, paymentStatus: true }
+    });
+
+    if (!orderBefore) {
+      throw new NotFoundError('Không tìm thấy đơn hàng');
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await this.checkAndCompleteOrder(invoiceId, userId, tx);
+    });
+
+    const orderAfter = await prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      select: { orderStatus: true, paymentStatus: true }
+    });
+
+    const changed = 
+      orderBefore.orderStatus !== orderAfter?.orderStatus ||
+      orderBefore.paymentStatus !== orderAfter?.paymentStatus;
+
+    return {
+      changed,
+      before: orderBefore,
+      after: orderAfter
+    };
+  }
+
   async checkAndCompleteOrder(invoiceId: number, userId: number, tx: Prisma.TransactionClient) {
     const order = await tx.invoice.findFirst({
       where: { id: invoiceId, deletedAt: null },
@@ -1394,12 +1482,39 @@ class InvoiceService {
 
     if (!order) return;
 
-    // Condition 1: Fully Paid
-    // Nếu paymentStatus đã là 'paid' → OK
-    // Nếu khách hàng có công nợ dương (currentDebt < 0) → coi như đã trả trước, tương đương đã thanh toán
+    // Tính tổng tiền hoàn trả (refundedAmount)
+    const refundTransactions = await tx.stockTransaction.findMany({
+      where: {
+        referenceType: 'sale_refunds',
+        referenceId: invoiceId,
+        isPosted: true,
+        deletedAt: null,
+      },
+      include: {
+        details: true,
+      },
+    });
+
+    let refundedAmount = 0;
+    for (const rt of refundTransactions) {
+      for (const rd of rt.details) {
+        const invoiceItem = order.details.find(id => id.productId === rd.productId);
+        if (invoiceItem && Number(invoiceItem.quantity) > 0) {
+          const itemEffectivePrice = Number(invoiceItem.total || 0) / Number(invoiceItem.quantity);
+          refundedAmount += Number(rd.quantity) * itemEffectivePrice;
+        }
+      }
+    }
+
     const customerDebt = Number(order.customer?.currentDebt || 0);
-    const hasPrepaidCredit = customerDebt < 0;
-    const isPaid = order.paymentStatus === 'paid' || hasPrepaidCredit;
+    const hasPrepaidCredit = customerDebt <= 0;
+    const unpaidThisInvoice = Number(order.totalAmount) - Number(order.paidAmount) - refundedAmount;
+    
+    // Đơn hàng được coi là đã thanh toán nếu: 
+    // 1. paymentStatus = 'paid'
+    // 2. Hoặc khách hàng không còn nợ (hasPrepaidCredit)
+    // 3. Hoặc số tiền trả + tiền hoàn hàng >= tổng tiền đơn hàng (unpaidThisInvoice <= 0)
+    const isPaid = order.paymentStatus === 'paid' || hasPrepaidCredit || unpaidThisInvoice <= 0;
 
     // Condition 2: Fully Exported
     const stockTransactions = await tx.stockTransaction.findMany({
@@ -1437,6 +1552,9 @@ class InvoiceService {
       isDelivered = order.deliveries.every(d => d.deliveryStatus === 'delivered');
     }
 
+    console.log(`[checkAndCompleteOrder] invoiceId: ${invoiceId}, isPaid: ${isPaid}, isFullyExported: ${isFullyExported}, isDelivered: ${isDelivered}`);
+    console.log(`[checkAndCompleteOrder] paymentStatus: ${order.paymentStatus}, hasPrepaidCredit: ${hasPrepaidCredit}, unpaidThisInvoice: ${unpaidThisInvoice}`);
+
     if (isPaid && isFullyExported && isDelivered) {
       // Nếu hoàn thành nhờ trả trước, cập nhật paymentStatus và trừ công nợ
       const updateData: any = {
@@ -1444,11 +1562,10 @@ class InvoiceService {
         completedAt: new Date(),
       };
 
-      if (hasPrepaidCredit && order.paymentStatus !== 'paid') {
+      if ((hasPrepaidCredit || unpaidThisInvoice <= 0) && order.paymentStatus !== 'paid') {
         updateData.paymentStatus = 'paid';
-        updateData.paidAmount = Number(order.totalAmount);
-        // Không cần increment currentDebt ở đây vì đã được tính tại thời điểm tạo đơn hàng.
-        // Khi tạo đơn, debtAmount = totalAmount - paidAmount đã được cộng vào currentDebt.
+        // LƯU Ý: Không cập nhật paidAmount = totalAmount ở đây, để giữ nguyên số tiền thực tế khách đã trả.
+        // Điều này đảm bảo hiển thị đúng "Đã thanh toán" và "Đã hoàn trả" trên UI.
       }
 
       await tx.invoice.update({

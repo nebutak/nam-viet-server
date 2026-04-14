@@ -146,6 +146,27 @@ class InvoiceController {
     });
   }
 
+  // POST /api/invoices/bulk-delete - Delete multiple orders
+  async bulkDelete(req: AuthRequest, res: Response) {
+    const { ids } = req.body;
+    const userId = req.user!.id;
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid request: "ids" must be a non-empty array of numbers',
+      });
+    }
+
+    const result = await invoiceService.bulkDelete(ids, userId);
+
+    return res.status(200).json({
+      success: true,
+      message: result.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   // POST /api/invoices/:id/revert - Revert order to pending
   async revert(req: AuthRequest, res: Response) {
     const id = parseInt(req.params.id);
@@ -156,6 +177,22 @@ class InvoiceController {
       success: true,
       data: order,
       message: 'Chuyển trạng thái đơn hàng về chờ xác nhận thành công',
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // PUT /api/invoices/:id/recheck-status - Re-evaluate order completion status
+  async recheckStatus(req: AuthRequest, res: Response) {
+    const id = parseInt(req.params.id);
+    const userId = req.user!.id;
+    const result = await invoiceService.recheckStatus(id, userId);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      message: result.changed
+        ? 'Trạng thái đơn hàng đã được cập nhật tự động'
+        : 'Trạng thái đơn hàng không thay đổi',
       timestamp: new Date().toISOString(),
     });
   }

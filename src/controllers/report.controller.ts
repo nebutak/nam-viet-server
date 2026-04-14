@@ -267,11 +267,12 @@ class ReportController {
 
   // GET /api/reports/sales/top-products - Top selling products
   async getTopSellingProducts(req: AuthRequest, res: Response) {
-    const { limit, fromDate, toDate } = req.query;
+    const { limit, fromDate, toDate, sortBy } = req.query;
     const result = await reportService.getTopSellingProducts(
       limit ? parseInt(limit as string) : 10,
       fromDate as string,
-      toDate as string
+      toDate as string,
+      (sortBy as 'revenue' | 'quantity') || 'quantity'
     );
 
     res.status(200).json({
