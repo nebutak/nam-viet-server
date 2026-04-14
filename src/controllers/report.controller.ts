@@ -11,7 +11,7 @@ class ReportController {
       period: period as string,
       fromDate: fromDate as string,
       toDate: toDate as string,
-      warehouseId: warehouseId ? parseInt(warehouseId as string) : undefined,
+      warehouseId: (warehouseId && warehouseId !== 'all') ? parseInt(warehouseId as string) : undefined,
     });
 
     res.status(200).json({
@@ -50,7 +50,7 @@ class ReportController {
       period: period as string,
       fromDate: fromDate ? new Date(fromDate as string) : undefined,
       toDate: toDate ? new Date(toDate as string) : undefined,
-      warehouseId: warehouseId ? parseInt(warehouseId as string) : undefined,
+      warehouseId: (warehouseId && warehouseId !== 'all') ? parseInt(warehouseId as string) : undefined,
     });
 
     res.status(200).json({
@@ -66,7 +66,7 @@ class ReportController {
     const salesChannels = await reportService.getDashboardSalesChannels(
       fromDate as string,
       toDate as string,
-      warehouseId ? parseInt(warehouseId as string) : undefined
+      (warehouseId && warehouseId !== 'all') ? parseInt(warehouseId as string) : undefined
     );
 
     res.status(200).json({
@@ -80,7 +80,7 @@ class ReportController {
   async getDashboardInventoryByType(req: AuthRequest, res: Response) {
     const { warehouseId } = req.query;
     const inventoryByType = await reportService.getDashboardInventoryByType(
-      warehouseId ? parseInt(warehouseId as string) : undefined
+      (warehouseId && warehouseId !== 'all') ? parseInt(warehouseId as string) : undefined
     );
 
     res.status(200).json({
