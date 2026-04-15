@@ -57,7 +57,7 @@ class PurchaseOrderService {
           { supplier: { supplierName: { contains: search } } },
         ],
       }),
-      ...(status && { status: status as any }),
+      ...(status && { status: { in: status.split(',') as any[] } }),
       ...(supplierId && { supplierId: parseInt(supplierId) }),
       ...(fromDate &&
         toDate && {
@@ -173,7 +173,7 @@ class PurchaseOrderService {
           { supplier: { supplierName: { contains: search } } },
         ],
       }),
-      ...(status && { status: status as any }),
+      ...(status && { status: { in: status.split(',') as any[] } }),
       ...(supplierId && { supplierId: parseInt(supplierId) }),
       ...(fromDate &&
         toDate && {

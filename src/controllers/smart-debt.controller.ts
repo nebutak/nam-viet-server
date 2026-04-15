@@ -24,7 +24,7 @@ class SmartDebtController {
    */
   async getAll(req: Request, res: Response, next: NextFunction) {
     try {
-      const { page, limit, search, status, year, assignedUserId, type, address, blacklist } = req.query;
+      const { page, limit, search, status, year, assignedUserId, type, address, blacklist, from, to } = req.query;
 
       const result = await debtService.getAll({
         page: Number(page) || 1,
@@ -35,7 +35,9 @@ class SmartDebtController {
         assignedUserId: assignedUserId ? Number(assignedUserId) : undefined,
         type: type as 'customer' | 'supplier',
         address: address as string,
-        blacklist: blacklist as string
+        blacklist: blacklist as string,
+        from: from as string,
+        to: to as string
       });
 
       res.status(200).json({
@@ -89,7 +91,7 @@ class SmartDebtController {
   async getById(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params; // Đây là CustomerID hoặc SupplierID
-      const { year, type } = req.query;
+      const { year, type, from, to } = req.query;
 
       if (!type || (type !== 'customer' && type !== 'supplier')) {
         throw new ValidationError("Vui lòng truyền tham số type='customer' hoặc 'supplier'");
@@ -98,7 +100,9 @@ class SmartDebtController {
       const data = await debtService.getDetail(
         Number(id),
         type as 'customer' | 'supplier',
-        year ? Number(year) : undefined
+        year ? Number(year) : undefined,
+        from as string,
+        to as string
       );
 
       res.status(200).json({

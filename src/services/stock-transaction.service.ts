@@ -1580,7 +1580,17 @@ class StockTransactionService {
       }).then((invoice) => {
         if (!invoice?.customerId) return;
         console.log(`🔄 [AutoSync] Triggering debt sync for Customer ${invoice.customerId} after return goods`);
-        smartDebtService.syncSnap({ customerId: invoice.customerId, year }).catch((err) =>
+        smartDebtService.syncSnap({ customerId: invoice.customerId, year }).then(async () => {
+          // Tự động kiểm tra và hoàn thành đơn hàng sau khi đồng bộ trừ công nợ (vì hàng đã trả đủ)
+          try {
+            await prisma.$transaction(async (tx) => {
+              await invoiceService.checkAndCompleteOrder(referenceId, 1, tx); // userId 1 for system action
+            });
+            console.log(`✅ [AutoSync] Auto-check complete order ${referenceId} successful`);
+          } catch (syncErr: any) {
+            console.error(`❌ [AutoSync] Failed to auto-check complete order ${referenceId}:`, syncErr.message);
+          }
+        }).catch((err) =>
           console.error(`[AutoSync] Failed to sync debt for customer ${invoice.customerId}:`, err.message)
         );
       }).catch((err) => {

@@ -135,7 +135,7 @@ export const purchaseOrderQuerySchema = z.object({
   page: z.string().regex(/^\d+$/).optional().default('1'),
   limit: z.string().regex(/^\d+$/).optional().default('20'),
   search: z.string().trim().optional(),
-  status: z.enum(['pending', 'approved', 'received', 'cancelled']).optional(),
+  status: z.string().optional(),
   supplierId: z.string().optional(),
   fromDate: z.string().optional(),
   toDate: z.string().optional(),

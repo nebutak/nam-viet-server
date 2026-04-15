@@ -1,5 +1,5 @@
 import { PrismaClient, Prisma } from '@prisma/client';
-import { NotFoundError, ValidationError, ConflictError } from '@utils/errors';
+import { NotFoundError, ConflictError } from '@utils/errors';
 import { logActivity } from '@utils/logger';
 import type {
   CreateSupplierInput,
@@ -393,20 +393,38 @@ class SupplierService {
       throw new NotFoundError('Nhà cung cấp không tồn tại');
     }
 
-    if (supplier._count.products > 0) {
-      throw new ValidationError('Không thể xóa nhà cung cấp có sản phẩm tồn tại');
+    // Tìm các sản phẩm của nhà cung cấp này
+    const products = await prisma.product.findMany({
+      where: { supplierId: id, deletedAt: null },
+      include: { inventory: true },
+    });
+
+    const productsToDelete: number[] = [];
+    for (const p of products) {
+      const totalStock = p.inventory.reduce((sum, inv) => sum + Number(inv.quantity), 0);
+      if (totalStock === 0) {
+        productsToDelete.push(p.id);
+      }
     }
 
-    if (supplier._count.purchaseOrders > 0) {
-      throw new ValidationError('Không thể xóa nhà cung cấp có đơn hàng tồn tại');
-    }
+    await prisma.$transaction(async (tx) => {
+      // Xóa nhà cung cấp (soft delete)
+      await tx.supplier.update({
+        where: { id },
+        data: {
+          deletedAt: new Date(),
+        },
+      });
 
-    // soft delete
-    await prisma.supplier.update({
-      where: { id },
-      data: {
-        deletedAt: new Date(),
-      },
+      // Xóa các sản phẩm không có tồn kho
+      if (productsToDelete.length > 0) {
+        await tx.product.updateMany({
+          where: { id: { in: productsToDelete } },
+          data: {
+            deletedAt: new Date(),
+          },
+        });
+      }
     });
 
     logActivity('delete', deletedBy, 'suppliers', {
@@ -418,29 +436,38 @@ class SupplierService {
   }
 
   async bulkDelete(ids: number[], deletedBy: number) {
-    // Check if any of these suppliers have constraints
-    const suppliers = await prisma.supplier.findMany({
-      where: { id: { in: ids } },
-      include: {
-        _count: {
-          select: { products: true, purchaseOrders: true }
+
+    await prisma.$transaction(async (tx) => {
+      // Bulk update suppliers
+      await tx.supplier.updateMany({
+        where: { id: { in: ids } },
+        data: {
+          deletedAt: new Date(),
+        },
+      });
+
+      // Find products for all these suppliers
+      const products = await tx.product.findMany({
+        where: { supplierId: { in: ids }, deletedAt: null },
+        include: { inventory: true },
+      });
+
+      const productsToDelete: number[] = [];
+      for (const p of products) {
+        const totalStock = p.inventory.reduce((sum, inv) => sum + Number(inv.quantity), 0);
+        if (totalStock === 0) {
+          productsToDelete.push(p.id);
         }
       }
-    });
 
-    const hasConstraints = suppliers.some(
-      s => s._count.products > 0 || s._count.purchaseOrders > 0
-    );
-
-    if (hasConstraints) {
-      throw new ValidationError('Không thể xóa nhà cung cấp đang có sản phẩm hoặc đơn hàng');
-    }
-
-    await prisma.supplier.updateMany({
-      where: { id: { in: ids } },
-      data: {
-        deletedAt: new Date(),
-      },
+      if (productsToDelete.length > 0) {
+        await tx.product.updateMany({
+          where: { id: { in: productsToDelete } },
+          data: {
+            deletedAt: new Date(),
+          },
+        });
+      }
     });
 
     logActivity('delete', deletedBy, 'suppliers', {
