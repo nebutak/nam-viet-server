@@ -5,6 +5,7 @@ import { AuthenticationError, NotFoundError, ValidationError } from '@utils/erro
 import { JwtPayload } from '@custom-types/common.type';
 import { logActivity } from '@utils/logger';
 import emailService from './email.service';
+import loginHistoryService from './login-history.service';
 
 const prisma = new PrismaClient();
 
@@ -111,6 +112,17 @@ class AuthService {
     // Auto cleanup logic could be added here, but for simplicity we rely on JWT maxAge
 
     logActivity('logout', userId, 'auth');
+
+    // Create ActivityLog entry for system log
+    await prisma.activityLog.create({
+      data: {
+        userId,
+        action: 'logout',
+        tableName: 'auth',
+        recordId: userId,
+        status: 'success',
+      },
+    });
 
     return { message: 'Đăng xuất thành công' };
   }
@@ -434,7 +446,7 @@ class AuthService {
   }
 
   // Verify OTP code and complete login
-  async verifyOTPAndLogin(email: string, code: string, ipAddress?: string) {
+  async verifyOTPAndLogin(email: string, code: string, ipAddress?: string, userAgent?: string) {
     const user = await prisma.user.findUnique({
       where: { email },
       include: {
@@ -513,8 +525,27 @@ class AuthService {
 
     logActivity('login', user.id, 'auth', {
       ipAddress,
-      userAgent: 'unknown',
+      userAgent: userAgent || 'unknown',
       method: '2FA_OTP',
+    });
+
+    // Create LoginHistory entry
+    await loginHistoryService.createLoginHistory(user.id, {
+      userAgent: userAgent || 'unknown',
+      ipAddress: ipAddress || 'unknown',
+    });
+
+    // Create ActivityLog entry for system log
+    await prisma.activityLog.create({
+      data: {
+        userId: user.id,
+        action: 'login',
+        tableName: 'auth',
+        recordId: user.id,
+        ipAddress: ipAddress || 'unknown',
+        userAgent: userAgent || 'unknown',
+        status: 'success',
+      },
     });
 
     const permissions = await this.getUserPermissions(user.id, user.roleId);

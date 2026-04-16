@@ -1326,6 +1326,8 @@ enum LogAction {
   update
   delete
   approve
+  login
+  logout
 }
 
 enum LogStatus {

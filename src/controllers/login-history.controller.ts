@@ -43,9 +43,9 @@ class LoginHistoryController {
   // POST /api/settings/login-history/revoke - Revoke login sessions
   async revokeLoginSessions(req: AuthRequest, res: Response) {
     const userId = req.user!.id;
-    const { logIds } = req.body;
+    const { logs } = req.body;
 
-    const result = await loginHistoryService.revokeLoginSessions(userId, logIds);
+    const result = await loginHistoryService.revokeLoginSessions(userId, logs);
 
     const response: ApiResponse = {
       success: true,

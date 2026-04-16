@@ -102,8 +102,9 @@ class AuthController {
   async verifyOTP(req: AuthRequest, res: Response) {
     const { email, code } = req.body;
     const ipAddress = req.ip || req.socket.remoteAddress;
+    const userAgent = req.headers['user-agent'] || 'unknown';
 
-    const result = await authService.verifyOTPAndLogin(email, code, ipAddress);
+    const result = await authService.verifyOTPAndLogin(email, code, ipAddress, userAgent);
 
     // Return the token as string to match crm-template AuthSlice expectation
     const response: ApiResponse = {
