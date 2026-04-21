@@ -982,16 +982,16 @@ class StockTransactionService {
       // Add a quick random hash to avoid code collisions when inside transaction
       const uniqueSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
       
-      await tx.stockTransaction.create({
+      const autoImportTx = await tx.stockTransaction.create({
         data: {
           transactionCode: `${transactionCode}-${uniqueSuffix}`,
           transactionType: 'import',
           warehouseId: destWarehouseId,
-          referenceType: 'transfer_in',
+          referenceType: 'transfer_in_auto',
           referenceId: transaction.warehouseId, // Source warehouse
-          reason: transaction.reason || `Chuyển kho từ PN ${transaction.transactionCode}`,
+          reason: transaction.reason || `Nhập kho tự động từ PX ${transaction.transactionCode}`,
           notes: transaction.notes,
-          isPosted: false,
+          isPosted: true,
           createdBy: userId,
           details: {
             create: transaction.details.map((item: any) => ({
@@ -1004,7 +1004,13 @@ class StockTransactionService {
             })),
           },
         },
+        include: {
+          details: true,
+        }
       });
+
+      // Lập tức tăng tồn kho bên kho đích
+      await this.processImport(tx, autoImportTx, userId);
     }
     // ─────────────────────────────────────────────────────────────────────────
   }

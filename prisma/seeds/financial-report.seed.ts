@@ -35,7 +35,7 @@ async function main() {
 
   // Create payment receipts (THU TIỀN) for current month
   console.log('💰 Creating payment receipts...');
-  
+
   const receipts = [
     {
       receiptCode: 'PT-2026-0001',

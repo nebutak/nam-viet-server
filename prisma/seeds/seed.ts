@@ -14,8 +14,7 @@ import { seedInvoices } from './invoice.seed';
 import { seedPurchaseOrders } from './purchase_order.seed';
 import { seedStockTransactions } from './stock.seed';
 import { seedDeliveries } from './delivery.seed';
-import { seedFinancial } from './finance.seed';
-import { seedDebt } from './debt.seed';
+// import { seedFinancial } from './finance.seed';
 
 const prisma = new PrismaClient();
 
@@ -656,7 +655,7 @@ async function main() {
   );
 
   console.log(`✅ Assigned ${rolePermissions.length} permissions to admin role\n`);
-  
+
   // Assign debt permissions to accountant and sales_staff
   console.log('📝 Assigning debt permissions to accountant and sales staff...');
   const debtPermissions = permissions.filter(p => p.module === 'debt' || p.permissionKey.includes('DEBT'));
@@ -774,12 +773,12 @@ async function main() {
   // =====================================================
   // 20. SEED FINANCIAL TRANSACTIONS (Receipts, Vouchers)
   // =====================================================
-  await seedFinancial(prisma, adminUser.id);
+  // await seedFinancial(prisma, adminUser.id);
 
   // =====================================================
   // 21. SEED CUSTOMER DEBT DATA
   // =====================================================
-  await seedDebt(prisma);
+  // await seedDebt(prisma);
 
   console.log('✅ Database seed completed successfully! 🎉\n');
   console.log('📌 Login Credentials:\n');
