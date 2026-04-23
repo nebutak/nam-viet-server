@@ -46,7 +46,7 @@ const options: swaggerJsdoc.Options = {
     },
     servers: [
       {
-        url: 'http://localhost:5000',
+        url: `http://localhost:${process.env.PORT || 8000}`,
         description: 'Development server',
       },
       {
@@ -541,7 +541,7 @@ export const setupSwagger = (app: Application): void => {
   });
 
   console.log('✅ Swagger documentation setup complete');
-  console.log('📚 API Docs available at: http://localhost:5000/api-docs');
+  console.log(`📚 API Docs available at: http://localhost:${process.env.PORT || 8000}/api-docs`);
 };
 
 export default swaggerSpec;

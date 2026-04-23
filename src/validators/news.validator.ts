@@ -2,12 +2,12 @@ import { z } from 'zod';
 
 // Create News Schema
 export const createNewsSchema = z.object({
-    title: z.string().min(10, 'Title must be at least 10 characters').max(255),
-    slug: z.string().min(10).max(255),
+    title: z.string().min(1, 'Title is required').max(255),
+    slug: z.string().min(1, 'Slug is required').max(255),
     excerpt: z.string().optional(),
-    content: z.string().min(50, 'Content must be at least 50 characters'),
+    content: z.string().min(1, 'Content is required'),
     contentType: z.enum(['article', 'video']).default('article'),
-    featuredImage: z.string().optional(),
+    featuredImage: z.string().min(1, 'Ảnh đại diện là bắt buộc'),
     videoFile: z.string().optional(),
     videoThumbnail: z.string().optional(),
     videoDuration: z.number().int().positive().optional(),
@@ -30,6 +30,7 @@ export const newsQuerySchema = z.object({
     categoryId: z.string().optional(),
     status: z.enum(['draft', 'published', 'archived']).optional(),
     isFeatured: z.string().optional(),
+    contentType: z.string().optional(),
     search: z.string().optional(),
     sortBy: z.enum(['createdAt', 'publishedAt', 'viewCount', 'title']).optional(),
     sortOrder: z.enum(['asc', 'desc']).optional(),
@@ -37,10 +38,10 @@ export const newsQuerySchema = z.object({
 
 // Category Schema
 export const createCategorySchema = z.object({
-    categoryKey: z.string().min(2).max(50),
+    categoryKey: z.string().min(2).max(50).optional(),
     categoryName: z.string().min(2).max(100),
     description: z.string().optional(),
-    slug: z.string().min(2).max(100),
+    slug: z.string().min(2).max(100).optional(),
     displayOrder: z.number().int().optional(),
 });
 

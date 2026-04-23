@@ -85,9 +85,12 @@ export class NewsController {
 
             const news = await NewsService.createNews(data, userId);
 
-            res.status(201).json({ success: true, data: news });
+            return res.status(201).json({ success: true, data: news });
         } catch (error: any) {
-            res.status(400).json({ success: false, error: error.message });
+            if (error.code === 'P2002') {
+                return res.status(400).json({ success: false, error: 'Đường dẫn (slug) đã tồn tại. Vui lòng chọn tiêu đề hoặc slug khác.' });
+            }
+            return res.status(400).json({ success: false, error: error.message });
         }
     }
 
@@ -103,9 +106,12 @@ export class NewsController {
 
             const news = await NewsService.updateNews(id, data, userId);
 
-            res.json({ success: true, data: news });
+            return res.json({ success: true, data: news });
         } catch (error: any) {
-            res.status(400).json({ success: false, error: error.message });
+            if (error.code === 'P2002') {
+                return res.status(400).json({ success: false, error: 'Đường dẫn (slug) đã tồn tại. Vui lòng chọn tiêu đề hoặc slug khác.' });
+            }
+            return res.status(400).json({ success: false, error: error.message });
         }
     }
 

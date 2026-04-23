@@ -114,15 +114,20 @@ class AuthService {
     logActivity('logout', userId, 'auth');
 
     // Create ActivityLog entry for system log
-    await prisma.activityLog.create({
-      data: {
-        userId,
-        action: 'logout',
-        tableName: 'auth',
-        recordId: userId,
-        status: 'success',
-      },
-    });
+    try {
+      await prisma.activityLog.create({
+        data: {
+          userId,
+          action: 'logout',
+          tableName: 'auth',
+          recordId: userId,
+          status: 'success',
+        },
+      });
+    } catch (logErr) {
+      // Log non-critical - don't fail the request
+      console.warn('[ActivityLog] Failed to write logout activity:', (logErr as Error).message);
+    }
 
     return { message: 'Đăng xuất thành công' };
   }
@@ -536,17 +541,22 @@ class AuthService {
     });
 
     // Create ActivityLog entry for system log
-    await prisma.activityLog.create({
-      data: {
-        userId: user.id,
-        action: 'login',
-        tableName: 'auth',
-        recordId: user.id,
-        ipAddress: ipAddress || 'unknown',
-        userAgent: userAgent || 'unknown',
-        status: 'success',
-      },
-    });
+    try {
+      await prisma.activityLog.create({
+        data: {
+          userId: user.id,
+          action: 'login',
+          tableName: 'auth',
+          recordId: user.id,
+          ipAddress: ipAddress || 'unknown',
+          userAgent: userAgent || 'unknown',
+          status: 'success',
+        },
+      });
+    } catch (logErr) {
+      // Log non-critical - don't fail the login
+      console.warn('[ActivityLog] Failed to write login activity:', (logErr as Error).message);
+    }
 
     const permissions = await this.getUserPermissions(user.id, user.roleId);
     const mappedPermissions = permissions.map(code => ({ code }));

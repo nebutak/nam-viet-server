@@ -1,3 +1,0 @@
-4660 - "node"   "D:\Nam-viet-testing\nam-viet-server\node_modules\.bin\\..\ts-node\dist\bin.js" -r tsconfig-paths/register src/app.ts
-29680 - "C:\Program Files\nodejs\node.exe" "C:\Program Files\nodejs/node_modules/npm/bin/npm-cli.js" run dev
-19372 - "node"   "D:\Nam-viet-testing\nam-viet-client\node_modules\.bin\\..\vite\bin\vite.js" 

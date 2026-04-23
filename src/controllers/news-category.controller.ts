@@ -30,7 +30,36 @@ export class NewsCategoryController {
 
     static async createCategory(req: Request, res: Response) {
         try {
-            const data = createCategorySchema.parse(req.body);
+            const body = req.body;
+
+            // Auto-generate categoryKey from slug or categoryName if not provided
+            if (!body.categoryKey) {
+                const base = body.slug || body.categoryName || '';
+                body.categoryKey = base
+                    .toLowerCase()
+                    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                    .replace(/đ/g, 'd')
+                    .replace(/[^a-z0-9\s-]/g, '')
+                    .replace(/\s+/g, '-')
+                    .replace(/-+/g, '-')
+                    .trim()
+                    .substring(0, 50);
+            }
+
+            // Auto-generate slug from categoryName if not provided
+            if (!body.slug) {
+                body.slug = body.categoryName
+                    .toLowerCase()
+                    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                    .replace(/đ/g, 'd')
+                    .replace(/[^a-z0-9\s-]/g, '')
+                    .replace(/\s+/g, '-')
+                    .replace(/-+/g, '-')
+                    .trim()
+                    .substring(0, 100);
+            }
+
+            const data = createCategorySchema.parse(body);
             const category = await NewsCategoryService.createCategory(data);
 
             res.status(201).json({ success: true, data: category });

@@ -33,6 +33,10 @@ export class NewsService {
             where.isFeatured = query.isFeatured === 'true';
         }
 
+        if (query.contentType) {
+            where.contentType = query.contentType as any;
+        }
+
         if (query.search) {
             where.OR = [
                 { title: { contains: query.search } },

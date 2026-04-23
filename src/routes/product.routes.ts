@@ -17,6 +17,19 @@ import { parseFormData } from '@middlewares/parseFormData';
 
 const router = Router();
 
+// Public routes
+router.get(
+  '/public',
+  validate(productQuerySchema, 'query'),
+  asyncHandler(productController.getAll.bind(productController))
+);
+
+router.get(
+  '/public/:id',
+  validate(productIdSchema, 'params'),
+  asyncHandler(productController.getById.bind(productController))
+);
+
 // All routes require authentication
 router.use(authentication);
 
