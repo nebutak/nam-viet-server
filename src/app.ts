@@ -52,6 +52,7 @@ import reportRoutes from '@routes/report.routes';
 import financeRoutes from '@routes/finance.routes';
 import performanceRoutes from '@routes/performance.routes';
 import securityRoutes from '@routes/security.routes';
+
 import generalSettingRoutes from '@routes/general-setting.routes';
 import loginHistoryRoutes from '@routes/login-history.routes';
 import unitRoutes from '@routes/unit.routes';
@@ -61,6 +62,9 @@ import attributeRoutes from '@routes/attribute.routes';
 import smartDebtRoutes from '@routes/smart-debt.routes';
 import expiryRoutes from '@routes/expiry.routes';
 import warrantyRoutes from '@routes/warranty.routes';
+
+import customerAuthRoutes from '@routes/customer-auth.routes';
+import customerOrderRoutes from '@routes/customer-order.routes';
 
 // News routes
 import newsRoutes from '@routes/news.routes';
@@ -245,11 +249,13 @@ app.use('/api/attributes', attributeRoutes);
 app.use('/api/smart-debt', smartDebtRoutes);
 app.use('/api/warranty', warrantyRoutes);
 
+// Customer Portal routes
+app.use('/api/customer-portal/auth', customerAuthRoutes);
+app.use('/api/customer-portal/orders', customerOrderRoutes);
+
 // News routes
 app.use('/api/news', newsRoutes);
 app.use('/api/news-categories', newsCategoryRoutes);
-
-
 // CRM Routes
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/tasks', taskRoutes);

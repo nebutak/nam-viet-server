@@ -63,6 +63,12 @@ export const socialLoginSchema = z.object({
     }).strict(),
 });
 
+export const googleLoginSchema = z.object({
+    body: z.object({
+        idToken: z.string().min(1, 'Google ID Token là bắt buộc'),
+    }),
+});
+
 // --- TOKEN FLOW ---
 
 // 6. REFRESH TOKEN
@@ -91,5 +97,6 @@ export type VerifyOtpInput = z.infer<typeof verifyOtpSchema>['body'];
 export type SetPasswordInput = z.infer<typeof setPasswordSchema>['body'];
 export type LoginPasswordInput = z.infer<typeof loginPasswordSchema>['body'];
 export type SocialLoginInput = z.infer<typeof socialLoginSchema>['body'];
+export type GoogleLoginInput = z.infer<typeof googleLoginSchema>['body'];
 export type RefreshTokenInput = z.infer<typeof refreshTokenSchema>['body'];
 export type SyncPhoneAccountInput = z.infer<typeof syncPhoneAccountSchema>['body'];
