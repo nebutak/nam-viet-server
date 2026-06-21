@@ -274,11 +274,24 @@ router.get(
   asyncHandler(reportController.exportFinancialReport.bind(reportController))
 );
 
-// POST /api/reports/financial/yearly-fund - Update Yearly Fund
 router.post(
   '/financial/yearly-fund',
   authorize('GET_FINANCIAL_REPORT'),
   asyncHandler(reportController.updateYearlyFund.bind(reportController))
+);
+
+// GET /api/reports/financial/cash-book - Sổ quỹ chi tiết với running balance
+router.get(
+  '/financial/cash-book',
+  authorize('GET_FINANCIAL_REPORT'),
+  asyncHandler(reportController.getCashBookReport.bind(reportController))
+);
+
+// GET /api/reports/financial/export-cash-book - Xuất excel danh sách sổ quỹ chi tiết
+router.get(
+  '/financial/export-cash-book',
+  authorize('GET_FINANCIAL_REPORT'),
+  asyncHandler(reportController.exportCashBookExcel.bind(reportController))
 );
 
 // =====================================================
@@ -292,3 +305,4 @@ router.get(
 );
 
 export default router;
+

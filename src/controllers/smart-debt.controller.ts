@@ -24,7 +24,7 @@ class SmartDebtController {
    */
   async getAll(req: Request, res: Response, next: NextFunction) {
     try {
-      const { page, limit, search, status, year, assignedUserId, type, address } = req.query;
+      const { page, limit, search, status, year, assignedUserId, type, address, blacklist, from, to } = req.query;
 
       const result = await debtService.getAll({
         page: Number(page) || 1,
@@ -34,7 +34,10 @@ class SmartDebtController {
         year: year ? Number(year) : undefined,
         assignedUserId: assignedUserId ? Number(assignedUserId) : undefined,
         type: type as 'customer' | 'supplier',
-        address: address as string
+        address: address as string,
+        blacklist: blacklist as string,
+        from: from as string,
+        to: to as string
       });
 
       res.status(200).json({
@@ -43,7 +46,6 @@ class SmartDebtController {
         meta: (result as any).meta,
         timestamp: new Date().toISOString(),
       });
-      console.log('SmartDebtController.getAll executed with data:', (result as any).data);
     } catch (error) {
       next(error);
     }
@@ -72,8 +74,6 @@ class SmartDebtController {
         data: data,
         message: `Đã lấy danh sách in (${exportType}) cho năm ${targetYear}.`
       });
-
-      console.log(`SmartDebtController.exportList executed for year ${targetYear} and type ${exportType} with data:`, data);
     } catch (error) {
       next(error);
     }
@@ -88,7 +88,7 @@ class SmartDebtController {
   async getById(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params; // Đây là CustomerID hoặc SupplierID
-      const { year, type } = req.query;
+      const { year, type, from, to } = req.query;
 
       if (!type || (type !== 'customer' && type !== 'supplier')) {
         throw new ValidationError("Vui lòng truyền tham số type='customer' hoặc 'supplier'");
@@ -97,7 +97,9 @@ class SmartDebtController {
       const data = await debtService.getDetail(
         Number(id),
         type as 'customer' | 'supplier',
-        year ? Number(year) : undefined
+        year ? Number(year) : undefined,
+        from as string,
+        to as string
       );
 
       res.status(200).json({
@@ -169,7 +171,7 @@ class SmartDebtController {
         notes,
         assignedUserId: assignedUserId ? Number(assignedUserId) : undefined
       })
-        .then(() => console.log(`✅ [Background] SyncFull hoàn tất cho ${customerId ? 'C-' + customerId : 'S-' + supplierId}`))
+        .then(() => {})
         .catch((err) => console.error(`❌ [Background] Lỗi SyncFull:`, err));
 
       res.status(202).json({
@@ -196,7 +198,7 @@ class SmartDebtController {
 
       // 🚀 FIRE & FORGET
       debtService.syncSnapAll(Number(year))
-        .then((r) => console.log(`✅ [Batch Snap] Hoàn tất: ${r.success}/${r.totalChecked}`))
+        .then(() => {})
         .catch((e) => console.error(`❌ [Batch Snap] Lỗi:`, e));
 
       res.status(202).json({
@@ -219,7 +221,7 @@ class SmartDebtController {
 
       // 🚀 FIRE & FORGET
       debtService.syncFullAll(Number(year))
-        .then((r) => console.log(`✅ [Batch Full] Hoàn tất: ${r.success}/${r.totalChecked}`))
+        .then(() => {})
         .catch((e) => console.error(`❌ [Batch Full] Lỗi:`, e));
 
       res.status(202).json({

@@ -158,6 +158,24 @@ class PurchaseOrderController {
     res.status(200).json(response);
   }
 
+  // POST /api/purchase-orders/:id/return
+  async returnPO(req: AuthRequest, res: Response) {
+    const { id } = req.params;
+    const userId = req.user!.id;
+    const data = req.body;
+
+    const result = await purchaseOrderService.processReturn(parseInt(id), userId, data);
+
+    const response: ApiResponse = {
+      success: true,
+      data: result,
+      message: 'Đã xử lý trả hàng thành công',
+      timestamp: new Date().toISOString(),
+    };
+
+    res.status(200).json(response);
+  }
+
   // DELETE /api/purchase-orders/:id
   async delete(req: AuthRequest, res: Response) {
     const { id } = req.params;

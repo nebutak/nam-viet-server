@@ -37,6 +37,7 @@ export const topProductsSchema = z.object({
     .transform((val) => parseInt(val)),
   fromDate: z.string().optional(),
   toDate: z.string().optional(),
+  sortBy: z.enum(['revenue', 'quantity']).optional().default('quantity'),
 });
 
 // Top customers schema

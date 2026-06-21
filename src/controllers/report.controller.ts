@@ -11,7 +11,7 @@ class ReportController {
       period: period as string,
       fromDate: fromDate as string,
       toDate: toDate as string,
-      warehouseId: warehouseId ? parseInt(warehouseId as string) : undefined,
+      warehouseId: (warehouseId && warehouseId !== 'all') ? parseInt(warehouseId as string) : undefined,
     });
 
     res.status(200).json({
@@ -50,7 +50,7 @@ class ReportController {
       period: period as string,
       fromDate: fromDate ? new Date(fromDate as string) : undefined,
       toDate: toDate ? new Date(toDate as string) : undefined,
-      warehouseId: warehouseId ? parseInt(warehouseId as string) : undefined,
+      warehouseId: (warehouseId && warehouseId !== 'all') ? parseInt(warehouseId as string) : undefined,
     });
 
     res.status(200).json({
@@ -66,7 +66,7 @@ class ReportController {
     const salesChannels = await reportService.getDashboardSalesChannels(
       fromDate as string,
       toDate as string,
-      warehouseId ? parseInt(warehouseId as string) : undefined
+      (warehouseId && warehouseId !== 'all') ? parseInt(warehouseId as string) : undefined
     );
 
     res.status(200).json({
@@ -80,7 +80,7 @@ class ReportController {
   async getDashboardInventoryByType(req: AuthRequest, res: Response) {
     const { warehouseId } = req.query;
     const inventoryByType = await reportService.getDashboardInventoryByType(
-      warehouseId ? parseInt(warehouseId as string) : undefined
+      (warehouseId && warehouseId !== 'all') ? parseInt(warehouseId as string) : undefined
     );
 
     res.status(200).json({
@@ -243,7 +243,7 @@ class ReportController {
   // GET /api/reports/inventory/ledger - Inventory detailed ledger
   async getInventoryLedger(req: AuthRequest, res: Response) {
     const { productId, fromDate, toDate, warehouseId } = req.query;
-    
+
     if (!productId) {
       return res.status(400).json({
         success: false,
@@ -267,11 +267,12 @@ class ReportController {
 
   // GET /api/reports/sales/top-products - Top selling products
   async getTopSellingProducts(req: AuthRequest, res: Response) {
-    const { limit, fromDate, toDate } = req.query;
+    const { limit, fromDate, toDate, sortBy } = req.query;
     const result = await reportService.getTopSellingProducts(
       limit ? parseInt(limit as string) : 10,
       fromDate as string,
-      toDate as string
+      toDate as string,
+      (sortBy as 'revenue' | 'quantity') || 'quantity'
     );
 
     res.status(200).json({
@@ -429,7 +430,7 @@ class ReportController {
   // GET /api/reports/financial - Financial report
   async getFinancialReport(req: AuthRequest, res: Response) {
     const { fromDate, toDate, datePreset } = req.query;
-    
+
     // Calculate date range based on preset or custom dates
     const today = new Date();
     let start = fromDate as string;
@@ -438,7 +439,7 @@ class ReportController {
     if (datePreset && !fromDate) {
       const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
       const subDays = (date: Date, days: number) => new Date(date.getTime() - days * 24 * 60 * 60 * 1000);
-      
+
       switch (datePreset) {
         case 'today':
           start = today.toISOString().split('T')[0];
@@ -548,6 +549,45 @@ class ReportController {
     }
   }
 
+  /**
+   * Export cash book to excel
+   */
+  async exportCashBookExcel(req: AuthRequest, res: Response): Promise<void> {
+    const fromDate = req.query.fromDate as string;
+    const toDate = req.query.toDate as string;
+
+    if (!fromDate || !toDate) {
+      res.status(400).json({ success: false, message: 'Thiếu thời gian báo cáo' });
+      return;
+    }
+
+    try {
+      const params = {
+        fromDate,
+        toDate,
+        customerId: req.query.customerId ? Number(req.query.customerId) : undefined,
+        supplierId: req.query.supplierId ? Number(req.query.supplierId) : undefined,
+        createdById: req.query.createdById ? Number(req.query.createdById) : undefined,
+        receiverName: req.query.receiverName as string,
+        receiverTypes: req.query.receiverTypes ? (req.query.receiverTypes as string).split(',') : undefined,
+        voucherType: req.query.voucherType as string,
+        page: 1,
+        pageSize: 999999,
+      };
+
+      const buffer = await financialService.exportCashBookExcel(params);
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename=SoQuy_${fromDate}_${toDate}.xlsx`);
+      res.send(buffer);
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Lỗi xuất sổ quỹ',
+      });
+    }
+  }
+
   // GET /api/reports/filter-options/warehouses - Get warehouses for filter
   async getWarehousesForFilter(_req: AuthRequest, res: Response) {
     const warehouses = await reportService.getWarehousesForFilter();
@@ -583,7 +623,7 @@ class ReportController {
       // Admin should be able to update it, check any role restrictions
       const { year, openingBalance } = req.body;
       const updatedBy = req.user?.id || 1;
-      
+
       const result = await financialService.updateYearlyFund(year, openingBalance, updatedBy);
       return res.status(200).json({
         success: true,
@@ -597,6 +637,45 @@ class ReportController {
       });
     }
   }
+
+  // GET /api/reports/financial/cash-book - Sổ quỹ chi tiết
+  async getCashBookReport(req: AuthRequest, res: Response) {
+    const today = new Date();
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+
+    const {
+      fromDate = firstDay.toISOString().split('T')[0],
+      toDate = today.toISOString().split('T')[0],
+      customerId,
+      supplierId,
+      createdById,
+      receiverName,
+      receiverTypes,
+      voucherType,
+      page = '1',
+      pageSize = '20',
+    } = req.query as Record<string, string>;
+
+    const result = await financialService.getCashBookReport({
+      fromDate: fromDate as string,
+      toDate: toDate as string,
+      customerId: customerId ? Number(customerId) : undefined,
+      supplierId: supplierId ? Number(supplierId) : undefined,
+      createdById: createdById ? Number(createdById) : undefined,
+      receiverName: receiverName as string | undefined,
+      receiverTypes: receiverTypes ? (receiverTypes as string).split(',') : undefined,
+      voucherType: voucherType as string | undefined,
+      page: Number(page),
+      pageSize: Number(pageSize),
+    });
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString(),
+    });
+  }
 }
 
 export default new ReportController();
+

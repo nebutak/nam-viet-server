@@ -3,6 +3,8 @@ import { z } from 'zod';
 export const createPaymentVoucherSchema = z.object({
   voucherType: z.enum(['salary', 'operating_cost', 'supplier_payment', 'refund', 'other']),
   supplierId: z.number().int().positive('ID nhà cung cấp phải là số dương').optional(),
+  customerId: z.number().int().positive('ID khách hàng phải là số dương').optional(),
+  employeeId: z.number().int().positive('ID nhân viên phải là số dương').optional(),
   purchaseOrderId: z.number().int().positive().optional(),
   amount: z.number().positive('Số tiền phải là số dương'),
   paymentMethod: z.enum(['cash', 'transfer']),
@@ -17,6 +19,8 @@ export const updatePaymentVoucherSchema = z.object({
     .enum(['salary', 'operating_cost', 'supplier_payment', 'refund', 'other'])
     .optional(),
   supplierId: z.number().int().positive('ID nhà cung cấp phải là số dương').optional(),
+  customerId: z.number().int().positive('ID khách hàng phải là số dương').optional(),
+  employeeId: z.number().int().positive('ID nhân viên phải là số dương').optional(),
   purchaseOrderId: z.number().int().positive().optional(),
   amount: z.number().positive('Số tiền phải là số dương').optional(),
   paymentMethod: z.enum(['cash', 'transfer']).optional(),
@@ -46,6 +50,8 @@ export const paymentVoucherQuerySchema = z.object({
   limit: z.string().regex(/^\d+$/).optional().default('20'),
   search: z.string().optional(),
   supplierId: z.string().regex(/^\d+$/).transform(Number).optional(),
+  customerId: z.string().regex(/^\d+$/).transform(Number).optional(),
+  employeeId: z.string().regex(/^\d+$/).transform(Number).optional(),
   voucherType: z
     .enum(['salary', 'operating_cost', 'supplier_payment', 'refund', 'other'])
     .optional(),

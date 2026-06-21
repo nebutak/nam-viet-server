@@ -9,6 +9,7 @@ export interface QueryActivityLogsInput {
   userId?: string;
   action?: string;
   tableName?: string;
+  entity?: string; // Add support for entity as alias for tableName
   startDate?: string;
   endDate?: string;
   sortBy?: string;
@@ -23,6 +24,7 @@ class ActivityLogService {
       userId,
       action,
       tableName,
+      entity,
       startDate,
       endDate,
       sortBy = 'createdAt',
@@ -37,11 +39,21 @@ class ActivityLogService {
     const where: Prisma.ActivityLogWhereInput = {
       ...(userId && { userId: parseInt(userId) }),
       ...(action && { action: action as any }), // Cast to enum if needed, or let Prisma handle it
-      ...(tableName && { tableName: { contains: tableName } }),
-      ...(startDate && endDate && {
+      ...((tableName || entity) && { 
+        tableName: { 
+          contains: tableName || entity,
+        } 
+      }),
+      ...((startDate || endDate) && {
         createdAt: {
-          gte: new Date(startDate),
-          lte: new Date(endDate),
+          ...(startDate && { gte: new Date(startDate) }),
+          ...(endDate && { 
+            lte: (() => {
+              const date = new Date(endDate);
+              date.setHours(23, 59, 59, 999);
+              return date;
+            })()
+          }),
         },
       }),
     };

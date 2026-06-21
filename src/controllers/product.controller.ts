@@ -16,6 +16,7 @@ class ProductController {
       supplierId,
       status,
       type,
+      productType,
       sortBy,
       sortOrder,
     } = req.query as any;
@@ -29,9 +30,10 @@ class ProductController {
       warehouseId: warehouseId ? parseInt(warehouseId) : undefined,
       status,
       type,
+      productType,
       sortBy,
       sortOrder,
-    });
+    } as any);
 
     const response: ApiResponse = {
       success: true,
@@ -52,6 +54,22 @@ class ProductController {
     const response: ApiResponse = {
       success: true,
       data: product,
+      timestamp: new Date().toISOString(),
+    };
+
+    res.status(200).json(response);
+  }
+
+  // GET /api/products/:id/sale-history
+  async getSaleHistory(req: AuthRequest, res: Response) {
+    const { id } = req.params;
+    const query = req.query;
+
+    const result = await productService.getSaleHistory(parseInt(id), query);
+
+    const response: ApiResponse = {
+      success: true,
+      data: result,
       timestamp: new Date().toISOString(),
     };
 

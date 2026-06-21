@@ -10,6 +10,45 @@ import {
 const prisma = new PrismaClient();
 
 class ProductService {
+  private resolveLegacyProductTypeFilter(productType?: string): Prisma.ProductWhereInput {
+    if (!productType) return {};
+
+    const normalized = productType.trim().toLowerCase();
+
+    // Legacy public filters from frontend
+    if (normalized === 'sầu riêng' || normalized === 'sau rieng') {
+      return { productName: { contains: 'Sầu Riêng' } };
+    }
+
+    if (normalized === 'lúa' || normalized === 'lua') {
+      return { productName: { contains: 'Lúa' } };
+    }
+
+    if (normalized === 'khác' || normalized === 'khac') {
+      return {
+        AND: [
+          { productName: { not: { contains: 'Sầu Riêng' } } },
+          { productName: { not: { contains: 'Lúa' } } },
+        ],
+      };
+    }
+
+    // Backward-compatible mapping from old productType semantics to current Product.type enum
+    if (['hàng hóa', 'hang hoa', 'goods', 'finished_product', 'product'].includes(normalized)) {
+      return { type: 'PRODUCT' };
+    }
+
+    if (['raw_material', 'material', 'nguyên liệu', 'nguyen lieu'].includes(normalized)) {
+      return { type: 'MATERIAL' };
+    }
+
+    if (['packaging', 'bao bì', 'bao bi'].includes(normalized)) {
+      return { type: 'PACKAGING' };
+    }
+
+    return {};
+  }
+
   private async generateCode(): Promise<string> {
     const count = await prisma.product.count();
     const number = (count + 1).toString().padStart(4, '0');
@@ -26,9 +65,10 @@ class ProductService {
       warehouseId,
       status,
       type,
+      productType,
       sortBy = 'createdAt',
       sortOrder = 'desc',
-    } = params;
+    } = params as any;
 
 
     const offset = (page - 1) * limit;
@@ -52,6 +92,7 @@ class ProductService {
       }),
       ...(status && { status: status as any }),
       ...(type && { type: type as any }),
+      ...this.resolveLegacyProductTypeFilter(productType),
     };
 
     const total = await prisma.product.count({ where });
@@ -276,9 +317,6 @@ class ProductService {
       data: {
         code,
         productName: data.productName,
-        categoryId: data.categoryId,
-        supplierId: data.supplierId,
-        unitId: data.unitId,
         description: data.description,
         note: data.note,
         basePrice: data.basePrice,
@@ -292,7 +330,16 @@ class ProductService {
         manageSerial: data.manageSerial ?? false,
         status: (data.status as any) || 'active',
         type: (data.type as any) || 'PRODUCT',
-        createdBy: userId,
+        ...(data.categoryId !== undefined && data.categoryId !== null && {
+          category: { connect: { id: Number(data.categoryId) } },
+        }),
+        ...(data.supplierId !== undefined && data.supplierId !== null && {
+          supplier: { connect: { id: Number(data.supplierId) } },
+        }),
+        ...(data.unitId !== undefined && data.unitId !== null && {
+          unit: { connect: { id: Number(data.unitId) } },
+        }),
+        creator: { connect: { id: userId } },
         ...(data.attributeIdsWithValue && {
           productHasAttributes: {
             create: data.attributeIdsWithValue.map((attr) => ({
@@ -378,6 +425,9 @@ class ProductService {
       taxIds,
       warrantyPolicy,
       materialIds,
+      categoryId,
+      supplierId,
+      unitId,
       ...restData
     } = data;
 
@@ -385,9 +435,27 @@ class ProductService {
       where: { id },
       data: {
         ...restData,
+        ...(categoryId !== undefined && {
+          category:
+            categoryId === null
+              ? { disconnect: true }
+              : { connect: { id: Number(categoryId) } },
+        }),
+        ...(supplierId !== undefined && {
+          supplier:
+            supplierId === null
+              ? { disconnect: true }
+              : { connect: { id: Number(supplierId) } },
+        }),
+        ...(unitId !== undefined && {
+          unit:
+            unitId === null
+              ? { disconnect: true }
+              : { connect: { id: Number(unitId) } },
+        }),
         taxIds: taxIds !== undefined ? taxIds ? JSON.parse(JSON.stringify(taxIds)) : null : undefined,
         warrantyPolicy: warrantyPolicy !== undefined ? warrantyPolicy ? JSON.parse(JSON.stringify(warrantyPolicy)) : null : undefined,
-        updatedBy: userId,
+        updater: { connect: { id: userId } },
         ...(attributeIdsWithValue && {
           productHasAttributes: {
             deleteMany: {},
@@ -552,6 +620,102 @@ class ProductService {
 
   // Image and video upload methods removed - use single image field in Product model instead
 
+  async getSaleHistory(productId: number, query: any) {
+    const { page = 1, limit = 10, fromDate, toDate } = query;
+    const offset = (Number(page) - 1) * Number(limit);
+
+    const where: Prisma.InvoiceDetailWhereInput = {
+      productId,
+      order: {
+        orderStatus: 'completed',
+        deletedAt: null,
+        ...(fromDate && toDate && {
+          orderDate: {
+            gte: new Date(fromDate),
+            lte: new Date(`${toDate}T23:59:59.999Z`),
+          },
+        }),
+      },
+    };
+
+    const total = await prisma.invoiceDetail.count({ where });
+
+    const data = await prisma.invoiceDetail.findMany({
+      where,
+      include: {
+        order: {
+          select: {
+            id: true,
+            orderCode: true,
+            orderStatus: true,
+            createdAt: true,
+            customer: {
+              select: {
+                id: true,
+                customerName: true,
+                phone: true,
+                email: true,
+                address: true,
+                taxCode: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { 
+        order: {
+          createdAt: 'desc' 
+        }
+      },
+      skip: offset,
+      take: Number(limit),
+    });
+
+    const allRecords = await prisma.invoiceDetail.findMany({
+      where,
+      select: {
+        quantity: true,
+        unitName: true,
+      },
+    });
+
+    const totalsByUnitObj: Record<string, number> = {};
+    for (const record of allRecords) {
+      const uName = record.unitName || 'Default';
+      totalsByUnitObj[uName] = (totalsByUnitObj[uName] || 0) + Number(record.quantity);
+    }
+
+    const totalsByUnit = Object.keys(totalsByUnitObj).map((k) => ({
+      unitName: k,
+      total: totalsByUnitObj[k],
+    }));
+
+    // Format response to match existing frontend mapping (customer.name vs customer.customerName)
+    const formattedData = data.map((item) => ({
+      ...item,
+      invoice: item.order ? {
+        ...item.order,
+        code: item.order.orderCode,
+        customer: item.order.customer ? {
+          ...item.order.customer,
+          name: item.order.customer.customerName,
+        } : null
+      } : null,
+      createdAt: item.order?.createdAt, // for frontend sorting/display
+    }));
+
+    return {
+      data: formattedData,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        totalPages: Math.ceil(total / Number(limit)),
+      },
+      totalsByUnit,
+    };
+  }
+
   async getStats() {
 
     // Get all products with counts
@@ -582,7 +746,7 @@ class ProductService {
       },
       byType: {
         rawMaterial: products.filter((p) => p.type === 'MATERIAL').length,
-        packaging: 0,
+        packaging: products.filter((p) => p.type === 'PACKAGING').length,
         finished: 0,
         goods: products.filter((p) => p.type === 'PRODUCT').length,
       },
@@ -596,27 +760,95 @@ class ProductService {
   }
 
   async getRawMaterialStats() {
+    const materials = await prisma.product.findMany({
+      where: {
+        type: 'MATERIAL',
+        deletedAt: null,
+      },
+      include: {
+        inventory: true,
+      },
+    });
+
+    const totalRawMaterials = materials.length;
+    const activeCount = materials.filter((p) => p.status === 'active').length;
+    const inactiveCount = materials.filter((p) => p.status === 'inactive').length;
+
+    let lowStockCount = 0;
+    for (const p of materials) {
+      const totalInventory = p.inventory.reduce((sum, inv) => sum + Number(inv.quantity), 0);
+      if (totalInventory < Number(p.minStockLevel)) {
+        lowStockCount++;
+      }
+    }
+
+    let totalInventoryValue = 0;
+    for (const p of materials) {
+      const totalQuantity = p.inventory.reduce((sum, inv) => sum + Number(inv.quantity), 0);
+      const basePrice = Number(p.basePrice) || 0;
+      totalInventoryValue += totalQuantity * basePrice;
+    }
+
     return {
-      totalRawMaterials: 0,
-      byStatus: { active: 0, inactive: 0 },
-      lowStockCount: 0,
+      totalRawMaterials,
+      byStatus: {
+        active: activeCount,
+        inactive: inactiveCount,
+      },
+      lowStockCount,
       expiringCount: 0,
-      totalInventoryValue: 0,
+      totalInventoryValue,
     };
   }
 
   async getPackagingStats() {
+    const packagingItems = await prisma.product.findMany({
+      where: {
+        type: 'PACKAGING',
+        deletedAt: null,
+      },
+      include: {
+        inventory: true,
+      },
+    });
+
+    const totalPackaging = packagingItems.length;
+    const activeCount = packagingItems.filter((p) => p.status === 'active').length;
+    const inactiveCount = packagingItems.filter((p) => p.status === 'inactive').length;
+
+    let lowStockCount = 0;
+    for (const p of packagingItems) {
+      const totalInventory = p.inventory.reduce((sum, inv) => sum + Number(inv.quantity), 0);
+      if (totalInventory < Number(p.minStockLevel)) {
+        lowStockCount++;
+      }
+    }
+
+    let totalInventoryValue = 0;
+    for (const p of packagingItems) {
+      const totalQuantity = p.inventory.reduce((sum, inv) => sum + Number(inv.quantity), 0);
+      const basePrice = Number(p.basePrice) || 0;
+      totalInventoryValue += totalQuantity * basePrice;
+    }
+
     return {
-      totalPackaging: 0,
-      byStatus: { active: 0, inactive: 0 },
-      lowStockCount: 0,
+      totalPackaging,
+      byStatus: {
+        active: activeCount,
+        inactive: inactiveCount,
+      },
+      lowStockCount,
       expiringCount: 0,
-      totalInventoryValue: 0,
+      totalInventoryValue,
     };
   }
 
   async getGoodsStats() {
     const goods = await prisma.product.findMany({
+      where: {
+        type: 'PRODUCT',
+        deletedAt: null,
+      },
       include: {
         inventory: true,
       },
@@ -642,7 +874,7 @@ class ProductService {
     }
 
     const stats = {
-      totalPackaging: totalGoods,
+      totalGoods,
       byStatus: {
         active: activeCount,
         inactive: inactiveCount,

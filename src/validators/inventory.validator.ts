@@ -1,5 +1,12 @@
 import { z } from 'zod';
 
+const inventoryWarehouseTypeSchema = z.preprocess((value) => {
+  if (typeof value !== 'string') return value;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'goods') return 'product';
+  return normalized;
+}, z.enum(['raw_material', 'product']));
+
 export const inventoryQuerySchema = z.object({
   page: z.string().regex(/^\d+$/).optional().default('1'),
   limit: z.string().regex(/^\d+$/).optional().default('20'),
@@ -8,7 +15,7 @@ export const inventoryQuerySchema = z.object({
   productId: z.string().optional().transform(Number),
   productIds: z.string().optional(), // Comma-separated product IDs
   productType: z.enum(['raw_material', 'packaging', 'finished_product', 'goods']).optional(),
-  warehouseType: z.enum(['raw_material', 'packaging', 'finished_product', 'goods']).optional(),
+  warehouseType: inventoryWarehouseTypeSchema.optional(),
   categoryId: z.string().optional().transform(Number),
   lowStock: z
     .string()

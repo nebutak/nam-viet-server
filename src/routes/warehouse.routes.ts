@@ -128,6 +128,17 @@ router.post(
 );
 
 /**
+ * POST /api/warehouses/check-inventory
+ * Check inventory status of warehouses before deletion
+ * Permission: GET_WAREHOUSE
+ */
+router.post(
+  '/check-inventory',
+  authorize('GET_WAREHOUSE'),
+  asyncHandler(warehouseController.checkInventory.bind(warehouseController))
+);
+
+/**
  * POST /api/warehouses/bulk-delete
  * Bulk delete warehouses
  * Permission: WAREHOUSE_MANAGEMENT

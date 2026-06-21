@@ -17,29 +17,19 @@ import { parseFormData } from '@middlewares/parseFormData';
 
 const router = Router();
 
-// ============================================================
-// PUBLIC ROUTES (no authentication required)
-// ============================================================
-
-// GET /api/products/public – Public product listing for showcase page
 router.get(
   '/public',
   validate(productQuerySchema, 'query'),
   asyncHandler(productController.getAll.bind(productController))
 );
 
-// GET /api/products/public/:id – Public product detail for showcase page
 router.get(
   '/public/:id',
   validate(productIdSchema, 'params'),
   asyncHandler(productController.getById.bind(productController))
 );
 
-// ============================================================
-// PROTECTED ROUTES (authentication required)
-// ============================================================
 
-// All routes below require authentication
 router.use(authentication);
 
 // GET /api/products/stats/overview
@@ -99,6 +89,14 @@ router.get(
   authorize('GET_PRODUCT'),
   validate(productIdSchema, 'params'),
   asyncHandler(productController.getById.bind(productController))
+);
+
+// GET /api/products/:id/sale-history
+router.get(
+  '/:id/sale-history',
+  authorize('GET_PRODUCT'),
+  validate(productIdSchema, 'params'),
+  asyncHandler(productController.getSaleHistory.bind(productController))
 );
 
 // POST /api/products

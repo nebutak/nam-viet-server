@@ -38,7 +38,9 @@ class PaymentReceiptService {
       limit = '20',
       search,
       customerId,
+      supplierId,
       orderId,
+      purchaseOrderId,
       receiptType,
       paymentMethod,
       isPosted,
@@ -73,7 +75,9 @@ class PaymentReceiptService {
     const where: Prisma.PaymentReceiptWhereInput = {
       deletedAt: null,
       ...(customerId && { customerId }),
+      ...(supplierId && { supplierId }),
       ...(orderId && { orderId }),
+      ...(purchaseOrderId && { purchaseOrderId }),
       ...(receiptType && { receiptType }),
       ...(paymentMethod && { paymentMethod }),
       ...(isPosted !== undefined && { isPosted }),
@@ -84,6 +88,7 @@ class PaymentReceiptService {
         OR: [
           { receiptCode: { contains: search } },
           { customerRef: { customerName: { contains: search } } },
+          { supplier: { supplierName: { contains: search } } },
           { transactionReference: { contains: search } },
         ],
       }),
@@ -109,10 +114,23 @@ class PaymentReceiptService {
               cccd: true,
             },
           },
-          customer: {
+          invoice: {
             select: {
               id: true,
               orderCode: true,
+            },
+          },
+          supplier: {
+            select: {
+              id: true,
+              supplierCode: true,
+              supplierName: true,
+            },
+          },
+          purchaseOrder: {
+            select: {
+              id: true,
+              poCode: true,
             },
           },
           creator: {
@@ -214,7 +232,7 @@ class PaymentReceiptService {
             creditLimit: true,
           },
         },
-        customer: {
+        invoice: {
           select: {
             id: true,
             orderCode: true,
@@ -231,6 +249,30 @@ class PaymentReceiptService {
               }
             }
           },
+        },
+        supplier: {
+          select: {
+            id: true,
+            supplierCode: true,
+            supplierName: true,
+            phone: true,
+            email: true,
+            address: true,
+            taxCode: true,
+          },
+        },
+        purchaseOrder: {
+          include: {
+            details: {
+              include: {
+                product: {
+                  include: {
+                    unit: true
+                  }
+                }
+              }
+            }
+          }
         },
         creator: {
           select: {
@@ -259,12 +301,22 @@ class PaymentReceiptService {
         address: receipt.customerRef.address,
         identityCard: receipt.customerRef.cccd,
       };
+    } else if (receipt.supplier) {
+      result.receiver = {
+        id: receipt.supplier.id,
+        name: receipt.supplier.supplierName,
+        code: receipt.supplier.supplierCode,
+        phone: receipt.supplier.phone,
+        email: receipt.supplier.email,
+        address: receipt.supplier.address,
+        identityCard: receipt.supplier.taxCode,
+      };
     }
-    if (receipt.customer) {
+    if (receipt.invoice) {
       result.invoice = {
-        ...receipt.customer,
-        code: receipt.customer.orderCode,
-        items: (receipt.customer as any).details?.map((d: any) => ({
+        ...receipt.invoice,
+        code: receipt.invoice.orderCode,
+        items: (receipt.invoice as any).details?.map((d: any) => ({
           ...d,
           productName: d.product?.productName,
           productCode: d.product?.code,
@@ -281,31 +333,63 @@ class PaymentReceiptService {
   }
 
   async create(data: CreatePaymentReceiptInput, userId: number) {
-    const customer = await customerService.getById(data.customerId);
+    if (data.customerId) {
+        const customer = await customerService.getById(data.customerId);
 
-    if (customer.status !== 'active') {
-      throw new ValidationError('Khách hàng phải ở trạng thái hoạt động để tạo phiếu thu');
-    }
+        if (customer.status !== 'active') {
+        throw new ValidationError('Khách hàng phải ở trạng thái hoạt động để tạo phiếu thu');
+        }
 
-    if (data.orderId) {
-      const order = await prisma.invoice.findUnique({
-        where: { id: data.orderId },
-      });
+        if (data.orderId) {
+        const order = await prisma.invoice.findUnique({
+            where: { id: data.orderId },
+        });
 
-      if (!order) {
-        throw new NotFoundError('Không tìm thấy đơn hàng');
-      }
+        if (!order) {
+            throw new NotFoundError('Không tìm thấy đơn hàng');
+        }
 
-      if (order.customerId !== data.customerId) {
-        throw new ValidationError('Đơn hàng không thuộc về khách hàng này');
-      }
+        if (order.customerId !== data.customerId) {
+            throw new ValidationError('Đơn hàng không thuộc về khách hàng này');
+        }
 
-      const remainingAmount = Number(order.totalAmount) - Number(order.paidAmount);
-      if (data.amount > remainingAmount) {
-        throw new ValidationError(
-          `Số tiền thanh toán (${data.amount}) vượt quá số tiền còn lại của đơn hàng (${remainingAmount})`
-        );
-      }
+        const remainingAmount = Number(order.totalAmount) - Number(order.paidAmount);
+        if (data.amount > remainingAmount) {
+            throw new ValidationError(
+            `Số tiền thanh toán (${data.amount}) vượt quá số tiền còn lại của đơn hàng (${remainingAmount})`
+            );
+        }
+        }
+    } else if (data.supplierId) {
+        const supplier = await prisma.supplier.findUnique({
+            where: { id: data.supplierId },
+        });
+
+        if (!supplier) {
+            throw new NotFoundError('Không tìm thấy nhà cung cấp');
+        }
+
+        if (supplier.status !== 'active') {
+            throw new ValidationError('Nhà cung cấp phải ở trạng thái hoạt động để tạo phiếu thu (hoàn tiền)');
+        }
+
+        if (data.purchaseOrderId) {
+            const po = await prisma.purchaseOrder.findUnique({
+                where: { id: data.purchaseOrderId },
+            });
+
+            if (!po) {
+                throw new NotFoundError('Không tìm thấy đơn mua hàng');
+            }
+
+            if (po.supplierId !== data.supplierId) {
+                throw new ValidationError('Đơn mua hàng không thuộc về nhà cung cấp này');
+            }
+        }
+    } else if (data.notes?.trim() === 'Thu đầu kỳ' || data.receiptType === 'other') {
+        // Thu đầu kỳ / Loại khác: không cần khách hàng hay nhà cung cấp
+    } else {
+        throw new ValidationError('Phải chọn khách hàng hoặc nhà cung cấp');
     }
 
     if (data.paymentMethod === 'transfer' || data.paymentMethod === 'card') {
@@ -324,7 +408,9 @@ class PaymentReceiptService {
           receiptCode,
           receiptType: data.receiptType,
           customerId: data.customerId,
+          supplierId: data.supplierId,
           orderId: data.orderId,
+          purchaseOrderId: data.purchaseOrderId,
           amount: data.amount,
           paymentMethod: data.paymentMethod,
           bankName: data.bankName,
@@ -344,7 +430,7 @@ class PaymentReceiptService {
               cccd: true,
             },
           },
-          customer: {
+          invoice: {
             select: {
               id: true,
               orderCode: true,
@@ -372,7 +458,9 @@ class PaymentReceiptService {
       receiptCode: result.receiptCode,
       amount: data.amount,
       customerId: data.customerId,
+      supplierId: data.supplierId,
       orderId: data.orderId,
+      purchaseOrderId: data.purchaseOrderId,
     });
 
     return result;
@@ -382,7 +470,7 @@ class PaymentReceiptService {
     const receipt = await prisma.paymentReceipt.findUnique({
       where: { id },
       include: {
-        customer: true,
+        invoice: true,
       },
     });
 
@@ -427,7 +515,7 @@ class PaymentReceiptService {
               cccd: true,
             },
           },
-          customer: true,
+          invoice: true,
         },
       });
 
@@ -470,7 +558,7 @@ class PaymentReceiptService {
         },
         include: {
           customerRef: true,
-          customer: true,
+          invoice: true,
           creator: true,
         },
       });
@@ -481,6 +569,22 @@ class PaymentReceiptService {
       // Gọi logic kiểm tra hoàn thành tập trung
       if (posted.orderId) {
         await (invoiceService as any).checkAndCompleteOrder(posted.orderId, userId, tx);
+      } else if (posted.customerId) {
+        // Phiếu thu không liên kết đơn hàng cụ thể (thu công nợ tổng):
+        // Quét tất cả đơn hàng chưa hoàn thành của khách để cập nhật trạng thái
+        const pendingOrders = await tx.invoice.findMany({
+          where: {
+            customerId: posted.customerId,
+            paymentStatus: { in: ['unpaid', 'partial'] },
+            orderStatus: { notIn: ['cancelled', 'completed'] },
+            deletedAt: null,
+          },
+          select: { id: true },
+          orderBy: { orderDate: 'asc' }, // Xử lý đơn cũ trước
+        });
+        for (const order of pendingOrders) {
+          await (invoiceService as any).checkAndCompleteOrder(order.id, userId, tx);
+        }
       }
 
       return posted;
@@ -492,11 +596,15 @@ class PaymentReceiptService {
       receiptCode: receipt.receiptCode,
     });
 
-    // Auto-sync công nợ khách hàng sau khi ghi sổ phiếu thu
+    // Auto-sync công nợ khách hàng/nhà cung cấp sau khi ghi sổ phiếu thu
+    const year = new Date().getFullYear();
     if (receipt.customerId) {
-      const year = new Date().getFullYear();
       smartDebtService.syncSnap({ customerId: receipt.customerId, year }).catch((err) =>
         console.error(`[AutoSync] Failed to sync debt after post receipt for customer ${receipt.customerId}:`, err.message)
+      );
+    } else if (receipt.supplierId) {
+      smartDebtService.syncSnap({ supplierId: receipt.supplierId, year }).catch((err) =>
+        console.error(`[AutoSync] Failed to sync debt after post receipt for supplier ${receipt.supplierId}:`, err.message)
       );
     }
 
@@ -528,7 +636,7 @@ class PaymentReceiptService {
         },
         include: {
           customerRef: true,
-          customer: true,
+          invoice: true,
           creator: true,
         },
       });
@@ -545,11 +653,15 @@ class PaymentReceiptService {
       receiptCode: receipt.receiptCode,
     });
 
-    // Auto-sync công nợ khách hàng sau khi bỏ ghi sổ phiếu thu
+    // Auto-sync công nợ khách hàng/nhà cung cấp sau khi bỏ ghi sổ phiếu thu
+    const year = new Date().getFullYear();
     if (receipt.customerId) {
-      const year = new Date().getFullYear();
       smartDebtService.syncSnap({ customerId: receipt.customerId, year }).catch((err) =>
         console.error(`[AutoSync] Failed to sync debt after unpost receipt for customer ${receipt.customerId}:`, err.message)
+      );
+    } else if (receipt.supplierId) {
+      smartDebtService.syncSnap({ supplierId: receipt.supplierId, year }).catch((err) =>
+        console.error(`[AutoSync] Failed to sync debt after unpost receipt for supplier ${receipt.supplierId}:`, err.message)
       );
     }
 
@@ -560,7 +672,7 @@ class PaymentReceiptService {
     const receipt = await prisma.paymentReceipt.findUnique({
       where: { id },
       include: {
-        customer: true,
+        invoice: true,
       },
     });
 
@@ -637,6 +749,41 @@ class PaymentReceiptService {
           });
         }
       }
+    } else if (receipt.supplierId) {
+        // Hoàn tiền cho nhà cung cấp: Giảm số tiền đã thanh toán (vì po.paidAmount ghi nhận tiền đã chi, 
+        // hoàn tiền thì thực chất là giảm tiền đã chi thực tế hoặc coi như một khoản thu lại)
+        // Thông thường: supplier.totalPayable -= receipt.amount (giảm nợ của mình với supplier)
+        await tx.supplier.update({
+            where: { id: receipt.supplierId },
+            data: {
+              totalPayable: {
+                decrement: Number(receipt.amount),
+              },
+              payableUpdatedAt: new Date(),
+            },
+        });
+
+        if (receipt.purchaseOrderId) {
+            const po = await tx.purchaseOrder.findUnique({ where: { id: receipt.purchaseOrderId } });
+            if (po) {
+                const newPaidAmount = Math.max(0, Number(po.paidAmount) - Number(receipt.amount));
+                const totalAmount = Number(po.totalAmount);
+                let paymentStatus: string = 'unpaid';
+                if (newPaidAmount >= totalAmount && totalAmount > 0) {
+                    paymentStatus = 'paid';
+                } else if (newPaidAmount > 0) {
+                    paymentStatus = 'partial';
+                }
+
+                await tx.purchaseOrder.update({
+                    where: { id: receipt.purchaseOrderId },
+                    data: {
+                        paidAmount: newPaidAmount,
+                        paymentStatus: paymentStatus as any,
+                    }
+                });
+            }
+        }
     } else if (receipt.receiptType === 'debt_collection') {
       // Phiếu thu công nợ: trừ trực tiếp vào công nợ khách hàng
       await tx.customer.update({
@@ -690,6 +837,27 @@ class PaymentReceiptService {
           });
         }
       }
+    } else if (receipt.supplierId) {
+        await tx.supplier.update({
+            where: { id: receipt.supplierId },
+            data: {
+              totalPayable: {
+                increment: Number(receipt.amount),
+              },
+              payableUpdatedAt: new Date(),
+            },
+        });
+
+        if (receipt.purchaseOrderId) {
+            await tx.purchaseOrder.update({
+                where: { id: receipt.purchaseOrderId },
+                data: {
+                    paidAmount: {
+                        increment: Number(receipt.amount),
+                    }
+                }
+            });
+        }
     } else if (receipt.receiptType === 'debt_collection') {
       await tx.customer.update({
         where: { id: receipt.customerId },
@@ -708,7 +876,7 @@ class PaymentReceiptService {
     const receipts = await prisma.paymentReceipt.findMany({
       where: { customerId, deletedAt: null },
       include: {
-        customer: {
+        invoice: {
           select: {
             id: true,
             orderCode: true,

@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { CreateCategoryInput, UpdateCategoryInput } from '../validators/news.validator';
 
 const prisma = new PrismaClient();
@@ -43,7 +43,7 @@ export class NewsCategoryService {
      */
     static async createCategory(data: CreateCategoryInput) {
         return prisma.newsCategory.create({
-            data,
+            data: data as Prisma.NewsCategoryCreateInput,
         });
     }
 

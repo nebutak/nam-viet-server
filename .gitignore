@@ -62,7 +62,11 @@ dump.rdb
 
 # PM2
 .pm2/
+# Prisma seed
+prisma/seeds/
+src/prisma/seeds/
+src/generated/prisma
 
-/src/generated/prisma
+*.md.env.production
 
-*.md
+.env.production

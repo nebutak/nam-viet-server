@@ -1,5 +1,12 @@
 import { z } from 'zod';
 
+const warehouseTypeSchema = z.preprocess((value) => {
+  if (typeof value !== 'string') return value;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'goods') return 'product';
+  return normalized;
+}, z.enum(['raw_material', 'product']));
+
 export const createWarehouseSchema = z.object({
   warehouseCode: z
     .string()
@@ -8,9 +15,7 @@ export const createWarehouseSchema = z.object({
     .regex(/^[A-Z0-9-]+$/, 'Mã kho phải là chữ số viết hoa có dấu gạch ngang.')
     .trim(),
   warehouseName: z.string().min(1, 'Tên kho là bắt buộc').max(200, 'Tên kho quá dài').trim(),
-  warehouseType: z
-    .enum(['raw_material', 'product'])
-    .refine((val) => !!val, { message: 'Loại kho không hợp lệ' }),
+  warehouseType: warehouseTypeSchema.refine((val) => !!val, { message: 'Loại kho không hợp lệ' }),
   address: z.string().max(255, 'Địa chỉ quá dài').optional(),
   city: z.string().max(100, 'Tên thành phố quá dài').optional(),
   region: z.string().max(100, 'Tên vùng quá dài').optional(),
@@ -28,7 +33,7 @@ export const updateWarehouseSchema = z.object({
     .trim()
     .optional(),
   warehouseName: z.string().max(200, 'Warehouse name too long').trim().optional(),
-  warehouseType: z.enum(['raw_material', 'product']).optional(),
+  warehouseType: warehouseTypeSchema.optional(),
   address: z.string().max(255, 'Address too long').optional(),
   city: z.string().max(100, 'City name too long').optional(),
   region: z.string().max(100, 'Region name too long').optional(),
@@ -42,7 +47,7 @@ export const queryWarehousesSchema = z.object({
   page: z.string().regex(/^\d+$/).optional().default('1'),
   limit: z.string().regex(/^\d+$/).optional().default('20'),
   search: z.string().trim().optional(),
-  warehouseType: z.enum(['raw_material', 'product']).optional(),
+  warehouseType: warehouseTypeSchema.optional(),
   status: z.enum(['active', 'inactive']).optional(),
   city: z.string().trim().optional(),
   region: z.string().trim().optional(),

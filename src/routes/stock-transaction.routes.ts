@@ -121,4 +121,13 @@ router.get(
   asyncHandler(stockTransactionController.getAll.bind(stockTransactionController))
 );
 
+// DELETE /api/stock-transactions/:id - Delete transaction
+router.delete(
+  '/:id',
+  authorizeAny('MANAGE_INVENTORY', 'WAREHOUSE_IMPORT_DELETE', 'WAREHOUSE_EXPORT_DELETE'),
+  validate(transactionIdSchema, 'params'),
+  logActivityMiddleware('delete', 'stock_transaction'),
+  asyncHandler(stockTransactionController.delete.bind(stockTransactionController))
+);
+
 export default router;

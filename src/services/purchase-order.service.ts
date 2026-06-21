@@ -1,4 +1,4 @@
-import { PrismaClient, Prisma } from '@prisma/client';
+import { PrismaClient, Prisma, PurchaseOrderDetail } from '@prisma/client';
 import { NotFoundError, ValidationError } from '@utils/errors';
 import { logActivity } from '@utils/logger';
 import {
@@ -6,8 +6,10 @@ import {
   type PurchaseOrderQueryInput,
   type ReceivePurchaseOrderInput,
   type UpdatePurchaseOrderInput,
+  type ReturnPurchaseOrderInput,
 } from '@validators/purchase-order.validator';
 import sendPurchaseOrderEmail from './email.service';
+import stockTransactionService from './stock-transaction.service';
 
 const prisma = new PrismaClient();
 
@@ -55,15 +57,15 @@ class PurchaseOrderService {
           { supplier: { supplierName: { contains: search } } },
         ],
       }),
-      ...(status && { status: status as any }),
+      ...(status && { status: { in: status.split(',') as any[] } }),
       ...(supplierId && { supplierId: parseInt(supplierId) }),
       ...(fromDate &&
         toDate && {
-          orderDate: {
-            gte: new Date(fromDate),
-            lte: new Date(toDate),
-          },
-        }),
+        orderDate: {
+          gte: new Date(fromDate),
+          lte: new Date(toDate),
+        },
+      }),
     };
 
     const total = await prisma.purchaseOrder.count({ where });
@@ -171,15 +173,15 @@ class PurchaseOrderService {
           { supplier: { supplierName: { contains: search } } },
         ],
       }),
-      ...(status && { status: status as any }),
+      ...(status && { status: { in: status.split(',') as any[] } }),
       ...(supplierId && { supplierId: parseInt(supplierId) }),
       ...(fromDate &&
         toDate && {
-          orderDate: {
-            gte: new Date(fromDate),
-            lte: new Date(toDate),
-          },
-        }),
+        orderDate: {
+          gte: new Date(fromDate),
+          lte: new Date(toDate),
+        },
+      }),
     };
 
     const total = await prisma.purchaseOrder.count({ where });
@@ -297,6 +299,20 @@ class PurchaseOrderService {
               },
             },
           },
+          refundReceipts: {
+            where: {
+              deletedAt: null,
+            },
+            include: {
+              creator: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  employeeCode: true,
+                },
+              },
+            },
+          },
           details: {
             include: {
               product: {
@@ -316,7 +332,7 @@ class PurchaseOrderService {
       prisma.stockTransaction.findMany({
         where: {
           referenceId: id,
-          referenceType: 'purchase_order',
+          referenceType: { in: ['purchase_order', 'purchase_refunds'] },
           deletedAt: null,
         },
         include: {
@@ -325,6 +341,19 @@ class PurchaseOrderService {
               id: true,
               fullName: true,
               employeeCode: true
+            }
+          },
+          details: {
+            include: {
+              product: {
+                select: {
+                  id: true,
+                  code: true,
+                  productName: true,
+                  unit: true,
+                  image: true,
+                }
+              }
             }
           }
         },
@@ -341,13 +370,34 @@ class PurchaseOrderService {
       ...receipt,
       code: receipt.transactionCode,
       receiptDate: receipt.createdAt,
-      receiptType: receipt.transactionType === 'import' ? 1 : 2, // 1: import, 2: export
+      receiptType: receipt.transactionType === 'import' ? 1 : 2,
+      referenceType: receipt.referenceType,
       createdByUser: receipt.creator,
       status: receipt.isPosted ? 'posted' : 'draft'
     }));
 
+    // Map payment receipts to format expected by the frontend payment vouchers table
+    const poAny = po as any;
+    const mappedReceiptsAsVouchers = (poAny.refundReceipts || []).map((receipt: any) => ({
+      id: receipt.id,
+      voucherCode: receipt.receiptCode,
+      amount: receipt.amount,
+      paymentMethod: receipt.paymentMethod,
+      status: receipt.isPosted ? 'posted' : 'draft',
+      voucherType: 'refund',
+      paymentDate: receipt.receiptDate,
+      createdAt: receipt.createdAt,
+      creator: receipt.creator,
+      isReceipt: true, // Specific flag for the frontend
+    }));
+
+    const sortedPaymentVouchersAndReceipts = [...(poAny.paymentVouchers || []), ...mappedReceiptsAsVouchers].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
     const purchaseOrder = {
       ...po,
+      paymentVouchers: sortedPaymentVouchersAndReceipts,
       stockTransaction: warehouseReceipts.length > 0 ? warehouseReceipts[0] : null,
       warehouseReceipts: mappedReceipts,
     };
@@ -424,7 +474,7 @@ class PurchaseOrderService {
     const discountAmount = data.discountAmount ?? data.discount ?? 0;
     const otherCosts = data.otherCosts ?? 0;
     const totalAmount = data.totalAmount ?? (subTotal + taxAmount + otherCosts - discountAmount);
-    
+
     const status = data.isAutoApprove ? 'approved' : 'pending';
     const approvedBy = data.isAutoApprove ? userId : null;
 
@@ -592,7 +642,7 @@ class PurchaseOrderService {
           otherCosts,
           subTotal,
           totalAmount,
-          ...(data.isAutoApprove !== undefined && { 
+          ...(data.isAutoApprove !== undefined && {
             status: data.isAutoApprove ? 'approved' : 'pending',
             approvedBy: data.isAutoApprove ? userId : null
           }),
@@ -786,9 +836,9 @@ class PurchaseOrderService {
     // However, the user said "phiếu chi", which might be linked to this PO's debt.
     // If the PO has paidAmount > 0, it definitely has payments.
     if (Number(purchaseOrder.paidAmount) > 0) {
-        throw new ValidationError(
-          'Không thể hủy đơn đặt hàng đã có phiếu chi (đã thanh toán một phần hoặc toàn bộ). Vui lòng xóa phiếu chi trước.'
-        );
+      throw new ValidationError(
+        'Không thể hủy đơn đặt hàng đã có phiếu chi (đã thanh toán một phần hoặc toàn bộ). Vui lòng xóa phiếu chi trước.'
+      );
     }
 
     const updated = await prisma.purchaseOrder.update({
@@ -1022,6 +1072,116 @@ class PurchaseOrderService {
       message: 'Tạo phiếu trả hàng thành công. Vui lòng duyệt ghi sổ để cập nhật kho và công nợ.',
       exportTxCode: txCode,
       refundAmount,
+    };
+  }
+
+  async processReturn(id: number, userId: number, data: ReturnPurchaseOrderInput) {
+    const purchaseOrder = await this.getById(id) as any;
+
+    if (purchaseOrder.status === 'pending' || purchaseOrder.status === 'cancelled') {
+      throw new ValidationError('Chỉ đơn mua đã duyệt, đang giao hoặc hoàn thành mới có thể trả hàng');
+    }
+
+    let totalExportQty = 0;
+    let totalExportValue = 0;
+    const exportDetails: any[] = [];
+
+    await prisma.$transaction(async (tx) => {
+      let isPoChanged = false;
+      let newSubTotal = Number(purchaseOrder.subTotal);
+
+      // Process each item
+      for (const reqItem of data.items) {
+        const poDetail = purchaseOrder.details.find((d: PurchaseOrderDetail) => d.productId === reqItem.productId);
+        if (!poDetail) {
+          throw new ValidationError(`Sản phẩm (ID: ${reqItem.productId}) không tồn tại trong đơn mua này`);
+        }
+
+        const totalReturnQty = reqItem.cancelQty + reqItem.exportQty;
+        if (totalReturnQty > 0) {
+          // Reduce the PO detail quantity directly
+          const newQty = Number(poDetail.quantity) - totalReturnQty;
+          if (newQty < 0) {
+            throw new ValidationError('Số lượng hủy hoặc hoàn trả lớn hơn số lượng trong đơn mua');
+          }
+
+          const price = Number(poDetail.price);
+          const oldTotal = Number(poDetail.quantity) * price;
+          const newTotal = newQty * price;
+
+          // Adjust the subtotal based on old vs new total of this item
+          newSubTotal = newSubTotal - oldTotal + newTotal;
+          isPoChanged = true;
+
+          // Update PO detail
+          await tx.purchaseOrderDetail.update({
+            where: { id: poDetail.id },
+            data: {
+              quantity: newQty,
+              total: newTotal
+            }
+          });
+        }
+
+        if (reqItem.exportQty > 0) {
+          totalExportQty += reqItem.exportQty;
+          totalExportValue += reqItem.exportQty * Number(poDetail.price);
+
+          exportDetails.push({
+            productId: reqItem.productId,
+            quantity: reqItem.exportQty,
+            notes: `Trả lại: ${reqItem.exportQty} (từ Đơn mua: ${purchaseOrder.poCode})`
+          });
+        }
+      }
+
+      // If PO was changed, recalculate PO level totals and save
+      if (isPoChanged) {
+        const subTotalDiff = Number(purchaseOrder.subTotal) - newSubTotal;
+        const newTotalAmount = Math.max(0, Number(purchaseOrder.totalAmount) - subTotalDiff);
+
+        if (newSubTotal < 0) newSubTotal = 0;
+
+        await tx.purchaseOrder.update({
+          where: { id: purchaseOrder.id },
+          data: {
+            subTotal: newSubTotal,
+            totalAmount: newTotalAmount,
+          }
+        });
+      }
+    });
+
+    logActivity('update', userId, 'purchase_orders', {
+      recordId: id,
+      poCode: purchaseOrder.poCode,
+      action: 'process_return',
+      details: data
+    });
+
+    // Sau khi cập nhật Đơn mua xong, nếu có hàng cần xuất trả -> tự động gọi tạo Phiếu xuất kho
+    let generatedExportReceipt = null;
+    if (totalExportQty > 0) {
+      generatedExportReceipt = await stockTransactionService.createExport(
+        {
+          warehouseId: data.warehouseId,
+          referenceType: 'purchase_refunds',
+          referenceId: purchaseOrder.id,
+          supplierId: purchaseOrder.supplierId,
+          actualReceiptDate: data.actualDate || undefined,
+          reason: data.reason || 'Trả hàng cho nhà cung cấp',
+          notes: data.notes || `Trả hàng từ đơn ${purchaseOrder.poCode}`,
+          details: exportDetails
+        },
+        userId
+      );
+    }
+
+    return {
+      message: 'Xử lý trả hàng thành công',
+      totalExportQty,
+      totalExportValue,
+      generatedExportReceipt
     };
   }
 }

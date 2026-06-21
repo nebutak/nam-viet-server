@@ -12,6 +12,7 @@ import {
   purchaseOrderIdSchema,
   approvePurchaseOrderSchema,
   cancelPurchaseOrderSchema,
+  returnPurchaseOrderSchema,
 } from '@validators/purchase-order.validator';
 import { logActivityMiddleware } from '@middlewares/logger';
 
@@ -97,13 +98,15 @@ router.put(
   asyncHandler(purchaseOrderController.cancel.bind(purchaseOrderController))
 );
 
-// POST /api/purchase-orders/:id/return - Return goods to supplier
 router.post(
   '/:id/return',
   authorize('UPDATE_PURCHASE_ORDER'),
-  validate(purchaseOrderIdSchema, 'params'),
+  validateMultiple({
+    params: purchaseOrderIdSchema,
+    body: returnPurchaseOrderSchema,
+  }),
   logActivityMiddleware('return', 'purchase_order'),
-  asyncHandler(purchaseOrderController.returnGoods.bind(purchaseOrderController))
+  asyncHandler(purchaseOrderController.returnPO.bind(purchaseOrderController))
 );
 
 // DELETE /api/purchase-orders/:id - Delete purchase order

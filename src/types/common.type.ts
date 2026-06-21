@@ -8,6 +8,7 @@ export interface AuthRequest extends Request {
     roleId: number;
     warehouseId?: number;
     employeeCode: string;
+    loginHistoryId?: number;
   };
 }
 
@@ -88,6 +89,7 @@ export interface JwtPayload {
   roleId: number;
   warehouseId?: number;
   employeeCode: string;
+  loginHistoryId?: number;
 }
 
 export interface EmailOptions {

@@ -701,6 +701,7 @@ class FinancialService {
     // Group by customer and sum
     const customerMap = new Map<number, any>();
     for (const receipt of receipts) {
+      if (!receipt.customerRef) continue;
       const cid = receipt.customerRef.id;
       if (!customerMap.has(cid)) {
         customerMap.set(cid, {
@@ -1063,6 +1064,413 @@ class FinancialService {
     const buffer = await workbook.xlsx.writeBuffer();
     return Buffer.from(buffer);
   }
+
+  /**
+   * Get cash book report with filters and running balance
+   */
+  async getCashBookReport(params: {
+    fromDate: string;
+    toDate: string;
+    customerId?: number;
+    supplierId?: number;
+    createdById?: number;   // NV lập phiếu
+    receiverName?: string;
+    receiverTypes?: string[]; // 'customer' | 'supplier' | 'other'
+    voucherType?: string;     // receipt type or payment voucher type
+    page?: number;
+    pageSize?: number;
+  }): Promise<any> {
+    const {
+      fromDate, toDate, customerId, supplierId, createdById,
+      receiverName, receiverTypes, voucherType,
+      page = 1, pageSize = 20,
+    } = params;
+
+    const startDate = new Date(fromDate);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(toDate);
+    endDate.setHours(23, 59, 59, 999);
+
+    // ── Quỹ đầu kỳ: Khởi tạo bằng 0 theo yêu cầu (chỉ tính trong khoảng thời gian đã chọn) ──
+    const openingBalance = 0;
+
+    // ── Build where clauses ──────────────────────────────────────────────────
+    const receiptWhere: any = {
+      receiptDate: { gte: startDate, lte: endDate },
+      deletedAt: null,
+    };
+    const paymentWhere: any = {
+      paymentDate: { gte: startDate, lte: endDate },
+      deletedAt: null,
+    };
+
+    if (customerId) receiptWhere.customerId = customerId;
+    if (supplierId) paymentWhere.supplierId = supplierId;
+    if (createdById) {
+      receiptWhere.createdBy = createdById;
+      paymentWhere.createdBy = createdById;
+    }
+
+    // voucherType filter
+    const receiptTypes = ['sales','debt_collection','refund'];
+    const paymentVoucherTypes = ['salary','operating_cost','supplier_payment','refund','other'];
+
+    let wantReceipts = true;
+    let wantPayments = true;
+
+    if (voucherType) {
+      if (receiptTypes.includes(voucherType)) {
+        receiptWhere.receiptType = voucherType;
+        wantPayments = false;
+      } else if (paymentVoucherTypes.includes(voucherType)) {
+        paymentWhere.voucherType = voucherType;
+        wantReceipts = false;
+      }
+    }
+
+    // receiverTypes filter
+    if (receiverTypes && receiverTypes.length > 0) {
+      wantReceipts = receiverTypes.includes('customer');
+      if (!receiverTypes.includes('supplier') && !receiverTypes.includes('other')) wantPayments = false;
+    }
+
+    // ── Fetch transactions ───────────────────────────────────────────────────
+    const [receipts, payments] = await Promise.all([
+      wantReceipts ? prisma.paymentReceipt.findMany({
+        where: receiptWhere,
+        include: {
+          creator: { select: { id: true, fullName: true, phone: true } },
+          customerRef: { select: { id: true, customerName: true, address: true, phone: true } },
+        },
+        orderBy: { receiptDate: 'asc' },
+      }) : Promise.resolve([]),
+      wantPayments ? prisma.paymentVoucher.findMany({
+        where: paymentWhere,
+        include: {
+          creator: { select: { id: true, fullName: true, phone: true } },
+          supplier: { select: { id: true, supplierName: true, address: true, phone: true } },
+        },
+        orderBy: { paymentDate: 'asc' },
+      }) : Promise.resolve([]),
+    ]);
+
+    // ── Normalise ────────────────────────────────────────────────────────────
+    const entries: any[] = [];
+
+    for (const r of receipts) {
+      const customerName = r.customerRef?.customerName || '';
+      if (receiverName && !customerName.toLowerCase().includes(receiverName.toLowerCase())) continue;
+
+      entries.push({
+        id: r.id,
+        type: 'receipt' as const,
+        voucherType: r.receiptType,
+        code: r.receiptCode,
+        datetime: r.receiptDate,
+        partyName: customerName,
+        partyType: 'customer',
+        address: r.customerRef?.address || '',
+        province: '',
+        content: r.notes || '',
+        amount: Number(r.amount),
+        isReceipt: true,
+        creator: r.creator,
+        isPosted: r.isPosted,
+      });
+    }
+
+    for (const p of payments) {
+      const supplierName = p.supplier?.supplierName || '';
+      if (receiverName && !supplierName.toLowerCase().includes(receiverName.toLowerCase())) continue;
+
+      // receiverType filter for payments
+      const pType = p.supplierId ? 'supplier' : 'other';
+      if (receiverTypes && receiverTypes.length > 0 && !receiverTypes.includes(pType)) continue;
+
+      entries.push({
+        id: p.id,
+        type: 'payment' as const,
+        voucherType: p.voucherType,
+        code: p.voucherCode,
+        datetime: p.paymentDate,
+        partyName: supplierName,
+        partyType: pType,
+        address: p.supplier?.address || '',
+        province: '',
+        content: p.reason || p.notes || '',
+        amount: Number(p.amount),
+        isReceipt: false,
+        creator: p.creator,
+        isPosted: p.status === 'posted',
+      });
+    }
+
+    // ── Sort ascending for running balance ───────────────────────────────────
+    entries.sort((a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime());
+
+    // ── Compute running balance ──────────────────────────────────────────────
+    let runningBalance = openingBalance;
+    for (const e of entries) {
+      runningBalance = e.isReceipt ? runningBalance + e.amount : runningBalance - e.amount;
+      e.runningBalance = runningBalance;
+    }
+
+    const closingBalance = runningBalance;
+    const totalReceipt = entries.filter(e => e.isReceipt).reduce((s, e) => s + e.amount, 0);
+    const totalPayment = entries.filter(e => !e.isReceipt).reduce((s, e) => s + e.amount, 0);
+
+    // ── Pagination: reverse for display (newest first) ───────────────────────
+    const displayEntries = [...entries].reverse();
+    const total = displayEntries.length;
+    const paginated = displayEntries.slice((page - 1) * pageSize, page * pageSize);
+
+    return {
+      openingBalance,
+      totalReceipt,
+      totalPayment,
+      closingBalance,
+      total,
+      page,
+      pageSize,
+      transactions: paginated,
+    };
+  }
+
+  /**
+   * Export detailed cash book to Excel  — A4 portrait, 9 cols, no +/- signs
+   */
+  async exportCashBookExcel(params: {
+    fromDate: string;
+    toDate: string;
+    customerId?: number;
+    supplierId?: number;
+    createdById?: number;
+    receiverName?: string;
+    receiverTypes?: string[];
+    voucherType?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<Buffer> {
+    const ExcelJS = require('exceljs');
+
+    // Tất cả giao dịch, oldest-first
+    const reportData = await this.getCashBookReport({ ...params, page: 1, pageSize: 999999 });
+    const transactions: any[] = [...(reportData.transactions || [])].reverse();
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Nam Viet App';
+    workbook.created = new Date();
+
+    // ═ Colour palette ═════════════════════════════════════════════════════════
+    const C = {
+      headerBg:    'FF1A3A8F',
+      headerFont:  'FFFFFFFF',
+      titleFont:   'FFC00000',
+      compFont:    'FF1A3A8F',
+      openingBg:   'FFE8F0FE',
+      openingFont: 'FF1A3A8F',
+      thuHeader:   'FF166534',
+      chiHeader:   'FF991B1B',
+      tonHeader:   'FF1E40AF',
+      receiptFont: 'FF0D6E31',
+      paymentFont: 'FFC00000',
+      balancePos:  'FF0070C0',
+      balanceNeg:  'FFC00000',
+      receiptType: 'FF2563EB',
+      paymentType: 'FF0F766E',
+      rowOdd:      'FFFAFBFF',
+      rowEven:     'FFFFFFFF',
+      totalBg:     'FFDCE6F1',
+      summaryBg:   'FFF0FDF4',
+      summaryLbl:  'FF166534',
+    };
+
+    const bThin   = { style: 'thin'   as const, color: { argb: 'FFB0B8D0' } };
+    const bMedium = { style: 'medium' as const, color: { argb: 'FF1A3A8F' } };
+    const bAll    = (b: { style: 'thin' | 'medium'; color: { argb: string } }) => ({ top: b, left: b, bottom: b, right: b });
+
+    // Số dương không có dấu
+    const NUM = '#,##0';
+
+    const RLABELS: Record<string, string> = {
+      sales:           'Thu bán hàng',
+      debt_collection: 'Thu công nợ',
+      refund:          'Hoàn trả',
+    };
+    const PLABELS: Record<string, string> = {
+      supplier_payment: 'Chi nhà cung cấp',
+      salary:           'Chi lương',
+      operating_cost:   'Chi phí khác',
+      refund:           'Hoàn tiền',
+      other:            'Chi khác',
+    };
+
+    const dd = (d: string) => {
+      if (!d) return '';
+      const dt = new Date(d);
+      return `${dt.getDate().toString().padStart(2,'0')}/${(dt.getMonth()+1).toString().padStart(2,'0')}/${dt.getFullYear()}`;
+    };
+
+    // ═ Sheet  (A4 dọ) ══════════════════════════════════════════════════════
+    const sheet = workbook.addWorksheet('Sổ Quỹ Chi Tiết', {
+      pageSetup: {
+        paperSize: 9, orientation: 'portrait',
+        fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+        margins: { left: 0.4, right: 0.4, top: 0.6, bottom: 0.6, header: 0.2, footer: 0.2 },
+      },
+    });
+
+    // 9 cột (bỏ Địa chỉ)
+    sheet.columns = [
+      { key: 'stt',    width: 5  },  // A
+      { key: 'date',   width: 13 },  // B
+      { key: 'code',   width: 14 },  // C
+      { key: 'party',  width: 36 },  // D
+      { key: 'notes',  width: 30 },  // E
+      { key: 'type',   width: 17 },  // F
+      { key: 'thu',    width: 18 },  // G
+      { key: 'chi',    width: 18 },  // H
+      { key: 'ton',    width: 20 },  // I
+    ];
+    const NCOL = 9;
+
+    // ─ ROW1: Tiêu đề ──────────────────────────────────────────────────────────
+    sheet.mergeCells('A1:I1'); sheet.getRow(1).height = 34;
+    Object.assign(sheet.getCell('A1'), {
+      value: 'SỔ QUỸ CHI TIẾT',
+      font:  { bold: true, size: 17, color: { argb: C.titleFont }, name: 'Arial' },
+      alignment: { horizontal: 'center', vertical: 'middle' },
+    });
+
+    // ─ ROW2: Công ty ──────────────────────────────────────────────────────
+    sheet.mergeCells('A2:I2'); sheet.getRow(2).height = 20;
+    Object.assign(sheet.getCell('A2'), {
+      value: 'CÔNG TY CỔ PHẦN HÓA SINH NAM VIỆT',
+      font:  { bold: true, size: 11, color: { argb: C.compFont }, name: 'Arial' },
+      alignment: { horizontal: 'center' },
+    });
+
+    // ─ ROW3: Kỳ báo cáo ───────────────────────────────────────────────────
+    sheet.mergeCells('A3:I3'); sheet.getRow(3).height = 18;
+    Object.assign(sheet.getCell('A3'), {
+      value: `Từ ngày: ${dd(params.fromDate)}   —   Đến ngày: ${dd(params.toDate)}   |   In lúc: ${new Date().toLocaleString('vi-VN')}`,
+      font:  { size: 10, italic: true, color: { argb: 'FF555555' }, name: 'Arial' },
+      alignment: { horizontal: 'center' },
+    });
+
+    // ─ ROW4: Trống ─────────────────────────────────────────────────────
+    sheet.addRow([]);
+
+    // ─ ROW5: Header ──────────────────────────────────────────────────
+    const hRow = sheet.addRow([
+      'STT', 'Ngày', 'Mã phiếu',
+      'Khách hàng / Đối tượng',
+      'Nội dung / Diễn giải',
+      'Loại phiếu', 'Thu (₫)', 'Chi (₫)', 'Tồn quỹ (₫)',
+    ]);
+    hRow.height = 28;
+    hRow.eachCell({ includeEmpty: true }, (cell: any, col: number) => {
+      const bg = col === 7 ? C.thuHeader : col === 8 ? C.chiHeader : col === 9 ? C.tonHeader : C.headerBg;
+      cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
+      cell.font      = { bold: true, size: 10, color: { argb: C.headerFont }, name: 'Arial' };
+      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      cell.border    = bAll(bThin);
+    });
+    const HR = 5; // header row number
+
+    // ─ ROW6: Số dư đầu kỳ ──────────────────────────────────────────────
+    const ob = Number(reportData.openingBalance || 0);
+    const opRow = sheet.addRow(['', '', '', 'Số dư đầu kỳ', '', '', '', '', Math.abs(ob)]);
+    opRow.height = 22;
+    opRow.eachCell({ includeEmpty: true }, (cell: any, col: number) => {
+      cell.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.openingBg } };
+      cell.border = bAll(bThin);
+      if (col === 4) { cell.font = { bold: true, size: 10, color: { argb: C.openingFont }, name: 'Arial' }; cell.alignment = { horizontal: 'right' }; }
+      if (col === 9) { cell.numFmt = NUM; cell.font = { bold: true, size: 11, color: { argb: ob >= 0 ? C.balancePos : C.balanceNeg }, name: 'Arial' }; cell.alignment = { horizontal: 'right' }; }
+    });
+
+    // ─ DATA ─────────────────────────────────────────────────────────────────
+    let rb  = ob;  // running balance
+    let totR = 0, totP = 0;
+
+    transactions.forEach((tx: any, idx: number) => {
+      const isR  = tx.isReceipt;
+      const amt  = Math.abs(Number(tx.amount || 0));
+      rb         = isR ? rb + amt : rb - amt;
+      if (isR) totR += amt; else totP += amt;
+
+      const typeLabel = isR ? (RLABELS[tx.voucherType] || 'Thu khác') : (PLABELS[tx.voucherType] || 'Chi khác');
+      const dStr = tx.datetime ? (() => { const d = new Date(tx.datetime); return `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getFullYear()}`; })() : '';
+
+      const row = sheet.addRow([
+        idx + 1,
+        dStr,
+        tx.code || '',
+        tx.partyName || tx.customerName || tx.supplierName || '',
+        tx.content || '',
+        typeLabel,
+        isR ? amt : null,
+        isR ? null : amt,
+        Math.abs(rb),   // luôn dương, màu phản ánh trạng thái
+      ]);
+      row.height = 20;
+      const bg   = idx % 2 === 0 ? C.rowOdd : C.rowEven;
+
+      row.eachCell({ includeEmpty: true }, (cell: any, col: number) => {
+        cell.border = bAll(bThin);
+        cell.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
+        switch (col) {
+          case 1: cell.font = { size: 9, color: { argb: 'FF888888' }, name: 'Arial' }; cell.alignment = { horizontal: 'center', vertical: 'middle' }; break;
+          case 2: cell.font = { size: 10, name: 'Arial' }; cell.alignment = { horizontal: 'center', vertical: 'middle' }; break;
+          case 3: cell.font = { size: 9, color: { argb: 'FF222222' }, name: 'Arial' }; cell.alignment = { horizontal: 'center', vertical: 'middle' }; break;
+          case 4: cell.font = { bold: true, size: 10, color: { argb: 'FF111827' }, name: 'Arial' }; cell.alignment = { vertical: 'middle' }; break;
+          case 5: cell.font = { size: 9.5, color: { argb: 'FF4B5563' }, name: 'Arial' }; cell.alignment = { vertical: 'middle' }; break;
+          case 6: cell.font = { bold: true, size: 9.5, color: { argb: isR ? C.receiptType : C.paymentType }, name: 'Arial' }; cell.alignment = { horizontal: 'center', vertical: 'middle' }; break;
+          case 7: cell.numFmt = NUM; cell.font = { bold: true, size: 10, color: { argb: C.receiptFont }, name: 'Arial' }; cell.alignment = { horizontal: 'right', vertical: 'middle' }; break;
+          case 8: cell.numFmt = NUM; cell.font = { bold: true, size: 10, color: { argb: C.paymentFont }, name: 'Arial' }; cell.alignment = { horizontal: 'right', vertical: 'middle' }; break;
+          case 9: cell.numFmt = NUM; cell.font = { bold: true, size: 10, color: { argb: rb >= 0 ? C.balancePos : C.balanceNeg }, name: 'Arial' }; cell.alignment = { horizontal: 'right', vertical: 'middle' }; break;
+        }
+      });
+    });
+
+    // ─ TỔNG CỘNG ───────────────────────────────────────────────────────────
+    const totRow = sheet.addRow(['', '', '', '', '', 'TỔNG CỘNG', totR, totP, Math.abs(rb)]);
+    totRow.height = 26;
+    totRow.eachCell({ includeEmpty: true }, (cell: any, col: number) => {
+      cell.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.totalBg } };
+      cell.border = bAll(bMedium);
+      switch (col) {
+        case 6: cell.font = { bold: true, size: 11, color: { argb: C.headerBg }, name: 'Arial' }; cell.alignment = { horizontal: 'center', vertical: 'middle' }; break;
+        case 7: cell.numFmt = NUM; cell.font = { bold: true, size: 11, color: { argb: C.receiptFont }, name: 'Arial' }; cell.alignment = { horizontal: 'right', vertical: 'middle' }; break;
+        case 8: cell.numFmt = NUM; cell.font = { bold: true, size: 11, color: { argb: C.paymentFont }, name: 'Arial' }; cell.alignment = { horizontal: 'right', vertical: 'middle' }; break;
+        case 9: cell.numFmt = NUM; cell.font = { bold: true, size: 11, color: { argb: rb >= 0 ? C.balancePos : C.balanceNeg }, name: 'Arial' }; cell.alignment = { horizontal: 'right', vertical: 'middle' }; break;
+      }
+    });
+
+    // ─ SUMMARY ─────────────────────────────────────────────────────────────
+    sheet.addRow([]);
+    [
+      { label: 'Số dư đầu kỳ:',      v: Math.abs(ob),  c: ob >= 0  ? C.balancePos : C.balanceNeg },
+      { label: 'Tổng thu trong kỳ:',  v: totR,          c: C.receiptFont },
+      { label: 'Tổng chi trong kỳ:',  v: totP,          c: C.paymentFont },
+      { label: 'Số dư cuối kỳ:',     v: Math.abs(rb),  c: rb  >= 0  ? C.balancePos : C.balanceNeg },
+    ].forEach(({ label, v, c }) => {
+      const sr = sheet.addRow([]); sr.height = 22;
+      const lc = sr.getCell(8), vc = sr.getCell(9);
+      lc.value = label; vc.value = v; vc.numFmt = NUM;
+      lc.font = { bold: true, size: 10, color: { argb: C.summaryLbl }, name: 'Arial' }; lc.alignment = { horizontal: 'right', vertical: 'middle' };
+      vc.font = { bold: true, size: 11, color: { argb: c },           name: 'Arial' }; vc.alignment = { horizontal: 'right', vertical: 'middle' };
+      lc.fill = vc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.summaryBg } };
+      [lc, vc].forEach((x: any) => { x.border = bAll(bThin); });
+    });
+
+    // ─ Freeze + AutoFilter ─────────────────────────────────────────────
+    sheet.views = [{ state: 'frozen', xSplit: 0, ySplit: HR, activeCell: 'A6' }];
+    sheet.autoFilter = { from: { row: HR, column: 1 }, to: { row: HR, column: NCOL } };
+
+    return await workbook.xlsx.writeBuffer();
+  }
 }
 
 export default new FinancialService();
+

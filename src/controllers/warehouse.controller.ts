@@ -115,13 +115,30 @@ class WarehouseController {
   // POST /api/warehouses/bulk-delete
   async bulkDelete(req: AuthRequest, res: Response) {
     const userId = req.user!.id;
-    const { ids } = req.body;
+    const { ids, force } = req.body;
 
     const numIds = Array.isArray(ids) ? ids.map(id => Number(id)) : [];
-    const result = await warehouseService.bulkDelete(numIds, userId);
+    const result = await warehouseService.bulkDelete(numIds, userId, !!force);
 
     const response: ApiResponse = {
       success: true,
+      message: result.message,
+      timestamp: new Date().toISOString(),
+    };
+
+    res.status(200).json(response);
+  }
+
+  // POST /api/warehouses/check-inventory
+  async checkInventory(req: AuthRequest, res: Response) {
+    const { ids } = req.body;
+
+    const numIds = Array.isArray(ids) ? ids.map(id => Number(id)) : [];
+    const result = await warehouseService.checkWarehousesInventory(numIds);
+
+    const response: ApiResponse = {
+      success: true,
+      data: result.data,
       message: result.message,
       timestamp: new Date().toISOString(),
     };

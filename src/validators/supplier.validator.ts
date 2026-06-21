@@ -3,10 +3,14 @@ import { z } from 'zod';
 export const createSupplierSchema = z.object({
   supplierCode: z
     .string()
-    .min(1, 'Mã nhà cung cấp là bắt buộc')
     .max(50, 'Mã nhà cung cấp quá dài')
-    .regex(/^[A-Z0-9-]+$/, 'Mã nhà cung cấp phải là chữ in hoa, số và dấu gạch ngang')
-    .trim(),
+    .trim()
+    .optional()
+    .or(z.literal(''))
+    .refine(
+      (val) => !val || /^[A-Z0-9-]+$/.test(val),
+      'Mã nhà cung cấp phải là chữ in hoa, số và dấu gạch ngang'
+    ),
   supplierName: z
     .string()
     .min(1, 'Tên nhà cung cấp là bắt buộc')

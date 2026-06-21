@@ -50,6 +50,8 @@ class PaymentVoucherService {
     const where: Prisma.PaymentVoucherWhereInput = {
       deletedAt: null,
       ...(supplierId && { supplierId }),
+      ...(query.customerId && { customerId: query.customerId }),
+      ...(query.employeeId && { employeeId: query.employeeId }),
       ...(voucherType && { voucherType }),
       ...(paymentMethod && { paymentMethod }),
       ...(status && { status }),
@@ -58,15 +60,17 @@ class PaymentVoucherService {
         OR: [
           { voucherCode: { contains: search } },
           { supplier: { supplierName: { contains: search } } },
+          { customer: { customerName: { contains: search } } },
+          { employee: { fullName: { contains: search } } },
         ],
       }),
       ...(fromDate &&
         toDate && {
-          paymentDate: {
-            gte: new Date(fromDate),
-            lte: new Date(toDate),
-          },
-        }),
+        paymentDate: {
+          gte: new Date(fromDate),
+          lte: new Date(toDate),
+        },
+      }),
     };
 
     const [vouchers, total] = await Promise.all([
@@ -78,6 +82,22 @@ class PaymentVoucherService {
               id: true,
               supplierCode: true,
               supplierName: true,
+              phone: true,
+            },
+          },
+          customer: {
+            select: {
+              id: true,
+              customerCode: true,
+              customerName: true,
+              phone: true,
+            },
+          },
+          employee: {
+            select: {
+              id: true,
+              employeeCode: true,
+              fullName: true,
               phone: true,
             },
           },
@@ -169,6 +189,27 @@ class PaymentVoucherService {
             taxCode: true,
           },
         },
+        customer: {
+          select: {
+            id: true,
+            customerCode: true,
+            customerName: true,
+            phone: true,
+            email: true,
+            address: true,
+            taxCode: true,
+          },
+        },
+        employee: {
+          select: {
+            id: true,
+            employeeCode: true,
+            fullName: true,
+            phone: true,
+            email: true,
+            address: true,
+          },
+        },
         creator: {
           select: {
             id: true,
@@ -233,6 +274,8 @@ class PaymentVoucherService {
         voucherCode,
         voucherType: data.voucherType,
         supplierId: data.supplierId,
+        customerId: data.customerId,
+        employeeId: data.employeeId,
         purchaseOrderId: data.purchaseOrderId,
         amount: data.amount,
         paymentMethod: data.paymentMethod,
@@ -245,6 +288,8 @@ class PaymentVoucherService {
       },
       include: {
         supplier: true,
+        customer: true,
+        employee: true,
         creator: true,
       },
     });
@@ -297,6 +342,8 @@ class PaymentVoucherService {
       data: {
         ...(data.voucherType && { voucherType: data.voucherType }),
         supplierId: data.supplierId !== undefined ? data.supplierId : undefined,
+        customerId: data.customerId !== undefined ? data.customerId : undefined,
+        employeeId: data.employeeId !== undefined ? data.employeeId : undefined,
         purchaseOrderId: data.purchaseOrderId !== undefined ? data.purchaseOrderId : undefined,
         amount: data.amount !== undefined ? data.amount : undefined,
         ...(data.paymentMethod && { paymentMethod: data.paymentMethod }),
@@ -307,6 +354,8 @@ class PaymentVoucherService {
       },
       include: {
         supplier: true,
+        customer: true,
+        employee: true,
         creator: true,
       },
     });
@@ -333,9 +382,9 @@ class PaymentVoucherService {
     if (voucher.status === 'posted') {
       throw new ValidationError('Phiếu chi đã ghi sổ rồi');
     }
-    
+
     if (voucher.status === 'cancelled') {
-        throw new ValidationError('Không thể ghi sổ phiếu chi đã hủy');
+      throw new ValidationError('Không thể ghi sổ phiếu chi đã hủy');
     }
 
     // Transaction: Cập nhật toàn bộ dữ liệu liên quan
@@ -376,10 +425,11 @@ class PaymentVoucherService {
         const po = await tx.purchaseOrder.findUnique({ where: { id: voucher.purchaseOrderId } });
         if (po) {
           const newPaidAmount = Number(po.paidAmount) + Number(voucher.amount);
+          const totalAmount = Number(po.totalAmount);
           let paymentStatus = 'partial';
-          if (newPaidAmount >= Number(po.totalAmount)) paymentStatus = 'paid';
+          if (newPaidAmount >= totalAmount) paymentStatus = 'paid';
           if (newPaidAmount <= 0) paymentStatus = 'unpaid';
-          
+
           await tx.purchaseOrder.update({
             where: { id: po.id },
             data: {
@@ -463,89 +513,89 @@ class PaymentVoucherService {
     }
 
     if (voucher.status === 'cancelled') {
-        throw new ValidationError('Phiếu chi đã được hủy từ trước');
+      throw new ValidationError('Phiếu chi đã được hủy từ trước');
     }
 
     // Nếu đã ghi sổ thì phải hoàn tác
     const updatedVoucher = await prisma.$transaction(async (tx) => {
-        if (voucher.status === 'posted') {
-            // Hoàn tác công nợ nhà cung cấp
-            if (voucher.voucherType === 'supplier_payment' && voucher.supplierId) {
-                const supplier = await tx.supplier.findUnique({
-                  where: { id: voucher.supplierId },
-                });
-        
-                if (supplier) {
-                  const newTotalPayable = Number(supplier.totalPayable || 0) + Number(voucher.amount);
-                  await tx.supplier.update({
-                    where: { id: voucher.supplierId },
-                    data: {
-                      totalPayable: newTotalPayable,
-                    },
-                  });
-                }
-              }
+      if (voucher.status === 'posted') {
+        // Hoàn tác công nợ nhà cung cấp
+        if (voucher.voucherType === 'supplier_payment' && voucher.supplierId) {
+          const supplier = await tx.supplier.findUnique({
+            where: { id: voucher.supplierId },
+          });
 
-              // Hoàn tác Purchase Order (nếu có)
-              if (voucher.purchaseOrderId) {
-                const po = await tx.purchaseOrder.findUnique({ where: { id: voucher.purchaseOrderId } });
-                if (po) {
-                  const newPaidAmount = Math.max(0, Number(po.paidAmount) - Number(voucher.amount));
-                  let paymentStatus = 'partial';
-                  if (newPaidAmount <= 0) paymentStatus = 'unpaid';
-                  else if (newPaidAmount >= Number(po.totalAmount)) paymentStatus = 'paid';
-                  
-                  await tx.purchaseOrder.update({
-                    where: { id: po.id },
-                    data: {
-                      paidAmount: newPaidAmount,
-                      paymentStatus: paymentStatus as any,
-                    }
-                  });
-                }
-              }
-
-              // Hoàn tác lương
-              if (voucher.voucherType === 'salary') {
-                const paymentDate = new Date(voucher.paymentDate);
-                const month = String(paymentDate.getFullYear()) + String(paymentDate.getMonth() + 1).padStart(2, '0');
-        
-                await tx.salary.updateMany({
-                  where: {
-                    month: month,
-                    status: 'paid',
-                  },
-                  data: {
-                    status: 'approved',
-                    isPosted: false,
-                    paidBy: null,
-                    paymentDate: null,
-                  },
-                });
-              }
+          if (supplier) {
+            const newTotalPayable = Number(supplier.totalPayable || 0) + Number(voucher.amount);
+            await tx.supplier.update({
+              where: { id: voucher.supplierId },
+              data: {
+                totalPayable: newTotalPayable,
+              },
+            });
+          }
         }
-        
-        // Hủy (cập nhật status về cancelled)
-        return await tx.paymentVoucher.update({
-            where: { id },
+
+        // Hoàn tác Purchase Order (nếu có)
+        if (voucher.purchaseOrderId) {
+          const po = await tx.purchaseOrder.findUnique({ where: { id: voucher.purchaseOrderId } });
+          if (po) {
+            const newPaidAmount = Math.max(0, Number(po.paidAmount) - Number(voucher.amount));
+            let paymentStatus = 'partial';
+            if (newPaidAmount <= 0) paymentStatus = 'unpaid';
+            else if (newPaidAmount >= Number(po.totalAmount)) paymentStatus = 'paid';
+
+            await tx.purchaseOrder.update({
+              where: { id: po.id },
+              data: {
+                paidAmount: newPaidAmount,
+                paymentStatus: paymentStatus as any,
+              }
+            });
+          }
+        }
+
+        // Hoàn tác lương
+        if (voucher.voucherType === 'salary') {
+          const paymentDate = new Date(voucher.paymentDate);
+          const month = String(paymentDate.getFullYear()) + String(paymentDate.getMonth() + 1).padStart(2, '0');
+
+          await tx.salary.updateMany({
+            where: {
+              month: month,
+              status: 'paid',
+            },
             data: {
-                status: 'cancelled',
-                cancelledAt: new Date(),
-                notes: data?.notes ? `${voucher.notes || ''}\n[CANCELLED] ${data.notes}` : voucher.notes,
+              status: 'approved',
+              isPosted: false,
+              paidBy: null,
+              paymentDate: null,
             },
-            include: {
-                creator: {
-                select: { id: true, fullName: true, employeeCode: true },
-                },
-                supplier: {
-                select: {
-                    id: true,
-                    supplierCode: true,
-                    supplierName: true,
-                },
-                },
+          });
+        }
+      }
+
+      // Hủy (cập nhật status về cancelled)
+      return await tx.paymentVoucher.update({
+        where: { id },
+        data: {
+          status: 'cancelled',
+          cancelledAt: new Date(),
+          notes: data?.notes ? `${voucher.notes || ''}\n[CANCELLED] ${data.notes}` : voucher.notes,
+        },
+        include: {
+          creator: {
+            select: { id: true, fullName: true, employeeCode: true },
+          },
+          supplier: {
+            select: {
+              id: true,
+              supplierCode: true,
+              supplierName: true,
             },
-        });
+          },
+        },
+      });
     })
 
     logActivity('update', userId, 'payment_vouchers', {
@@ -581,11 +631,11 @@ class PaymentVoucherService {
     const where: Prisma.PaymentVoucherWhereInput = {
       ...(fromDate &&
         toDate && {
-          paymentDate: {
-            gte: new Date(fromDate),
-            lte: new Date(toDate),
-          },
-        }),
+        paymentDate: {
+          gte: new Date(fromDate),
+          lte: new Date(toDate),
+        },
+      }),
     };
 
     const vouchers = await prisma.paymentVoucher.findMany({
@@ -631,11 +681,11 @@ class PaymentVoucherService {
       status: 'posted',
       ...(fromDate &&
         toDate && {
-          paymentDate: {
-            gte: new Date(fromDate),
-            lte: new Date(toDate),
-          },
-        }),
+        paymentDate: {
+          gte: new Date(fromDate),
+          lte: new Date(toDate),
+        },
+      }),
     };
 
     const vouchers = await prisma.paymentVoucher.findMany({

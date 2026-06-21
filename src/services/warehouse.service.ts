@@ -515,7 +515,65 @@ class WarehouseService {
     return updatedWarehouse;
   }
 
-  async bulkDelete(ids: number[], deletedBy: number) {
+  async checkWarehousesInventory(ids: number[]) {
+    const warehouses = await prisma.warehouse.findMany({
+      where: { id: { in: ids } },
+      select: {
+        id: true,
+        warehouseCode: true,
+        warehouseName: true,
+        _count: {
+          select: { stockTransactions: true }
+        },
+        inventory: {
+          where: {
+            quantity: { gt: 0 },
+          },
+          select: {
+            id: true,
+            quantity: true,
+            reservedQuantity: true,
+            product: {
+              select: {
+                id: true,
+                code: true,
+                productName: true,
+                basePrice: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (warehouses.length === 0) {
+      throw new NotFoundError('Không tìm thấy kho nào');
+    }
+
+    const result = warehouses.map((w) => ({
+      id: w.id,
+      warehouseCode: w.warehouseCode,
+      warehouseName: w.warehouseName,
+      hasInventory: w.inventory.length > 0,
+      hasTransactions: (w._count?.stockTransactions ?? 0) > 0,
+      inventoryItems: w.inventory.map((inv) => ({
+        productId: inv.product.id,
+        productCode: inv.product.code,
+        productName: inv.product.productName,
+        quantity: Number(inv.quantity),
+        reservedQuantity: Number(inv.reservedQuantity),
+        basePrice: inv.product.basePrice ? Number(inv.product.basePrice) : 0,
+      })),
+    }));
+
+    return {
+      data: result,
+      hasAnyInventory: result.some((w) => w.hasInventory),
+      message: 'Kiểm tra tồn kho thành công',
+    };
+  }
+
+  async bulkDelete(ids: number[], deletedBy: number, force: boolean = false) {
     const warehouses = await prisma.warehouse.findMany({
       where: { id: { in: ids } },
       include: {
@@ -529,6 +587,132 @@ class WarehouseService {
       throw new NotFoundError('Không tìm thấy kho nào để xóa');
     }
 
+    if (force) {
+      // Force delete: remove all inventory, inventory batches, and related data first
+      await prisma.$transaction(async (tx) => {
+        const warehouseIds = warehouses.map((w) => w.id);
+
+        // Nullify nullable FK references
+        await tx.user.updateMany({
+          where: { warehouseId: { in: warehouseIds } },
+          data: { warehouseId: null },
+        });
+
+        await tx.invoice.updateMany({
+          where: { warehouseId: { in: warehouseIds } },
+          data: { warehouseId: null },
+        });
+
+        await tx.invoiceDetail.updateMany({
+          where: { warehouseId: { in: warehouseIds } },
+          data: { warehouseId: null },
+        });
+
+        await tx.stockTransactionDetail.updateMany({
+          where: { warehouseId: { in: warehouseIds } },
+          data: { warehouseId: null },
+        });
+
+        // Nullify source/destination warehouse references in stock transactions
+        await tx.stockTransaction.updateMany({
+          where: { sourceWarehouseId: { in: warehouseIds } },
+          data: { sourceWarehouseId: null },
+        });
+
+        await tx.stockTransaction.updateMany({
+          where: { destinationWarehouseId: { in: warehouseIds } },
+          data: { destinationWarehouseId: null },
+        });
+
+        // Delete invoice batch details linked to inventory batches in these warehouses
+        await tx.invoiceBatchDetail.deleteMany({
+          where: {
+            inventoryBatch: {
+              warehouseId: { in: warehouseIds },
+            },
+          },
+        });
+
+        // Delete stock transaction details linked to inventory batches in these warehouses
+        const batches = await tx.inventoryBatch.findMany({
+          where: { warehouseId: { in: warehouseIds } },
+          select: { id: true },
+        });
+        const batchIds = batches.map((b) => b.id);
+        if (batchIds.length > 0) {
+          await tx.stockTransactionDetail.updateMany({
+            where: { inventoryBatchId: { in: batchIds } },
+            data: { inventoryBatchId: null },
+          });
+        }
+
+        // Delete inventory batches
+        await tx.inventoryBatch.deleteMany({
+          where: { warehouseId: { in: warehouseIds } },
+        });
+
+        // Delete inventory records
+        await tx.inventory.deleteMany({
+          where: { warehouseId: { in: warehouseIds } },
+        });
+
+        // Delete stock transaction details for transactions in these warehouses
+        const transactions = await tx.stockTransaction.findMany({
+          where: { warehouseId: { in: warehouseIds } },
+          select: { id: true },
+        });
+        const transactionIds = transactions.map((t) => t.id);
+        if (transactionIds.length > 0) {
+          await tx.stockTransactionDetail.deleteMany({
+            where: { transactionId: { in: transactionIds } },
+          });
+        }
+
+        // Delete stock transactions
+        await tx.stockTransaction.deleteMany({
+          where: { warehouseId: { in: warehouseIds } },
+        });
+
+        // Handle stock transfers referencing these warehouses
+        const transfersFrom = await tx.stockTransfer.findMany({
+          where: { fromWarehouseId: { in: warehouseIds } },
+          select: { id: true },
+        });
+        const transfersTo = await tx.stockTransfer.findMany({
+          where: { toWarehouseId: { in: warehouseIds } },
+          select: { id: true },
+        });
+        const allTransferIds = [
+          ...transfersFrom.map((t) => t.id),
+          ...transfersTo.map((t) => t.id),
+        ];
+        if (allTransferIds.length > 0) {
+          await tx.stockTransferDetail.deleteMany({
+            where: { transferId: { in: allTransferIds } },
+          });
+          await tx.stockTransfer.deleteMany({
+            where: { id: { in: allTransferIds } },
+          });
+        }
+
+        // Delete the warehouses
+        await tx.warehouse.deleteMany({
+          where: { id: { in: warehouseIds } },
+        });
+      });
+
+      logActivity('bulk_delete_force', deletedBy, 'warehouses', {
+        deletedIds: ids,
+        totalDeleted: warehouses.length,
+        forced: true,
+      });
+
+      return {
+        message: `Đã xóa thành công ${warehouses.length} kho (bao gồm tồn kho)`,
+      };
+    }
+
+    // Normal delete: only delete warehouses without inventory
     const validIds = warehouses
       .filter((w) => w._count.inventory === 0 && w._count.stockTransactions === 0)
       .map((w) => w.id);
@@ -567,7 +751,7 @@ class WarehouseService {
           data: {
             warehouseCode: item.warehouseCode,
             warehouseName: item.warehouseName,
-            warehouseType: item.warehouseType || 'goods',
+            warehouseType: item.warehouseType || 'product',
             city: item.city || null,
             region: item.region || null,
             address: item.address || null,

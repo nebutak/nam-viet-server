@@ -109,6 +109,22 @@ router.post(
   asyncHandler(invoiceController.revert.bind(invoiceController))
 );
 
+// PUT /api/invoices/:id/recheck-status - Re-evaluate order completion status
+router.put(
+  '/:id/recheck-status',
+  authorize('UPDATE_INVOICE'),
+  logActivityMiddleware('update', 'invoice'),
+  asyncHandler(invoiceController.recheckStatus.bind(invoiceController))
+);
+
+// POST /api/invoices/bulk-delete - Delete multiple orders
+router.post(
+  '/bulk-delete',
+  authorize('DELETE_INVOICE'),
+  logActivityMiddleware('delete', 'invoice'),
+  asyncHandler(invoiceController.bulkDelete.bind(invoiceController))
+);
+
 // DELETE /api/invoices/:id - Delete order
 router.delete(
   '/:id',

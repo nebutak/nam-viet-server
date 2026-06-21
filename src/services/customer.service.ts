@@ -361,6 +361,8 @@ class CustomerService {
         ...(data.rewardCode !== undefined && { rewardCode: data.rewardCode || null }),
         ...(data.status !== undefined && { status: data.status }),
         ...(data.assignedUserId !== undefined && { assignedUserId: data.assignedUserId }),
+        ...(data.isBlacklisted !== undefined && { isBlacklisted: data.isBlacklisted }),
+        ...(data.debtExtensionDate !== undefined && { debtExtensionDate: data.debtExtensionDate ? new Date(data.debtExtensionDate) : null }),
         updatedBy: userId,
       },
       include: {

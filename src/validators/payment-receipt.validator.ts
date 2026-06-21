@@ -2,9 +2,11 @@ import { z } from 'zod';
 
 export const createPaymentReceiptSchema = z.object({
   receiptType: z.enum(['sales', 'debt_collection', 'refund', 'other']),
-  customerId: z.number().int().positive('ID khách hàng phải là số dương'),
+  customerId: z.number().int().positive('ID khách hàng phải là số dương').optional(),
+  supplierId: z.number().int().positive('ID nhà cung cấp phải là số dương').optional(),
   orderId: z.number().int().positive('ID đơn hàng phải là số dương').optional(),
-  amount: z.number().positive('Số tiền phải là số dương'),
+  purchaseOrderId: z.number().int().positive('ID đơn mua hàng phải là số dương').optional(),
+  amount: z.number().min(0, 'Số tiền không hợp lệ'),
   paymentMethod: z.enum(['cash', 'transfer', 'card']),
   bankName: z.string().max(500).nullable().optional(),
   transactionReference: z.string().max(100).nullable().optional(),
@@ -38,7 +40,9 @@ export const paymentReceiptQuerySchema = z.object({
   limit: z.string().regex(/^\d+$/).optional().default('20'),
   search: z.string().optional(),
   customerId: z.string().regex(/^\d+$/).transform(Number).optional(),
+  supplierId: z.string().regex(/^\d+$/).transform(Number).optional(),
   orderId: z.string().regex(/^\d+$/).transform(Number).optional(),
+  purchaseOrderId: z.string().regex(/^\d+$/).transform(Number).optional(),
   receiptType: z.enum(['sales', 'debt_collection', 'refund', 'other']).optional(),
   paymentMethod: z.enum(['cash', 'transfer', 'card']).optional(),
   approvalStatus: z.enum(['approved', 'pending']).optional(),

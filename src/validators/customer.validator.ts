@@ -65,7 +65,8 @@ export const updateCustomerSchema = z.object({
   taxCode: z.string().max(50, 'Mã số thuế tối đa 50 ký tự').optional(),
   cccd: z.string()
     .length(12, 'CCCD phải có đúng 12 số')
-    .regex(/^\d+$/, 'CCCD chỉ được chứa các chữ số'),
+    .regex(/^\d+$/, 'CCCD chỉ được chứa các chữ số')
+    .optional(),
   issuedAt: z.string().nullable().optional(),
   issuedBy: z.string().max(100, 'Nơi cấp không được quá 100 ký tự').optional().or(z.literal('')),
   creditLimit: z.number().min(0, 'Hạn mức tín dụng phải lớn hơn hoặc bằng 0').optional(),
@@ -74,6 +75,8 @@ export const updateCustomerSchema = z.object({
   assignedUserId: z.number().int().positive('Mã nhân viên phải là số dương').optional().nullable(),
   status: z.enum(['active', 'inactive', 'blacklisted'], { message: 'Trạng thái không hợp lệ' }).optional(),
   notes: z.string().max(255, 'Ghi chú tối đa 255 ký tự').optional(),
+  isBlacklisted: z.boolean().optional(),
+  debtExtensionDate: z.string().nullable().optional(),
 });
 
 export const updateCreditLimitSchema = z.object({

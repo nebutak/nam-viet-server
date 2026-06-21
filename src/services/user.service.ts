@@ -172,8 +172,10 @@ class UserService {
       }
     }
 
-    const employeeCodeExists = await this.checkEmployeeCodeExists(data.employeeCode);
+    // Tự động sinh mã nhân viên nếu không có
+    const employeeCode = data.employeeCode?.trim() || `NV${Date.now().toString().slice(-8)}`;
 
+    const employeeCodeExists = await this.checkEmployeeCodeExists(employeeCode);
     if (employeeCodeExists) {
       throw new ConflictError('Mã nhân viên đã tồn tại');
     }
@@ -326,6 +328,7 @@ class UserService {
           dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
         }),
         ...(data.password && data.password.trim() && { passwordHash: await hashPassword(data.password) }),
+        ...(data.email === null && { passwordHash: null }),
         ...(data.roleId && { roleId: data.roleId }),
         ...(data.warehouseId !== undefined && { warehouseId: data.warehouseId }),
         ...(data.status && { status: data.status }),

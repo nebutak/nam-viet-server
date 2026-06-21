@@ -199,6 +199,23 @@ class StockTransactionController {
 
     res.status(201).json(response);
   }
+
+  // DELETE /api/stock-transactions/:id
+  async delete(req: AuthRequest, res: Response) {
+    const { id } = req.params;
+    const userId = req.user!.id;
+
+    const transaction = await stockTransactionService.deleteTransaction(parseInt(id), userId);
+
+    const response: ApiResponse = {
+      success: true,
+      data: transaction,
+      message: 'Xóa phiếu kho thành công',
+      timestamp: new Date().toISOString(),
+    };
+
+    res.status(200).json(response);
+  }
 }
 
 export default new StockTransactionController();

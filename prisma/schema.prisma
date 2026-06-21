@@ -136,6 +136,7 @@ model User {
   deliveriesSettled       Delivery[]            @relation("DeliverySettler")
   paymentReceipts         PaymentReceipt[]      @relation("ReceiptCreator")
   paymentVouchers         PaymentVoucher[]      @relation("VoucherCreator")
+  employeeVouchers        PaymentVoucher[]      @relation("VoucherEmployee")
   // debtReconciliations         DebtReconciliation[] @relation("ReconciliationCreator")
   // debtReconciliationsApproved DebtReconciliation[] @relation("ReconciliationApprover")
 
@@ -306,6 +307,7 @@ model Supplier {
   purchaseOrders  PurchaseOrder[]
   products        Product[]
   paymentVouchers PaymentVoucher[]
+  paymentReceipts PaymentReceipt[] @relation("SupplierRefund")
   // debtReconciliations DebtReconciliation[]
   debtPeriods     DebtPeriod[]
 
@@ -334,11 +336,12 @@ model PurchaseOrder {
   createdAt            DateTime            @default(now()) @map("created_at")
   deletedAt            DateTime?           @map("deleted_at")
 
-  supplier Supplier              @relation(fields: [supplierId], references: [id])
-  creator  User                  @relation("POCreator", fields: [createdBy], references: [id])
-  approver User?                 @relation("POApprover", fields: [approvedBy], references: [id])
-  details  PurchaseOrderDetail[]
-  paymentVouchers PaymentVoucher[] @relation("PurchaseOrderPayment")
+  supplier        Supplier              @relation(fields: [supplierId], references: [id])
+  creator         User                  @relation("POCreator", fields: [createdBy], references: [id])
+  approver        User?                 @relation("POApprover", fields: [approvedBy], references: [id])
+  details         PurchaseOrderDetail[]
+  paymentVouchers PaymentVoucher[]      @relation("PurchaseOrderPayment")
+  refundReceipts  PaymentReceipt[]      @relation("PurchaseOrderRefund")
 
   @@index([poCode])
   @@index([status])
@@ -633,12 +636,12 @@ model Customer {
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
   deletedAt       DateTime?      @map("deleted_at")
-  
-  isBlacklisted     Boolean        @default(false) @map("is_blacklisted")
-  debtExtensionDate DateTime?      @map("debt_extension_date") @db.Date
-  
-  creator         User?          @relation("CustomerCreator", fields: [createdBy], references: [id], onDelete: SetNull)
-  updater         User?          @relation("CustomerUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  isBlacklisted     Boolean   @default(false) @map("is_blacklisted")
+  debtExtensionDate DateTime? @map("debt_extension_date") @db.Date
+
+  creator User? @relation("CustomerCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  updater User? @relation("CustomerUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   // ✅ THÊM DÒNG NÀY:
   assignedUserId Int?  @map("assigned_user_id")
@@ -646,6 +649,7 @@ model Customer {
 
   invoices        Invoice[]
   paymentReceipts PaymentReceipt[]
+  paymentVouchers PaymentVoucher[]
   // debtReconciliations DebtReconciliation[]
   debtPeriods     DebtPeriod[]
   customerAccount CustomerAccount?
@@ -879,22 +883,26 @@ model PaymentReceipt {
   id                   Int                  @id @default(autoincrement())
   receiptCode          String               @unique @map("receipt_code") @db.VarChar(50)
   receiptType          ReceiptType          @map("receipt_type")
-  customerId           Int                  @map("customer_id")
+  customerId           Int?                 @map("customer_id")
+  supplierId           Int?                 @map("supplier_id")
   orderId              Int?                 @map("order_id")
+  purchaseOrderId      Int?                 @map("purchase_order_id")
   amount               Decimal              @db.Decimal(15, 2)
   paymentMethod        FinancePaymentMethod @map("payment_method")
   bankName             String?              @map("bank_name") @db.VarChar(200)
   transactionReference String?              @map("transaction_reference") @db.VarChar(100)
-  receiptDate          DateTime             @map("receipt_date") @db.Date
+  receiptDate          DateTime             @map("receipt_date")
   isPosted             Boolean              @default(false) @map("is_posted")
   notes                String?              @db.VarChar(255)
   createdBy            Int                  @map("created_by")
   createdAt            DateTime             @default(now()) @map("created_at")
   deletedAt            DateTime?            @map("deleted_at")
 
-  customer    Invoice? @relation(fields: [orderId], references: [id])
-  customerRef Customer @relation(fields: [customerId], references: [id])
-  creator     User     @relation("ReceiptCreator", fields: [createdBy], references: [id])
+  customerRef   Customer?      @relation(fields: [customerId], references: [id])
+  invoice       Invoice?       @relation(fields: [orderId], references: [id])
+  supplier      Supplier?      @relation("SupplierRefund", fields: [supplierId], references: [id])
+  purchaseOrder PurchaseOrder? @relation("PurchaseOrderRefund", fields: [purchaseOrderId], references: [id])
+  creator       User           @relation("ReceiptCreator", fields: [createdBy], references: [id])
 
   @@index([receiptCode])
   @@index([receiptDate])
@@ -902,26 +910,30 @@ model PaymentReceipt {
 }
 
 model PaymentVoucher {
-  id             Int                  @id @default(autoincrement())
-  voucherCode    String               @unique @map("voucher_code") @db.VarChar(50)
-  voucherType    VoucherType          @map("voucher_type")
-  supplierId     Int?                 @map("supplier_id")
-  amount         Decimal              @db.Decimal(15, 2)
-  paymentMethod  VoucherPaymentMethod @map("payment_method")
-  bankName       String?              @map("bank_name") @db.VarChar(200)
-  paymentDate    DateTime             @map("payment_date") @db.Date
-  status         PaymentVoucherStatus @default(draft)
-  postedAt       DateTime?            @map("posted_at")
-  cancelledAt    DateTime?            @map("cancelled_at")
-  reason         String?              @db.VarChar(500)
-  notes          String?              @db.VarChar(255)
-  createdBy      Int                  @map("created_by")
-  purchaseOrderId Int?                @map("purchase_order_id")
-  createdAt      DateTime             @default(now()) @map("created_at")
-  deletedAt      DateTime?            @map("deleted_at")
+  id              Int                  @id @default(autoincrement())
+  voucherCode     String               @unique @map("voucher_code") @db.VarChar(50)
+  voucherType     VoucherType          @map("voucher_type")
+  supplierId      Int?                 @map("supplier_id")
+  customerId      Int?                 @map("customer_id")
+  employeeId      Int?                 @map("employee_id")
+  amount          Decimal              @db.Decimal(15, 2)
+  paymentMethod   VoucherPaymentMethod @map("payment_method")
+  bankName        String?              @map("bank_name") @db.VarChar(200)
+  paymentDate     DateTime             @map("payment_date")
+  status          PaymentVoucherStatus @default(draft)
+  postedAt        DateTime?            @map("posted_at")
+  cancelledAt     DateTime?            @map("cancelled_at")
+  reason          String?              @db.VarChar(500)
+  notes           String?              @db.VarChar(255)
+  createdBy       Int                  @map("created_by")
+  purchaseOrderId Int?                 @map("purchase_order_id")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  deletedAt       DateTime?            @map("deleted_at")
 
-  supplier Supplier? @relation(fields: [supplierId], references: [id])
-  creator  User      @relation("VoucherCreator", fields: [createdBy], references: [id])
+  supplier      Supplier?      @relation(fields: [supplierId], references: [id])
+  customer      Customer?      @relation(fields: [customerId], references: [id])
+  employee      User?          @relation("VoucherEmployee", fields: [employeeId], references: [id])
+  creator       User           @relation("VoucherCreator", fields: [createdBy], references: [id])
   purchaseOrder PurchaseOrder? @relation("PurchaseOrderPayment", fields: [purchaseOrderId], references: [id])
 
   salaries Salary[]
@@ -929,6 +941,9 @@ model PaymentVoucher {
   @@index([voucherCode])
   @@index([paymentDate])
   @@index([status])
+  @@index([supplierId])
+  @@index([customerId])
+  @@index([employeeId])
   @@map("payment_vouchers")
 }
 
@@ -1311,6 +1326,8 @@ enum LogAction {
   update
   delete
   approve
+  login
+  logout
 }
 
 enum LogStatus {
@@ -1326,6 +1343,7 @@ enum CategoryStatus {
 enum CategoryType {
   PRODUCT
   MATERIAL
+  PACKAGING
 }
 
 enum SupplierType {
@@ -1353,6 +1371,7 @@ enum ProductStatus {
 enum ProductType {
   PRODUCT
   MATERIAL
+  PACKAGING
 }
 
 enum TransactionType {
@@ -1588,6 +1607,19 @@ enum ContentType {
   video
 }
 
+enum NewsCommentStatus {
+  pending
+  approved
+  rejected
+}
+
+enum NewsSharePlatform {
+  facebook
+  copy_link
+  instagram
+  native
+}
+
 // News Category
 model NewsCategory {
   id           Int        @id @default(autoincrement())
@@ -1639,6 +1671,7 @@ model News {
   viewCount       Int         @default(0) @map("view_count")
   likeCount       Int         @default(0) @map("like_count")
   commentCount    Int         @default(0) @map("comment_count")
+  shareCount      Int         @default(0) @map("share_count")
   isFeatured      Boolean     @default(false) @map("is_featured")
   metaTitle       String?     @map("meta_title") @db.VarChar(255)
   metaDescription String?     @map("meta_description") @db.Text
@@ -1654,12 +1687,68 @@ model News {
   creator          User?             @relation("NewsCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   updater          User?             @relation("NewsUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
   newsTagRelations NewsTagRelation[]
+  newsLikes        NewsLike[]
+  newsComments     NewsComment[]
+  newsShares       NewsShare[]
 
   @@index([categoryId, status, publishedAt])
   @@index([authorId])
   @@index([isFeatured, status])
   @@index([contentType, status])
   @@map("news")
+}
+
+model NewsLike {
+  id        Int      @id @default(autoincrement())
+  newsId    Int      @map("news_id")
+  clientId  String   @map("client_id") @db.VarChar(120)
+  ipAddress String?  @map("ip_address") @db.VarChar(45)
+  userAgent String?  @map("user_agent") @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  news News @relation(fields: [newsId], references: [id], onDelete: Cascade)
+
+  @@unique([newsId, clientId])
+  @@index([newsId])
+  @@map("news_likes")
+}
+
+model NewsComment {
+  id          Int               @id @default(autoincrement())
+  newsId      Int               @map("news_id")
+  parentId    Int?              @map("parent_id")
+  authorName  String            @map("author_name") @db.VarChar(120)
+  authorEmail String?           @map("author_email") @db.VarChar(120)
+  content     String            @db.Text
+  status      NewsCommentStatus @default(pending)
+  ipAddress   String?           @map("ip_address") @db.VarChar(45)
+  userAgent   String?           @map("user_agent") @db.VarChar(255)
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+  deletedAt   DateTime?         @map("deleted_at")
+
+  news    News          @relation(fields: [newsId], references: [id], onDelete: Cascade)
+  parent  NewsComment?  @relation("NewsCommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies NewsComment[] @relation("NewsCommentReplies")
+
+  @@index([newsId, status, createdAt])
+  @@index([parentId])
+  @@map("news_comments")
+}
+
+model NewsShare {
+  id        Int               @id @default(autoincrement())
+  newsId    Int               @map("news_id")
+  platform  NewsSharePlatform
+  clientId  String?           @map("client_id") @db.VarChar(120)
+  ipAddress String?           @map("ip_address") @db.VarChar(45)
+  userAgent String?           @map("user_agent") @db.VarChar(255)
+  createdAt DateTime          @default(now()) @map("created_at")
+
+  news News @relation(fields: [newsId], references: [id], onDelete: Cascade)
+
+  @@index([newsId, platform, createdAt])
+  @@map("news_shares")
 }
 
 // News Tag Relation (Many-to-Many)

@@ -1,10 +1,11 @@
 import { PrismaClient } from '@prisma/client';
 import { hashPassword, comparePassword } from '@utils/password';
-import { generateAccessToken } from '@utils/jwt';
+import { generateAccessToken, verifyAccessToken } from '@utils/jwt';
 import { AuthenticationError, NotFoundError, ValidationError } from '@utils/errors';
 import { JwtPayload } from '@custom-types/common.type';
 import { logActivity } from '@utils/logger';
 import emailService from './email.service';
+import loginHistoryService from './login-history.service';
 
 const prisma = new PrismaClient();
 
@@ -78,7 +79,7 @@ class AuthService {
     this.clearLoginAttempts(email);
 
     // Create OTP code and send via email
-    const { code, expiresIn } = await this.createOTPCode(user.id, user.email, ipAddress);
+    const { code, expiresIn } = await this.createOTPCode(user.id, user.email!, ipAddress);
 
     // Send OTP via email
     const emailSent = await emailService.sendEmail({
@@ -107,10 +108,45 @@ class AuthService {
   async logout(userId: number, accessToken: string) {
     if (accessToken) {
       tokenBlacklist.add(accessToken);
+
+      // Persist session logout so revoked devices are kicked out across instances/restarts.
+      try {
+        const decoded = verifyAccessToken(accessToken);
+        if (decoded.loginHistoryId) {
+          await prisma.loginHistory.updateMany({
+            where: {
+              id: decoded.loginHistoryId,
+              userId,
+              logoutAt: null,
+            },
+            data: {
+              logoutAt: new Date(),
+            },
+          });
+        }
+      } catch {
+        // Ignore token decode errors here; blacklist handling is still applied.
+      }
     }
     // Auto cleanup logic could be added here, but for simplicity we rely on JWT maxAge
 
     logActivity('logout', userId, 'auth');
+
+    // Create ActivityLog entry for system log
+    try {
+      await prisma.activityLog.create({
+        data: {
+          userId,
+          action: 'logout',
+          tableName: 'auth',
+          recordId: userId,
+          status: 'success',
+        },
+      });
+    } catch (logErr) {
+      // Log non-critical - don't fail the request
+      console.warn('[ActivityLog] Failed to write logout activity:', (logErr as Error).message);
+    }
 
     return { message: 'Đăng xuất thành công' };
   }
@@ -208,7 +244,7 @@ class AuthService {
 
     // Log activity
     logActivity('forgot_password', user.id, 'auth', {
-      email: user.email,
+      email: user.email!,
       emailSent,
     });
 
@@ -434,7 +470,7 @@ class AuthService {
   }
 
   // Verify OTP code and complete login
-  async verifyOTPAndLogin(email: string, code: string, ipAddress?: string) {
+  async verifyOTPAndLogin(email: string, code: string, ipAddress?: string, userAgent?: string) {
     const user = await prisma.user.findUnique({
       where: { email },
       include: {
@@ -498,6 +534,12 @@ class AuthService {
       },
     });
 
+    // Create LoginHistory entry first so token is bound to this specific session/device
+    const loginHistory = await loginHistoryService.createLoginHistory(user.id, {
+      userAgent: userAgent || 'unknown',
+      ipAddress: ipAddress || 'unknown',
+    });
+
     // Generate tokens
     const payload: JwtPayload = {
       id: user.id,
@@ -505,6 +547,7 @@ class AuthService {
       roleId: user.roleId,
       warehouseId: user.warehouseId || undefined,
       employeeCode: user.employeeCode,
+      loginHistoryId: loginHistory.id,
     };
 
     const accessToken = generateAccessToken(payload, '7d'); // Changed to 7d to match crm-template
@@ -513,9 +556,27 @@ class AuthService {
 
     logActivity('login', user.id, 'auth', {
       ipAddress,
-      userAgent: 'unknown',
+      userAgent: userAgent || 'unknown',
       method: '2FA_OTP',
     });
+
+    // Create ActivityLog entry for system log
+    try {
+      await prisma.activityLog.create({
+        data: {
+          userId: user.id,
+          action: 'login',
+          tableName: 'auth',
+          recordId: user.id,
+          ipAddress: ipAddress || 'unknown',
+          userAgent: userAgent || 'unknown',
+          status: 'success',
+        },
+      });
+    } catch (logErr) {
+      // Log non-critical - don't fail the login
+      console.warn('[ActivityLog] Failed to write login activity:', (logErr as Error).message);
+    }
 
     const permissions = await this.getUserPermissions(user.id, user.roleId);
     const mappedPermissions = permissions.map(code => ({ code }));

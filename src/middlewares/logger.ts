@@ -67,12 +67,14 @@ export const logActivityMiddleware = (action: string, resourceType: string) => {
 const saveActivityToDatabase = async (req: AuthRequest, activityInfo: any) => {
   if (!req.user) return;
 
-  const actionMap: { [key: string]: 'create' | 'update' | 'delete' | 'approve' } = {
+  const actionMap: { [key: string]: 'create' | 'update' | 'delete' | 'approve' | 'login' | 'logout' } = {
     create: 'create',
     update: 'update',
     delete: 'delete',
     approve: 'approve',
     cancel: 'delete',
+    login: 'login',
+    logout: 'logout',
   };
 
   const action = actionMap[activityInfo.action] || 'update';

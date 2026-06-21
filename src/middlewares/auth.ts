@@ -48,12 +48,31 @@ export const authentication = asyncHandler(
       throw new AuthorizationError('Account is inactive');
     }
 
+    // Enforce per-device/session revocation from Access Log.
+    if (decoded.loginHistoryId) {
+      const session = await prisma.loginHistory.findFirst({
+        where: {
+          id: decoded.loginHistoryId,
+          userId: user.id,
+        },
+        select: {
+          id: true,
+          logoutAt: true,
+        },
+      });
+
+      if (!session || session.logoutAt) {
+        throw new AuthenticationError('Session has been revoked');
+      }
+    }
+
     req.user = {
       id: user.id,
       email: user.email!,
       roleId: user.roleId,
       warehouseId: user.warehouseId || undefined,
       employeeCode: user.employeeCode,
+      loginHistoryId: decoded.loginHistoryId,
     };
 
     next();

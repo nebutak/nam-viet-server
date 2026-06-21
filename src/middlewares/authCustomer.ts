@@ -3,8 +3,7 @@ import { AuthRequest } from '@custom-types/common.type';
 import { AuthenticationError, AuthorizationError } from '@utils/errors';
 import { verifyAccessToken } from '@utils/cs-jwt'; 
 import { PrismaClient } from '@prisma/client';
-// Optional: import { customerTokenBlacklist } from '@services/customer-auth.service' if it exists, otherwise comment out
-const customerTokenBlacklist = new Set<string>(); // Mocking to fix build for now
+import { customerTokenBlacklist } from '@services/customer-auth.service';
 
 const prisma = new PrismaClient();
 

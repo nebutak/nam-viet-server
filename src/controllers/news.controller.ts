@@ -1,8 +1,23 @@
 import { Request, Response } from 'express';
 import { NewsService } from '../services/news.service';
-import { createNewsSchema, updateNewsSchema, newsQuerySchema } from '../validators/news.validator';
+import {
+    createNewsSchema,
+    updateNewsSchema,
+    newsQuerySchema,
+    newsLikeSchema,
+    createNewsCommentSchema,
+    newsCommentQuerySchema,
+    updateNewsCommentStatusSchema,
+    trackNewsShareSchema,
+} from '../validators/news.validator';
 
 export class NewsController {
+    private static getRequestMeta(req: Request) {
+        return {
+            ipAddress: req.ip || req.socket.remoteAddress,
+            userAgent: req.headers['user-agent'],
+        };
+    }
 
     /**
      * Get all news (public)
@@ -85,9 +100,12 @@ export class NewsController {
 
             const news = await NewsService.createNews(data, userId);
 
-            res.status(201).json({ success: true, data: news });
+            return res.status(201).json({ success: true, data: news });
         } catch (error: any) {
-            res.status(400).json({ success: false, error: error.message });
+            if (error.code === 'P2002') {
+                return res.status(400).json({ success: false, error: 'Đường dẫn (slug) đã tồn tại. Vui lòng chọn tiêu đề hoặc slug khác.' });
+            }
+            return res.status(400).json({ success: false, error: error.message });
         }
     }
 
@@ -103,9 +121,12 @@ export class NewsController {
 
             const news = await NewsService.updateNews(id, data, userId);
 
-            res.json({ success: true, data: news });
+            return res.json({ success: true, data: news });
         } catch (error: any) {
-            res.status(400).json({ success: false, error: error.message });
+            if (error.code === 'P2002') {
+                return res.status(400).json({ success: false, error: 'Đường dẫn (slug) đã tồn tại. Vui lòng chọn tiêu đề hoặc slug khác.' });
+            }
+            return res.status(400).json({ success: false, error: error.message });
         }
     }
 
@@ -134,6 +155,126 @@ export class NewsController {
             res.json({ success: true });
         } catch (error: any) {
             res.status(500).json({ success: false, error: error.message });
+        }
+    }
+
+    /**
+     * Get public engagement data
+     */
+    static async getEngagement(req: Request, res: Response) {
+        try {
+            const id = parseInt(req.params.id);
+            const clientId = req.query.clientId as string | undefined;
+            const engagement = await NewsService.getEngagement(id, clientId);
+
+            if (!engagement) {
+                return res.status(404).json({ success: false, error: 'News not found' });
+            }
+
+            return res.json({ success: true, data: engagement });
+        } catch (error: any) {
+            return res.status(500).json({ success: false, error: error.message });
+        }
+    }
+
+    /**
+     * Toggle like
+     */
+    static async toggleLike(req: Request, res: Response) {
+        try {
+            const id = parseInt(req.params.id);
+            const data = newsLikeSchema.parse(req.body);
+            const result = await NewsService.toggleLike(id, data.clientId, NewsController.getRequestMeta(req));
+
+            return res.json({ success: true, data: result });
+        } catch (error: any) {
+            return res.status(400).json({ success: false, error: error.message });
+        }
+    }
+
+    /**
+     * Get approved comments for public article
+     */
+    static async getPublicComments(req: Request, res: Response) {
+        try {
+            const id = parseInt(req.params.id);
+            const comments = await NewsService.getPublicComments(id);
+            return res.json({ success: true, data: comments });
+        } catch (error: any) {
+            return res.status(500).json({ success: false, error: error.message });
+        }
+    }
+
+    /**
+     * Create public comment
+     */
+    static async createComment(req: Request, res: Response) {
+        try {
+            const id = parseInt(req.params.id);
+            const data = createNewsCommentSchema.parse(req.body);
+            const comment = await NewsService.createComment(id, data, NewsController.getRequestMeta(req));
+
+            return res.status(201).json({ success: true, data: comment });
+        } catch (error: any) {
+            return res.status(400).json({ success: false, error: error.message });
+        }
+    }
+
+    /**
+     * Track share event
+     */
+    static async trackShare(req: Request, res: Response) {
+        try {
+            const id = parseInt(req.params.id);
+            const data = trackNewsShareSchema.parse(req.body);
+            const result = await NewsService.trackShare(id, data, NewsController.getRequestMeta(req));
+
+            return res.json({ success: true, data: result });
+        } catch (error: any) {
+            return res.status(400).json({ success: false, error: error.message });
+        }
+    }
+
+    /**
+     * Get comments for admin moderation
+     */
+    static async getCommentsAdmin(req: Request, res: Response) {
+        try {
+            const query = newsCommentQuerySchema.parse(req.query);
+            const result = await NewsService.getCommentsAdmin(query);
+
+            return res.json({ success: true, ...result });
+        } catch (error: any) {
+            return res.status(400).json({ success: false, error: error.message });
+        }
+    }
+
+    /**
+     * Update comment status
+     */
+    static async updateCommentStatus(req: Request, res: Response) {
+        try {
+            const id = parseInt(req.params.commentId);
+            const data = updateNewsCommentStatusSchema.parse(req.body);
+            const comment = await NewsService.updateCommentStatus(id, data.status);
+
+            return res.json({ success: true, data: comment });
+        } catch (error: any) {
+            return res.status(400).json({ success: false, error: error.message });
+        }
+    }
+
+    /**
+     * Delete comment
+     */
+    static async deleteComment(req: Request, res: Response) {
+        try {
+            const id = parseInt(req.params.commentId);
+            await NewsService.deleteComment(id);
+
+            return res.json({ success: true, message: 'Comment deleted successfully' });
+        } catch (error: any) {
+            return res.status(400).json({ success: false, error: error.message });
         }
     }
 

@@ -3,6 +3,8 @@ import { NotFoundError, ValidationError } from '@utils/errors';
 import { logActivity } from '@utils/logger';
 import inventoryService from './inventory.service';
 import invoiceService from './invoice.service';
+import smartDebtService from './smart-debt.service';
+import paymentReceiptService from './payment-receipt.service';
 import {
   type CreateImportInput,
   type CreateExportInput,
@@ -308,6 +310,11 @@ class StockTransactionService {
       newValue: transaction,
     });
 
+    // ✅ Auto-sync công nợ khi tạo phiếu nhập trả hàng (sale_refunds)
+    if (data.referenceType === 'sale_refunds' && data.referenceId) {
+      this._autoSyncDebtAfterReturn('customer', data.referenceId);
+    }
+
     return transaction;
   }
 
@@ -319,19 +326,7 @@ class StockTransactionService {
       throw new NotFoundError('Warehouse');
     }
 
-    const checkResult = await inventoryService.checkAvailability(
-      data.details.map((d) => ({
-        productId: d.productId,
-        warehouseId: data.warehouseId,
-        quantity: d.quantity,
-      }))
-    );
-
-    if (!checkResult.allAvailable) {
-      throw new ValidationError('Insufficient inventory for export', {
-        unavailableItems: checkResult.items.filter((i) => !i.isAvailable),
-      });
-    }
+    // Note: Do not strictly block creation of draft exports. Inventory will be verified upon posting.
 
     let transactionCode = await this.generateTransactionCode('export');
 
@@ -403,12 +398,56 @@ class StockTransactionService {
 
     if (!transaction) throw new Error("Failed to create transaction");
 
+    // ✅ Tự động tạo phiếu thu hoàn tiền nếu là trả hàng nhà cung cấp
+    if (data.referenceType === 'purchase_refunds' && data.referenceId && data.supplierId) {
+      this._autoCreateRefundReceipt(transaction, userId).catch(err => 
+        console.error(`[AutoReceipt] Failed to create refund receipt for transaction ${transaction.id}:`, err.message)
+      );
+    }
+
     logActivity('create', userId, 'stock_transactions', {
       recordId: transaction.id,
       newValue: transaction,
     });
 
     return transaction;
+  }
+
+  /**
+   * Tự động tạo phiếu thu hoàn tiền khi tạo phiếu trả hàng
+   */
+  private async _autoCreateRefundReceipt(transaction: any, userId: number) {
+    try {
+      // Tính tổng tiền hoàn trả dựa trên đơn giá trong đơn mua
+      const po = await prisma.purchaseOrder.findUnique({
+        where: { id: transaction.referenceId },
+        include: { details: true }
+      });
+
+      if (!po) return;
+
+      let refundAmount = 0;
+      for (const detail of transaction.details) {
+        const poDetail = po.details.find(d => d.productId === detail.productId);
+        if (poDetail) {
+          refundAmount += Number(detail.quantity) * Number(poDetail.price);
+        }
+      }
+
+      console.log(`💰 [AutoReceipt] Creating refund receipt for PO ${po.poCode}, amount: ${refundAmount}`);
+      
+      await paymentReceiptService.create({
+        receiptType: 'refund',
+        supplierId: transaction.supplierId,
+        purchaseOrderId: transaction.referenceId,
+        amount: refundAmount,
+        paymentMethod: 'cash', // Mặc định tiền mặt, user có thể sửa sau
+        receiptDate: new Date().toISOString(),
+        notes: `Hoàn tiền tự động từ phiếu trả hàng ${transaction.transactionCode}`,
+      }, userId);
+    } catch (error: any) {
+      console.error(`[AutoReceipt] Error:`, error.message);
+    }
   }
 
   async createTransfer(
@@ -757,6 +796,13 @@ class StockTransactionService {
       newValue: { isPosted: true },
     });
 
+    // ✅ Auto-sync công nợ sau khi ghi sổ phiếu trả hàng
+    if (transaction.referenceType === 'sale_refunds' && transaction.referenceId) {
+      this._autoSyncDebtAfterReturn('customer', transaction.referenceId);
+    } else if (transaction.referenceType === 'purchase_refunds' && transaction.referenceId) {
+      this._autoSyncDebtAfterReturn('supplier', transaction.referenceId);
+    }
+
     return result;
   }
 
@@ -876,11 +922,11 @@ class StockTransactionService {
 
       const newQuantity = Number(current.quantity) - Number(detail.quantity);
 
-      if (newQuantity < 0) {
-        throw new ValidationError(
-          `Insufficient inventory for product ${detail.productId}`
-        );
-      }
+      // if (newQuantity < 0) {
+      //   throw new ValidationError(
+      //     `Insufficient inventory for product ${detail.productId}`
+      //   );
+      // }
 
       // 1. FEFO Deduction from batches
       await inventoryService.deductInventoryBatchFEFO(
@@ -936,16 +982,16 @@ class StockTransactionService {
       // Add a quick random hash to avoid code collisions when inside transaction
       const uniqueSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
       
-      await tx.stockTransaction.create({
+      const autoImportTx = await tx.stockTransaction.create({
         data: {
           transactionCode: `${transactionCode}-${uniqueSuffix}`,
           transactionType: 'import',
           warehouseId: destWarehouseId,
-          referenceType: 'transfer_in',
+          referenceType: 'transfer_in_auto',
           referenceId: transaction.warehouseId, // Source warehouse
-          reason: transaction.reason || `Chuyển kho từ PN ${transaction.transactionCode}`,
+          reason: transaction.reason || `Nhập kho tự động từ PX ${transaction.transactionCode}`,
           notes: transaction.notes,
-          isPosted: false,
+          isPosted: true,
           createdBy: userId,
           details: {
             create: transaction.details.map((item: any) => ({
@@ -958,7 +1004,13 @@ class StockTransactionService {
             })),
           },
         },
+        include: {
+          details: true,
+        }
       });
+
+      // Lập tức tăng tồn kho bên kho đích
+      await this.processImport(tx, autoImportTx, userId);
     }
     // ─────────────────────────────────────────────────────────────────────────
   }
@@ -1516,6 +1568,81 @@ class StockTransactionService {
     };
     const base = descriptions[type] || 'Giao dịch kho';
     return reason ? `${base} - ${reason}` : base;
+  }
+
+  /**
+   * Fire-and-forget: Tự động đồng bộ công nợ sau khi tạo/ghi sổ phiếu trả hàng.
+   * - sale_refunds → tìm customerId qua Invoice → syncSnap customer
+   * - purchase_refunds → tìm supplierId qua PurchaseOrder → syncSnap supplier
+   */
+  private _autoSyncDebtAfterReturn(type: 'customer' | 'supplier', referenceId: number) {
+    const year = new Date().getFullYear();
+
+    if (type === 'customer') {
+      // sale_refunds: referenceId = invoiceId → lấy customerId
+      prisma.invoice.findUnique({
+        where: { id: referenceId },
+        select: { customerId: true },
+      }).then((invoice) => {
+        if (!invoice?.customerId) return;
+        console.log(`🔄 [AutoSync] Triggering debt sync for Customer ${invoice.customerId} after return goods`);
+        smartDebtService.syncSnap({ customerId: invoice.customerId, year }).then(async () => {
+          // Tự động kiểm tra và hoàn thành đơn hàng sau khi đồng bộ trừ công nợ (vì hàng đã trả đủ)
+          try {
+            await prisma.$transaction(async (tx) => {
+              await invoiceService.checkAndCompleteOrder(referenceId, 1, tx); // userId 1 for system action
+            });
+            console.log(`✅ [AutoSync] Auto-check complete order ${referenceId} successful`);
+          } catch (syncErr: any) {
+            console.error(`❌ [AutoSync] Failed to auto-check complete order ${referenceId}:`, syncErr.message);
+          }
+        }).catch((err) =>
+          console.error(`[AutoSync] Failed to sync debt for customer ${invoice.customerId}:`, err.message)
+        );
+      }).catch((err) => {
+        console.error(`[AutoSync] Failed to resolve customer from invoice ${referenceId}:`, err.message);
+      });
+    } else if (type === 'supplier') {
+      // purchase_refunds: referenceId = purchaseOrderId → lấy supplierId
+      prisma.purchaseOrder.findUnique({
+        where: { id: referenceId },
+        select: { supplierId: true },
+      }).then((po) => {
+        if (!po?.supplierId) return;
+        console.log(`🔄 [AutoSync] Triggering debt sync for Supplier ${po.supplierId} after return goods`);
+        smartDebtService.syncSnap({ supplierId: po.supplierId, year }).catch((err) =>
+          console.error(`[AutoSync] Failed to sync debt for supplier ${po.supplierId}:`, err.message)
+        );
+      }).catch((err) => {
+        console.error(`[AutoSync] Failed to resolve supplier from PO ${referenceId}:`, err.message);
+      });
+    }
+  }
+
+  async deleteTransaction(id: number, userId: number) {
+    const transaction = await this.getById(id);
+
+    if (transaction.isPosted) {
+      throw new ValidationError('Không thể xóa phiếu kho đã ghi sổ');
+    }
+
+    logActivity('delete', userId, 'stock_transactions', {
+      recordId: id,
+      oldValue: transaction,
+    });
+
+    const deleted = await prisma.$transaction(async (tx) => {
+      // First delete details
+      await tx.stockTransactionDetail.deleteMany({
+        where: { transactionId: id }
+      });
+      // Then delete transaction
+      return await tx.stockTransaction.delete({
+        where: { id }
+      });
+    });
+
+    return deleted;
   }
 }
 

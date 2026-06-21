@@ -1,0 +1,1 @@
+import InvoiceService from './src/services/invoice.service'; InvoiceService.getAll({ page: 1, limit: 20, fromDate: '2026-04-01', toDate: '2026-04-30' } as any).then((res: any) => console.log('Total:', res.meta.total)).catch(console.error).finally(() => process.exit(0));

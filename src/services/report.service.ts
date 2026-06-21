@@ -113,6 +113,8 @@ class ReportService {
       recentOrders,
       topProducts,
       activityLogs,
+      cashFundData,
+      expiringItems,
     ] = await Promise.all([
       // KPI
       this.getRevenueByPeriod(periodFromDate, periodToDate, warehouseId),
@@ -201,6 +203,28 @@ class ReportService {
           recordId: true,
         },
       }),
+      // Cash fund: total receipts - total vouchers (posted ones)
+      Promise.all([
+        prisma.paymentReceipt.aggregate({ where: { isPosted: true }, _sum: { amount: true } }),
+        prisma.paymentVoucher.aggregate({ where: { status: 'posted' }, _sum: { amount: true } }),
+      ]),
+      // Expiring Items
+      prisma.inventoryBatch.findMany({
+        where: {
+          ...(warehouseId && { warehouseId }),
+          expiryDate: {
+            gte: new Date(),
+            lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+          },
+          quantity: { gt: 0 }
+        },
+        include: {
+          product: { select: { id: true, productName: true, code: true } },
+          warehouse: { select: { id: true, warehouseName: true } }
+        },
+        take: 3,
+        orderBy: { expiryDate: 'asc' }
+      }),
     ]);
 
     // Calculate trend percentage
@@ -261,6 +285,18 @@ class ReportService {
       };
     });
 
+    // Format expiring items
+    const formattedExpiringItems = expiringItems.map((batch: any) => ({
+      product_id: batch.product.id,
+      product_name: batch.product.productName,
+      sku: batch.product.code,
+      batch_number: batch.batchNumber,
+      expiry_date: batch.expiryDate,
+      current_stock: Number(batch.quantity),
+      warehouse_id: batch.warehouse.id,
+      warehouse_name: batch.warehouse.warehouseName,
+    }));
+
     const result = {
       period,
       kpi: {
@@ -293,6 +329,9 @@ class ReportService {
       alerts: {
         low_stock: formattedLowStockItems,
         overdue_debts: formattedOverdueDebts,
+        expiring: formattedExpiringItems,
+        cash_fund: Number(cashFundData[0]._sum.amount || 0) - Number(cashFundData[1]._sum.amount || 0),
+        pending_orders_count: ordersPending,
       },
       recent: {
         orders: recentOrders.map((order: any) => ({
@@ -529,25 +568,48 @@ class ReportService {
       select: {
         completedAt: true,
         totalAmount: true,
+        details: {
+          select: {
+            quantity: true,
+            product: { select: { basePrice: true } }
+          }
+        }
       },
       orderBy: { completedAt: 'asc' },
     });
 
-    // Group by day for charting
-    const grouped = orders.reduce((acc, order) => {
+    const grouped: Record<string, { date: string; revenue: number; expense: number }> = {};
+    
+    // Prepopulate zero-values for all days in the range to ensure continuous chart
+    let curr = new Date(fromDate);
+    const end = new Date(toDate);
+    while (curr <= end) {
+      const key = curr.toISOString().split('T')[0];
+      grouped[key] = { date: key, revenue: 0, expense: 0 };
+      curr.setDate(curr.getDate() + 1);
+    }
+
+    // Populate with actual data
+    orders.forEach((order) => {
       const date = new Date(order.completedAt!);
       const key = date.toISOString().split('T')[0];
 
-      if (!acc[key]) {
-        acc[key] = {
+      if (!grouped[key]) {
+        grouped[key] = {
           date: key,
           revenue: 0,
+          expense: 0,
         };
       }
 
-      acc[key].revenue += Number(order.totalAmount);
-      return acc;
-    }, {} as Record<string, { date: string; revenue: number }>);
+      grouped[key].revenue += Number(order.totalAmount);
+      
+      // Calculate Cost of Goods Sold (Expense) for this order
+      const cogs = order.details.reduce((sum, d) => {
+        return sum + (Number(d.quantity) * Number(d.product?.basePrice || 0));
+      }, 0);
+      grouped[key].expense += cogs;
+    });
 
     const result = {
       period,
@@ -822,7 +884,7 @@ class ReportService {
     });
 
     return result.map((item) => ({
-      channel: item.isPickupOrder ? 'pickup' : 'delivery',
+      channel: item.isPickupOrder ? 'Bán tại quầy' : 'Giao hàng',
       revenue: Number(item._sum.totalAmount || 0),
       paid: Number(item._sum.paidAmount || 0),
       orderCount: item._count.id,
@@ -1138,10 +1200,13 @@ class ReportService {
   async getInventoryNXTReport(params: {
     fromDate?: string;
     toDate?: string;
-    warehouseId?: number;
-    categoryId?: number;
+    warehouseId?: string | number;
+    categoryId?: string | number;
   }) {
-    const { fromDate, toDate, warehouseId, categoryId } = params;
+    const { fromDate, toDate } = params;
+    const warehouseId = params.warehouseId ? Number(params.warehouseId) : undefined;
+    const categoryId = params.categoryId ? Number(params.categoryId) : undefined;
+    
     const dateRange = this.getDateRange(fromDate, toDate);
 
     // 1. Get products and current inventory
@@ -1155,6 +1220,7 @@ class ReportService {
         }),
       },
       include: {
+        warehouse: true,
         product: {
           include: {
             unit: true,
@@ -1175,7 +1241,7 @@ class ReportService {
         },
       },
       include: {
-        transaction: { select: { transactionType: true, createdAt: true } },
+        transaction: { select: { transactionType: true, createdAt: true, warehouseId: true } },
       },
     });
 
@@ -1184,12 +1250,12 @@ class ReportService {
       (t) => t.transaction.createdAt <= dateRange.toDate
     );
 
-    // Group transactions by product
-    const changesAfterFrom: Record<number, { imports: number; exports: number }> = {};
-    const changesWithinPeriod: Record<number, { imports: number; exports: number }> = {};
+    // Group transactions by product AND warehouse
+    const changesAfterFrom: Record<string, { imports: number; exports: number }> = {};
+    const changesWithinPeriod: Record<string, { imports: number; exports: number }> = {};
 
     transactionsAfterFrom.forEach((t) => {
-      const pId = t.productId;
+      const pId = `${t.transaction.warehouseId}-${t.productId}`;
       if (!changesAfterFrom[pId]) changesAfterFrom[pId] = { imports: 0, exports: 0 };
       
       const qty = Number(t.quantity);
@@ -1201,7 +1267,7 @@ class ReportService {
     });
 
     transactionsWithinPeriod.forEach((t) => {
-      const pId = t.productId;
+      const pId = `${t.transaction.warehouseId}-${t.productId}`;
       if (!changesWithinPeriod[pId]) changesWithinPeriod[pId] = { imports: 0, exports: 0 };
       
       const qty = Number(t.quantity);
@@ -1214,12 +1280,13 @@ class ReportService {
 
     // 4. Build report data
     const report = inventory.map((inv) => {
+      const pIdKey = `${inv.warehouseId}-${inv.productId}`;
       const pId = inv.productId;
       const product = inv.product;
       const basePrice = Number(product.basePrice || 0);
       
-      const afterFrom = changesAfterFrom[pId] || { imports: 0, exports: 0 };
-      const withinPeriod = changesWithinPeriod[pId] || { imports: 0, exports: 0 };
+      const afterFrom = changesAfterFrom[pIdKey] || { imports: 0, exports: 0 };
+      const withinPeriod = changesWithinPeriod[pIdKey] || { imports: 0, exports: 0 };
       
       const currentQty = Number(inv.quantity);
       // Opening = Current - (Imports-After-From) + (Exports-After-From)
@@ -1232,6 +1299,7 @@ class ReportService {
 
       return {
         productId: pId,
+        warehouse: inv.warehouse ? { id: inv.warehouseId, name: (inv.warehouse as any).warehouseName } : null,
         product: {
           id: product.id,
           name: product.productName,
@@ -1251,7 +1319,15 @@ class ReportService {
       };
     });
 
-    return report;
+    const finalReport = report.filter(
+      (r) =>
+        r.openingQuantity > 0 ||
+        r.quantityIn > 0 ||
+        r.quantityOut > 0 ||
+        r.closingQuantity > 0
+    );
+
+    return finalReport;
   }
 
   async getInventoryLedger(params: {
@@ -1413,16 +1489,18 @@ class ReportService {
         product: {
           select: {
             basePrice: true,
+            category: { select: { categoryName: true } },
           },
         },
       },
     });
 
     const grouped = result.reduce((acc, inv) => {
-      const type = 'standard'; // hardcoded instead of inv.product.productType
+      const type = inv.product.category?.categoryName || 'Chưa phân loại';
       if (!acc[type]) {
         acc[type] = {
-          productType: type,
+          type: type,
+          productType: type, // Keeping for frontend backward compatibility
           quantity: 0,
           value: 0,
           itemCount: 0,
@@ -1433,7 +1511,7 @@ class ReportService {
       acc[type].value += qty * Number(inv.product.basePrice || 0);
       acc[type].itemCount += 1;
       return acc;
-    }, {} as Record<string, { productType: string; quantity: number; value: number; itemCount: number }>);
+    }, {} as Record<string, { type: string; productType: string; quantity: number; value: number; itemCount: number }>);
 
     return Object.values(grouped);
   }
@@ -1501,7 +1579,7 @@ class ReportService {
   // =====================================================
   // SALES ANALYTICS
   // =====================================================
-  async getTopSellingProducts(limit: number = 10, fromDate?: string, toDate?: string) {
+  async getTopSellingProducts(limit: number = 10, fromDate?: string, toDate?: string, sortBy: 'revenue' | 'quantity' = 'quantity') {
     const dateRange = this.getDateRange(fromDate, toDate);
 
     // Get sales order details with aggregation
@@ -1554,7 +1632,7 @@ class ReportService {
     }, {} as Record<number, any>);
 
     return Object.values(grouped)
-      .sort((a: any, b: any) => b.quantitySold - a.quantitySold)
+      .sort((a: any, b: any) => sortBy === 'revenue' ? b.revenue - a.revenue : b.quantitySold - a.quantitySold)
       .slice(0, limit);
   }
 

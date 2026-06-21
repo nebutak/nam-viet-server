@@ -1,0 +1,1 @@
+import invoiceService from './src/services/invoice.service'; invoiceService.getAll({ page: 1, limit: 20 } as any).then((res: any) => console.log(JSON.stringify(res))).catch(console.error).finally(() => process.exit(0));

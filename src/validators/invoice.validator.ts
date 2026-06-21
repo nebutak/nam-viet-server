@@ -71,6 +71,7 @@ export const createInvoiceSchema = z.object({
 });
 
 export const updateInvoiceSchema = z.object({
+  warehouseId: z.number().int().positive('ID kho phải là số dương').optional().nullable(),
   orderDate: z
     .string()
     .refine((val) => !isNaN(Date.parse(val)), 'Ngày đặt hàng không hợp lệ')

@@ -688,7 +688,7 @@ Sales & Production System Team
 
     const totalQuantity =
       purchaseOrder.details?.reduce((sum: any, d: any) => sum + (d.quantity || 0), 0) || 0;
-    const taxAmount = (purchaseOrder.subTotal || 0) * ((purchaseOrder.taxRate || 0) / 100);
+    const taxAmount = Number(purchaseOrder.taxAmount || 0);
 
     return `
 <!DOCTYPE html>
@@ -808,12 +808,12 @@ Sales & Production System Team
           </tr>
           
           ${
-            purchaseOrder.taxRate > 0
+            purchaseOrder.taxAmount > 0
               ? `
           <!-- Tax -->
           <tr>
             <td colspan="5" style="border: 1px solid #ddd; padding: 12px; text-align: right;">
-              Thuế VAT (${purchaseOrder.taxRate}%):
+              Thuế VAT:
             </td>
             <td style="border: 1px solid #ddd; padding: 12px; text-align: right;">${formatCurrency(
               taxAmount
