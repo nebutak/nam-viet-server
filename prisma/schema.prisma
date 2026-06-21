@@ -1343,6 +1343,7 @@ enum CategoryStatus {
 enum CategoryType {
   PRODUCT
   MATERIAL
+  PACKAGING
 }
 
 enum SupplierType {
@@ -1370,6 +1371,7 @@ enum ProductStatus {
 enum ProductType {
   PRODUCT
   MATERIAL
+  PACKAGING
 }
 
 enum TransactionType {

@@ -208,10 +208,51 @@ class SupplierService {
     };
   }
 
+  async generateNextSupplierCode(supplierName: string): Promise<string> {
+    const noAccents = supplierName
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d")
+      .replace(/Đ/g, "D");
+    
+    const words = noAccents.split(/\s+/).filter(Boolean);
+    const abbreviation = words
+      .map(word => {
+        const cleaned = word.replace(/[^a-zA-Z0-9]/g, "");
+        return cleaned.charAt(0).toUpperCase();
+      })
+      .filter(Boolean)
+      .join("");
+
+    const prefix = abbreviation ? `NCC-${abbreviation}-` : `NCC-`;
+
+    const lastSupplier = await prisma.supplier.findFirst({
+      where: { supplierCode: { startsWith: prefix } },
+      orderBy: { supplierCode: 'desc' },
+    });
+
+    let currentMaxSequence = 0;
+    if (lastSupplier && lastSupplier.supplierCode) {
+      const lastSequenceStr = lastSupplier.supplierCode.slice(prefix.length);
+      if (!isNaN(Number(lastSequenceStr)) && lastSequenceStr.length > 0) {
+        currentMaxSequence = parseInt(lastSequenceStr, 10);
+      }
+    }
+
+    const nextSequence = currentMaxSequence + 1;
+    const sequenceStr = nextSequence.toString().padStart(3, '0');
+    return `${prefix}${sequenceStr}`;
+  }
+
   async createSupplier(data: CreateSupplierInput, createdBy: number) {
-    const codeExists = await this.checkSupplierCodeExists(data.supplierCode);
-    if (codeExists) {
-      throw new ConflictError('Mã nhà cung cấp đã tồn tại');
+    let supplierCode = data.supplierCode?.trim();
+    if (!supplierCode) {
+      supplierCode = await this.generateNextSupplierCode(data.supplierName);
+    } else {
+      const codeExists = await this.checkSupplierCodeExists(supplierCode);
+      if (codeExists) {
+        throw new ConflictError('Mã nhà cung cấp đã tồn tại');
+      }
     }
 
     if (data.taxCode) {
@@ -223,7 +264,7 @@ class SupplierService {
 
     const supplier = await prisma.supplier.create({
       data: {
-        supplierCode: data.supplierCode,
+        supplierCode,
         supplierName: data.supplierName,
         supplierType: data.supplierType || 'local',
         contactName: data.contactName || null,

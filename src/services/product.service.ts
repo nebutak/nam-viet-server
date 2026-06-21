@@ -38,8 +38,12 @@ class ProductService {
       return { type: 'PRODUCT' };
     }
 
-    if (['raw_material', 'packaging', 'material', 'nguyên liệu', 'nguyen lieu', 'bao bì', 'bao bi'].includes(normalized)) {
+    if (['raw_material', 'material', 'nguyên liệu', 'nguyen lieu'].includes(normalized)) {
       return { type: 'MATERIAL' };
+    }
+
+    if (['packaging', 'bao bì', 'bao bi'].includes(normalized)) {
+      return { type: 'PACKAGING' };
     }
 
     return {};
@@ -742,7 +746,7 @@ class ProductService {
       },
       byType: {
         rawMaterial: products.filter((p) => p.type === 'MATERIAL').length,
-        packaging: 0,
+        packaging: products.filter((p) => p.type === 'PACKAGING').length,
         finished: 0,
         goods: products.filter((p) => p.type === 'PRODUCT').length,
       },
@@ -756,27 +760,95 @@ class ProductService {
   }
 
   async getRawMaterialStats() {
+    const materials = await prisma.product.findMany({
+      where: {
+        type: 'MATERIAL',
+        deletedAt: null,
+      },
+      include: {
+        inventory: true,
+      },
+    });
+
+    const totalRawMaterials = materials.length;
+    const activeCount = materials.filter((p) => p.status === 'active').length;
+    const inactiveCount = materials.filter((p) => p.status === 'inactive').length;
+
+    let lowStockCount = 0;
+    for (const p of materials) {
+      const totalInventory = p.inventory.reduce((sum, inv) => sum + Number(inv.quantity), 0);
+      if (totalInventory < Number(p.minStockLevel)) {
+        lowStockCount++;
+      }
+    }
+
+    let totalInventoryValue = 0;
+    for (const p of materials) {
+      const totalQuantity = p.inventory.reduce((sum, inv) => sum + Number(inv.quantity), 0);
+      const basePrice = Number(p.basePrice) || 0;
+      totalInventoryValue += totalQuantity * basePrice;
+    }
+
     return {
-      totalRawMaterials: 0,
-      byStatus: { active: 0, inactive: 0 },
-      lowStockCount: 0,
+      totalRawMaterials,
+      byStatus: {
+        active: activeCount,
+        inactive: inactiveCount,
+      },
+      lowStockCount,
       expiringCount: 0,
-      totalInventoryValue: 0,
+      totalInventoryValue,
     };
   }
 
   async getPackagingStats() {
+    const packagingItems = await prisma.product.findMany({
+      where: {
+        type: 'PACKAGING',
+        deletedAt: null,
+      },
+      include: {
+        inventory: true,
+      },
+    });
+
+    const totalPackaging = packagingItems.length;
+    const activeCount = packagingItems.filter((p) => p.status === 'active').length;
+    const inactiveCount = packagingItems.filter((p) => p.status === 'inactive').length;
+
+    let lowStockCount = 0;
+    for (const p of packagingItems) {
+      const totalInventory = p.inventory.reduce((sum, inv) => sum + Number(inv.quantity), 0);
+      if (totalInventory < Number(p.minStockLevel)) {
+        lowStockCount++;
+      }
+    }
+
+    let totalInventoryValue = 0;
+    for (const p of packagingItems) {
+      const totalQuantity = p.inventory.reduce((sum, inv) => sum + Number(inv.quantity), 0);
+      const basePrice = Number(p.basePrice) || 0;
+      totalInventoryValue += totalQuantity * basePrice;
+    }
+
     return {
-      totalPackaging: 0,
-      byStatus: { active: 0, inactive: 0 },
-      lowStockCount: 0,
+      totalPackaging,
+      byStatus: {
+        active: activeCount,
+        inactive: inactiveCount,
+      },
+      lowStockCount,
       expiringCount: 0,
-      totalInventoryValue: 0,
+      totalInventoryValue,
     };
   }
 
   async getGoodsStats() {
     const goods = await prisma.product.findMany({
+      where: {
+        type: 'PRODUCT',
+        deletedAt: null,
+      },
       include: {
         inventory: true,
       },
@@ -802,7 +874,7 @@ class ProductService {
     }
 
     const stats = {
-      totalPackaging: totalGoods,
+      totalGoods,
       byStatus: {
         active: activeCount,
         inactive: inactiveCount,

@@ -99,7 +99,7 @@ class CategoryService {
     return result;
   }
 
-  async getCategoryTree(type?: 'PRODUCT' | 'MATERIAL') {
+  async getCategoryTree(type?: 'PRODUCT' | 'MATERIAL' | 'PACKAGING') {
     const categories = await prisma.category.findMany({
       where: { 
         status: 'active', 
@@ -551,7 +551,7 @@ class CategoryService {
     return Buffer.from(await workbook.xlsx.writeBuffer() as ArrayBuffer);
   }
 
-  async importCategories(items: any[], userId: number, defaultType: 'PRODUCT' | 'MATERIAL' = 'PRODUCT'): Promise<any> {
+  async importCategories(items: any[], userId: number, defaultType: 'PRODUCT' | 'MATERIAL' | 'PACKAGING' = 'PRODUCT'): Promise<any> {
     if (!items || items.length === 0) {
       throw new ValidationError('Không tìm thấy dữ liệu hợp lệ để import');
     }
@@ -587,11 +587,13 @@ class CategoryService {
         continue;
       }
 
-      let type: 'PRODUCT' | 'MATERIAL' = defaultType;
+      let type: 'PRODUCT' | 'MATERIAL' | 'PACKAGING' = defaultType;
       if (typeRaw === 'MATERIAL' || typeRaw === 'NGUYÊN LIỆU') {
         type = 'MATERIAL';
       } else if (typeRaw === 'PRODUCT' || typeRaw === 'SẢN PHẨM') {
         type = 'PRODUCT';
+      } else if (typeRaw === 'PACKAGING' || typeRaw === 'BAO BÌ') {
+        type = 'PACKAGING';
       }
 
       let parentId: number | null = null;
@@ -719,7 +721,7 @@ class CategoryService {
 
 
 
-  async getCategoryStats(type?: 'PRODUCT' | 'MATERIAL') {
+  async getCategoryStats(type?: 'PRODUCT' | 'MATERIAL' | 'PACKAGING') {
     // Get all categories with stats
     const categories = await prisma.category.findMany({
       where: { 
@@ -754,7 +756,7 @@ class CategoryService {
     const rootCategories = categories.filter((c) => !c.parentId).length;
     
     // Switch count based on what we are looking for
-    const itemCountLabel = type === 'MATERIAL' ? 'materialCount' : 'productCount';
+    const itemCountLabel = type === 'MATERIAL' ? 'materialCount' : type === 'PACKAGING' ? 'packagingCount' : 'productCount';
      const totalItems = categories.reduce((sum, c) => {
          const count = c._count.products;
          return sum + (count || 0);
