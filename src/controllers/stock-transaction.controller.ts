@@ -160,6 +160,24 @@ class StockTransactionController {
     res.status(200).json(response);
   }
 
+  // PUT /api/stock-transactions/:id/cancel
+  async cancel(req: AuthRequest, res: Response) {
+    const { id } = req.params;
+    const userId = req.user!.id;
+    const { notes } = req.body;
+
+    const transaction = await stockTransactionService.cancelTransaction(parseInt(id), userId, notes);
+
+    const response: ApiResponse = {
+      success: true,
+      data: transaction,
+      message: 'Giao dịch đã được hủy thành công',
+      timestamp: new Date().toISOString(),
+    };
+
+    res.status(200).json(response);
+  }
+
 
   // GET /api/stock-transactions/card/:warehouseId/:productId
   async getStockCard(req: AuthRequest, res: Response) {

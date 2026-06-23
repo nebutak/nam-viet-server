@@ -680,18 +680,9 @@ class PaymentReceiptService {
       throw new NotFoundError('Không tìm thấy phiếu thu');
     }
 
-    if (receipt.isPosted) {
+    if (receipt.isPosted && !receipt.isCancelled) {
       throw new ValidationError('Không thể xóa phiếu thu đã ghi sổ');
     }
-
-
-    // await prisma.$transaction(async (tx) => {
-    //   await this.revertFinancialImpact(receipt, userId);
-
-    //   await tx.paymentReceipt.delete({
-    //     where: { id },
-    //   });
-    // });
 
     // soft delete
     await prisma.paymentReceipt.update({
@@ -707,6 +698,63 @@ class PaymentReceiptService {
     });
 
     return { message: 'Xóa phiếu thu thành công' };
+  }
+
+  async cancel(id: number, userId: number, notes?: string) {
+    const receipt = await prisma.paymentReceipt.findUnique({
+      where: { id },
+      include: { customerRef: true },
+    });
+
+    if (!receipt) {
+      throw new NotFoundError('Không tìm thấy phiếu thu');
+    }
+
+    if (receipt.isCancelled) {
+      throw new ValidationError('Phiếu thu đã được hủy từ trước');
+    }
+
+    const updatedReceipt = await prisma.$transaction(async (tx) => {
+      // Nếu đã ghi sổ thì phải hoàn tác tác động tài chính
+      if (receipt.isPosted) {
+        await this.revertFinancialImpact(receipt, userId, tx);
+      }
+
+      // Hủy phiếu thu
+      return await tx.paymentReceipt.update({
+        where: { id },
+        data: {
+          isCancelled: true,
+          isPosted: false,
+          notes: notes ? `${receipt.notes || ''}\n[CANCELLED] ${notes}` : receipt.notes,
+        },
+        include: {
+          customerRef: true,
+          invoice: true,
+          creator: true,
+        },
+      });
+    });
+
+    logActivity('update', userId, 'payment_receipts', {
+      recordId: id,
+      action: 'cancel_receipt',
+      receiptCode: receipt.receiptCode,
+    });
+
+    // Auto-sync công nợ khách hàng/nhà cung cấp sau khi hủy phiếu thu
+    const year = new Date().getFullYear();
+    if (receipt.customerId) {
+      smartDebtService.syncSnap({ customerId: receipt.customerId, year }).catch((err) =>
+        console.error(`[AutoSync] Failed to sync debt after cancel receipt for customer ${receipt.customerId}:`, err.message)
+      );
+    } else if (receipt.supplierId) {
+      smartDebtService.syncSnap({ supplierId: receipt.supplierId, year }).catch((err) =>
+        console.error(`[AutoSync] Failed to sync debt after cancel receipt for supplier ${receipt.supplierId}:`, err.message)
+      );
+    }
+
+    return updatedReceipt;
   }
 
   private async applyFinancialImpact(receipt: any, _userId: number, tx: any = prisma) {

@@ -124,6 +124,21 @@ class PaymentReceiptController {
     });
   }
 
+  // POST /api/payment-receipts/:id/cancel - Cancel receipt
+  async cancel(req: AuthRequest, res: Response) {
+    const id = parseInt(req.params.id);
+    const userId = req.user!.id;
+    const { notes } = req.body;
+    const receipt = await paymentReceiptService.cancel(id, userId, notes);
+
+    res.status(200).json({
+      success: true,
+      data: receipt,
+      message: 'Hủy phiếu thu thành công',
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   // DELETE /api/payment-receipts/:id - Delete payment receipt
   async delete(req: AuthRequest, res: Response) {
     const id = parseInt(req.params.id);

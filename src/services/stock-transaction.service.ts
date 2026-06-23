@@ -1622,7 +1622,7 @@ class StockTransactionService {
   async deleteTransaction(id: number, userId: number) {
     const transaction = await this.getById(id);
 
-    if (transaction.isPosted) {
+    if (transaction.isPosted && !transaction.isCancelled) {
       throw new ValidationError('Không thể xóa phiếu kho đã ghi sổ');
     }
 
@@ -1643,6 +1643,381 @@ class StockTransactionService {
     });
 
     return deleted;
+  }
+
+  async cancelTransaction(id: number, userId: number, notes?: string) {
+    const transaction = await this.getById(id);
+
+    if (transaction.isCancelled) {
+      throw new ValidationError('Giao dịch đã được hủy từ trước.');
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Revert inventory/debt effects only if it was posted
+      if (transaction.isPosted) {
+        switch (transaction.transactionType) {
+          case 'import':
+            await this.revertImport(tx, transaction, userId);
+            break;
+          case 'export':
+            await this.revertExport(tx, transaction, userId);
+            break;
+          case 'transfer':
+            await this.revertTransfer(tx, transaction, userId);
+            break;
+          case 'disposal':
+            await this.revertDisposal(tx, transaction, userId);
+            break;
+          case 'stocktake':
+            await this.revertStocktake(tx, transaction, userId);
+            break;
+        }
+      }
+
+      // 2. Update status: isPosted = false, isCancelled = true
+      const updatedTransaction = await tx.stockTransaction.update({
+        where: { id },
+        data: {
+          isPosted: false,
+          isCancelled: true,
+          notes: notes ? `${transaction.notes || ''} - Hủy: ${notes}` : transaction.notes,
+        },
+        include: {
+          details: {
+            include: {
+              product: true,
+            },
+          },
+          warehouse: true,
+          sourceWarehouse: true,
+          destinationWarehouse: true,
+        },
+      });
+
+      return updatedTransaction;
+    });
+
+    logActivity('update', userId, 'stock_transactions', {
+      recordId: id,
+      action: 'cancel',
+      oldValue: { isPosted: transaction.isPosted, isCancelled: false },
+      newValue: { isPosted: false, isCancelled: true },
+    });
+
+    // Auto-sync công nợ sau khi hủy phiếu (nếu có liên quan trả hàng)
+    if (transaction.referenceType === 'sale_refunds' && transaction.referenceId) {
+      this._autoSyncDebtAfterReturn('customer', transaction.referenceId);
+    } else if (transaction.referenceType === 'purchase_refunds' && transaction.referenceId) {
+      this._autoSyncDebtAfterReturn('supplier', transaction.referenceId);
+    }
+
+    return result;
+  }
+
+  private async revertImport(tx: any, transaction: any, userId: number) {
+    for (const detail of transaction.details) {
+      const current = await tx.inventory.findUnique({
+        where: {
+          warehouseId_productId: {
+            warehouseId: transaction.warehouseId,
+            productId: detail.productId,
+          },
+        },
+      });
+
+      const newQuantity = (current ? Number(current.quantity) : 0) - Number(detail.quantity);
+
+      await tx.inventory.update({
+        where: {
+          warehouseId_productId: {
+            warehouseId: transaction.warehouseId,
+            productId: detail.productId,
+          },
+        },
+        data: {
+          quantity: newQuantity,
+          updatedBy: userId,
+        },
+      });
+
+      // Revert batch quantity
+      if (detail.batchNumber && detail.expiryDate) {
+        await tx.inventoryBatch.updateMany({
+          where: {
+            warehouseId: transaction.warehouseId,
+            productId: detail.productId,
+            batchNumber: detail.batchNumber,
+            expiryDate: new Date(detail.expiryDate),
+          },
+          data: {
+            quantity: { decrement: Number(detail.quantity) },
+            updatedBy: userId,
+          },
+        });
+      }
+    }
+
+    // Revert PO / Supplier Debt if purchase_order
+    if (transaction.referenceType === 'purchase_order' && transaction.referenceId) {
+      const purchaseOrder = await tx.purchaseOrder.findUnique({
+        where: { id: transaction.referenceId },
+      });
+
+      if (purchaseOrder) {
+        const supplier = await tx.supplier.findUnique({
+          where: { id: purchaseOrder.supplierId },
+        });
+
+        const newPayable = Math.max(0, (supplier ? Number(supplier.totalPayable) || 0 : 0) - Number(purchaseOrder.totalAmount));
+
+        await tx.supplier.update({
+          where: { id: purchaseOrder.supplierId },
+          data: {
+            totalPayable: newPayable,
+            payableUpdatedAt: new Date(),
+          },
+        });
+
+        // Set PO status back to approved
+        await tx.purchaseOrder.update({
+          where: { id: transaction.referenceId },
+          data: {
+            status: 'approved',
+          },
+        });
+      }
+    }
+  }
+
+  private async revertExport(tx: any, transaction: any, userId: number) {
+    for (const detail of transaction.details) {
+      const current = await tx.inventory.findUnique({
+        where: {
+          warehouseId_productId: {
+            warehouseId: transaction.warehouseId,
+            productId: detail.productId,
+          },
+        },
+      });
+
+      const newQuantity = (current ? Number(current.quantity) : 0) + Number(detail.quantity);
+
+      await tx.inventory.update({
+        where: {
+          warehouseId_productId: {
+            warehouseId: transaction.warehouseId,
+            productId: detail.productId,
+          },
+        },
+        data: {
+          quantity: newQuantity,
+          updatedBy: userId,
+        },
+      });
+
+      // Revert batch quantity
+      if (detail.batchNumber && detail.expiryDate && current) {
+        await tx.inventoryBatch.upsert({
+          where: {
+            inventoryId_batchNumber_expiryDate: {
+              inventoryId: current.id,
+              batchNumber: detail.batchNumber,
+              expiryDate: new Date(detail.expiryDate),
+            },
+          },
+          create: {
+            inventoryId: current.id,
+            warehouseId: transaction.warehouseId,
+            productId: detail.productId,
+            batchNumber: detail.batchNumber,
+            expiryDate: new Date(detail.expiryDate),
+            quantity: Number(detail.quantity),
+            updatedBy: userId,
+          },
+          update: {
+            quantity: { increment: Number(detail.quantity) },
+            updatedBy: userId,
+          },
+        });
+      } else if (current) {
+        // Find earliest batch and increment it
+        const earliestBatch = await tx.inventoryBatch.findFirst({
+          where: {
+            warehouseId: transaction.warehouseId,
+            productId: detail.productId,
+          },
+          orderBy: { expiryDate: 'asc' },
+        });
+        if (earliestBatch) {
+          await tx.inventoryBatch.update({
+            where: { id: earliestBatch.id },
+            data: {
+              quantity: { increment: Number(detail.quantity) },
+              updatedBy: userId,
+            },
+          });
+        }
+      }
+    }
+
+    // Revert Invoice status if reference is invoice
+    if (transaction.referenceType === 'invoice' && transaction.referenceId) {
+      const invoiceId = transaction.referenceId;
+      const invoice = await tx.invoice.findUnique({
+        where: { id: invoiceId },
+      });
+
+      if (invoice && invoice.orderStatus === 'completed') {
+        await tx.invoice.update({
+          where: { id: invoiceId },
+          data: {
+            orderStatus: 'delivering',
+            completedAt: null,
+          },
+        });
+      }
+    }
+
+    // If auto-created import transfer existed, cancel it
+    if (transaction.referenceType === 'transfer_out' && transaction.referenceId) {
+      const destWarehouseId = transaction.referenceId;
+      const autoImportTx = await tx.stockTransaction.findFirst({
+        where: {
+          referenceType: 'transfer_in_auto',
+          referenceId: transaction.warehouseId, // Source warehouse
+          warehouseId: destWarehouseId,
+          isPosted: true,
+          isCancelled: false,
+        }
+      });
+      if (autoImportTx) {
+        // Mark the auto-import as cancelled too
+        await tx.stockTransaction.update({
+          where: { id: autoImportTx.id },
+          data: {
+            isPosted: false,
+            isCancelled: true,
+            notes: `Hủy tự động theo PX ${transaction.transactionCode}`,
+          }
+        });
+        // Revert import effects for that autoImportTx
+        const autoImportTxWithDetails = await tx.stockTransaction.findUnique({
+          where: { id: autoImportTx.id },
+          include: { details: true }
+        });
+        if (autoImportTxWithDetails) {
+          await this.revertImport(tx, autoImportTxWithDetails, userId);
+        }
+      }
+    }
+  }
+
+  private async revertTransfer(tx: any, transaction: any, userId: number) {
+    for (const detail of transaction.details) {
+      // 1. Decrement from destination warehouse
+      const destInv = await tx.inventory.findUnique({
+        where: {
+          warehouseId_productId: {
+            warehouseId: transaction.destinationWarehouseId,
+            productId: detail.productId,
+          },
+        },
+      });
+      if (destInv) {
+        await tx.inventory.update({
+          where: { id: destInv.id },
+          data: {
+            quantity: { decrement: Number(detail.quantity) },
+            updatedBy: userId,
+          },
+        });
+        if (detail.batchNumber && detail.expiryDate) {
+          await tx.inventoryBatch.updateMany({
+            where: {
+              inventoryId: destInv.id,
+              batchNumber: detail.batchNumber,
+              expiryDate: new Date(detail.expiryDate),
+            },
+            data: {
+              quantity: { decrement: Number(detail.quantity) },
+              updatedBy: userId,
+            },
+          });
+        }
+      }
+
+      // 2. Increment source warehouse
+      const sourceInv = await tx.inventory.findUnique({
+        where: {
+          warehouseId_productId: {
+            warehouseId: transaction.sourceWarehouseId,
+            productId: detail.productId,
+          },
+        },
+      });
+      if (sourceInv) {
+        await tx.inventory.update({
+          where: { id: sourceInv.id },
+          data: {
+            quantity: { increment: Number(detail.quantity) },
+            updatedBy: userId,
+          },
+        });
+        if (detail.batchNumber && detail.expiryDate) {
+          await tx.inventoryBatch.upsert({
+            where: {
+              inventoryId_batchNumber_expiryDate: {
+                inventoryId: sourceInv.id,
+                batchNumber: detail.batchNumber,
+                expiryDate: new Date(detail.expiryDate),
+              },
+            },
+            create: {
+              inventoryId: sourceInv.id,
+              warehouseId: transaction.sourceWarehouseId,
+              productId: detail.productId,
+              batchNumber: detail.batchNumber,
+              expiryDate: new Date(detail.expiryDate),
+              quantity: Number(detail.quantity),
+              updatedBy: userId,
+            },
+            update: {
+              quantity: { increment: Number(detail.quantity) },
+              updatedBy: userId,
+            },
+          });
+        }
+      }
+    }
+  }
+
+  private async revertDisposal(tx: any, transaction: any, userId: number) {
+    await this.revertExport(tx, transaction, userId);
+  }
+
+  private async revertStocktake(tx: any, transaction: any, userId: number) {
+    for (const detail of transaction.details) {
+      const adjustment = Number(detail.quantity);
+      if (adjustment === 0) continue;
+
+      const current = await tx.inventory.findUnique({
+        where: {
+          warehouseId_productId: {
+            warehouseId: transaction.warehouseId,
+            productId: detail.productId,
+          },
+        },
+      });
+      if (current) {
+        await tx.inventory.update({
+          where: { id: current.id },
+          data: {
+            quantity: { decrement: adjustment },
+            updatedBy: userId,
+          },
+        });
+      }
+    }
   }
 }
 

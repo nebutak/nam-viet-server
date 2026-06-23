@@ -95,6 +95,14 @@ router.post(
   asyncHandler(paymentReceiptController.unpost.bind(paymentReceiptController))
 );
 
+// POST /api/payment-receipts/:id/cancel - Cancel receipt
+router.post(
+  '/:id/cancel',
+  authorize('DELETE_RECEIPT'), // Perm to delete/cancel
+  logActivityMiddleware('cancel', 'payment_receipt'),
+  asyncHandler(paymentReceiptController.cancel.bind(paymentReceiptController))
+);
+
 // POST /api/payment-receipts/:id/send-email - Send email receipt
 router.post(
   '/:id/send-email',

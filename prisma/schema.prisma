@@ -512,6 +512,7 @@ model StockTransaction {
   reason                 String?         @db.VarChar(255)
   notes                  String?         @db.VarChar(500)
   isPosted               Boolean         @default(false) @map("is_posted")
+  isCancelled            Boolean         @default(false) @map("is_cancelled")
   createdBy              Int             @map("created_by")
   createdAt              DateTime        @default(now()) @map("created_at")
   actualReceiptDate      DateTime?       @map("actual_receipt_date") @db.Date
@@ -893,6 +894,7 @@ model PaymentReceipt {
   transactionReference String?              @map("transaction_reference") @db.VarChar(100)
   receiptDate          DateTime             @map("receipt_date")
   isPosted             Boolean              @default(false) @map("is_posted")
+  isCancelled          Boolean              @default(false) @map("is_cancelled")
   notes                String?              @db.VarChar(255)
   createdBy            Int                  @map("created_by")
   createdAt            DateTime             @default(now()) @map("created_at")

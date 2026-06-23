@@ -88,6 +88,18 @@ router.put(
   asyncHandler(stockTransactionController.post.bind(stockTransactionController))
 );
 
+// PUT /api/stock-transactions/:id/cancel - Cancel transaction
+router.put(
+  '/:id/cancel',
+  authorizeAny('MANAGE_INVENTORY', 'WAREHOUSE_IMPORT_DELETE', 'WAREHOUSE_EXPORT_DELETE'),
+  validateMultiple({
+    params: transactionIdSchema,
+    body: postTransactionSchema,
+  }),
+  logActivityMiddleware('cancel', 'stock_transaction'),
+  asyncHandler(stockTransactionController.cancel.bind(stockTransactionController))
+);
+
 
 // POST /api/stock-transactions/quick-adjust - Quick adjust inventory
 router.post(
