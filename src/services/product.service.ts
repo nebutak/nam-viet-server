@@ -70,6 +70,10 @@ class ProductService {
       sortOrder = 'desc',
     } = params as any;
 
+    let orderByField = sortBy;
+    if (sortBy === 'sellingPriceRetail') {
+      orderByField = 'price';
+    }
 
     const offset = (page - 1) * limit;
 
@@ -166,7 +170,7 @@ class ProductService {
           },
         },
       },
-      orderBy: { [sortBy]: sortOrder },
+      orderBy: { [orderByField]: sortOrder },
       skip: offset,
       take: limit,
     }),
