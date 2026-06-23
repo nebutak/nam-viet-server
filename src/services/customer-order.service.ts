@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { NotFoundError } from '@utils/errors';
+import { NotFoundError, ValidationError } from '@utils/errors';
 import invoiceService from './invoice.service';
 
 const prisma = new PrismaClient();
@@ -16,6 +16,66 @@ class CustomerOrderService {
       throw new NotFoundError('Không tìm thấy thông tin khách hàng');
     }
 
+    // 1.5. Automatically check inventory stock to confirm order creation
+    let itemsWithPrices: any[] = [];
+    if (orderData.items && Array.isArray(orderData.items)) {
+      const productIds = orderData.items.map((item: any) => Number(item.productId));
+      const products = await prisma.product.findMany({
+        where: { id: { in: productIds } },
+        select: { id: true, productName: true, price: true }
+      });
+
+      // Group item quantities by productId to handle duplicates correctly
+      const productQuantities: Record<number, number> = {};
+      for (const item of orderData.items) {
+        const pid = Number(item.productId);
+        productQuantities[pid] = (productQuantities[pid] || 0) + Number(item.quantity);
+      }
+
+      // Check stock for each product
+      for (const [productIdStr, requestedQty] of Object.entries(productQuantities)) {
+        const productId = Number(productIdStr);
+        const product = products.find(p => p.id === productId);
+
+        if (!product) {
+          throw new NotFoundError(`Sản phẩm với ID ${productId} không tồn tại`);
+        }
+
+        // Sum available quantity across all active warehouses
+        const inventories = await prisma.inventory.findMany({
+          where: {
+            productId,
+            warehouse: {
+              status: 'active',
+            },
+          },
+        });
+
+        const totalAvailable = inventories.reduce(
+          (sum, inv) => sum + (Number(inv.quantity) - Number(inv.reservedQuantity)),
+          0
+        );
+
+        if (totalAvailable < requestedQty) {
+          throw new ValidationError(
+            `Sản phẩm "${product.productName}" không đủ hàng trong kho (Còn lại: ${totalAvailable}, Yêu cầu: ${requestedQty})`
+          );
+        }
+      }
+
+      // Map items with unitPrice looked up from database to prevent price tampering
+      itemsWithPrices = orderData.items.map((item: any) => {
+        const product = products.find(p => p.id === Number(item.productId));
+        return {
+          productId: item.productId,
+          quantity: item.quantity,
+          unitId: item.unitId || null,
+          notes: item.notes || '',
+          unitPrice: product ? Number(product.price || 0) : 0,
+        };
+      });
+    }
+
     // 2. Map payload to CreateInvoiceInput expected by invoiceService
     const createInvoiceInput = {
       customerId: customer.id,
@@ -26,12 +86,7 @@ class CustomerOrderService {
       recipientName: orderData.recipientName || customer.customerName,
       recipientPhone: orderData.recipientPhone || customer.phone,
       notes: orderData.notes || '',
-      items: orderData.items.map((item: any) => ({
-        productId: item.productId,
-        quantity: item.quantity,
-        unitId: item.unitId || null,
-        notes: item.notes || '',
-      })),
+      items: itemsWithPrices,
       promotionId: orderData.promotionId || null,
       requireApproval: true, // Online customer orders always require admin approval
     };

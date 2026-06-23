@@ -508,6 +508,10 @@ class InvoiceService {
       return {
         ...item,
         unitPrice,
+        price: unitPrice,
+        total: lineAmount,
+        discountAmount: item.discountAmount || discountAmount,
+        taxAmount: item.taxAmount || taxAmount,
       };
     });
 
